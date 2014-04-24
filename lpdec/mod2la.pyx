@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # cython: boundscheck=False
 # cython: nonecheck=False
+# cython: embedsignature=True
 # Copyright 2014 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify

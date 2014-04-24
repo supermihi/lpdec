@@ -9,8 +9,11 @@ from unittest import TestCase
 import numpy as np
 from lpdec.mod2la import orthogonalComplement
 
+
 class TestOrthogonalComplement(TestCase):
+
     def test_orthogonalComplement(self):
+        """Tests :func:`orthogonalComplement` by """
         for trial in range(100):
             cols = np.random.randint(5, 200)
             rows = np.random.randint(2, cols-1)

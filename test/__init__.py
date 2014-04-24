@@ -9,5 +9,6 @@ from os.path import dirname, join
 
 here = dirname(__file__)
 
+
 def testData(*pathParts):
     return join(here, 'data', *pathParts)

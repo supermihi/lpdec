@@ -29,10 +29,10 @@ def getBinaryMatrix(source):
     :returns: A numpy ndarray representation of the matrix.
     """
     if isinstance(source, basestring):
-        with open(source, "rt") as f:
-            lines = [ [int(x) for x in l.strip().split()]
-                      for l in f.readlines()
-                      if len(l.strip()) > 0 ]
+        with open(source, 'rt') as f:
+            lines = [[int(x) for x in l.strip().split()]
+                     for l in f.readlines()
+                     if len(l.strip()) > 0]
     else:
         assert hasattr(source, "__iter__") and hasattr(source[0], "__iter__")
         import copy
@@ -55,3 +55,20 @@ def getBinaryMatrix(source):
             if index != 0:
                 data[index - 1, column] = 1
     return data
+
+
+def writeBinaryMatrix(matrix, filename=None, format='01'):
+    """Writes the matrix to a file. Format is one of '01' or 'alist'"""
+    if format == 'alist':
+        if filename is None:
+            out = [[matrix.shape[1], matrix.shape[0]], []]
+            for i in range(matrix.shape[1]):
+                out.append((matrix[:, i].nonzero()[0] + 1).tolist())
+            return out
+        with open(filename, 'wt') as f:
+            writeAList(matrix, f)
+    elif format == '01':
+        with open(filename, 'wt') as f:
+            f.write(strBinary(matrix))
+    else:
+        raise ValueError('Unknown matrix format string: {0}'.format(format))

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# cython: embedsignature=True
 # Copyright 2014 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -7,7 +8,7 @@
 
 from collections import OrderedDict
 
-from lpdec cimport JSONDecodable
+from lpdec.persistence cimport JSONDecodable
 from lpdec.codes cimport BinaryLinearBlockCode
 
 
@@ -30,6 +31,7 @@ cdef class Decoder(JSONDecodable):
         self.name = name
         self.mlCertificate = self.foundCodeword = False
         self.setStats(OrderedDict())
+
 
     cpdef setLLRs(self, np.double_t[:] llrs):
         self.llrs = np.asarray(llrs, dtype=np.double)

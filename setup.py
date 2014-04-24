@@ -12,7 +12,7 @@ import io
 import re
 from os.path import join, dirname, abspath
 
-from setuptools import setup, find_packages
+from setuptools import setup
 from Cython.Build import cythonize
 import numpy as np
 
@@ -31,7 +31,7 @@ def makeExtensions():
     return extensions
 
 
-with io.open(os.path.join(here, 'lpdec', '__init__.pyx'), 'r', encoding='UTF-8') as f:
+with io.open(os.path.join(here, 'lpdec', '__init__.py'), 'r', encoding='UTF-8') as f:
     version_file = f.read()
     version_match = re.search(r'^__version__ = [\'"]([^\'"]*)[\'"]', version_file, re.M)
     version = version_match.group(1)
@@ -43,6 +43,6 @@ setup(
     author_email='helmling@uni-koblenz.de',
     install_requires=['numpy', 'sqlalchemy', 'cython'],
     ext_modules=makeExtensions(),
-    packages=find_packages(),
+    packages=['lpdec'],
     test_suite='test',
 )

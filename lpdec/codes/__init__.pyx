@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
+# cython: embedsignature=True
 # Copyright 2014 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 from __future__ import division
-
 import os.path
+from collections import OrderedDict
 cimport numpy as np
 import numpy as np
-
-from lpdec cimport JSONDecodable
+from lpdec.persistence cimport JSONDecodable
 from lpdec import matrices, mod2la
 
 
@@ -29,7 +29,6 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
     """
 
     def __init__(self, name=None, parityCheckMatrix=None):
-
         JSONDecodable.__init__(self)
         if parityCheckMatrix is not None:
             if isinstance(parityCheckMatrix, basestring):
@@ -86,12 +85,18 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
         :returns: The resulting codeword.
         :rtype: numpy.ndarray of dimension one and type numpy.int_t.
         """
-        return np.dot(self.generatorMatrix, infoword) % 2
+        return infoword.dot(self.generatorMatrix) % 2
 
     def __contains__(self, item):
         """Check if the given word is a codeword of this code.
         """
-        raise NotImplementedError()
+        return np.all(self.parityCheckMatrix.dot(item) % 2 == 0)
 
-    def __str__(self):
-        return self.name
+    def params(self):
+        matrix = self.parityCheckMatrix
+        if np.sum(matrix) / ( matrix.shape[0] * matrix.shape[1]) < .1:
+            # sparse matrix
+            pcm = matrices.writeBinaryMatrix(matrix, format='alist')
+        else:
+            pcm = matrix.tolist()
+        return OrderedDict([("parityCheckMatrix", pcm), ("name", self.name)])

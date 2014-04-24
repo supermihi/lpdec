@@ -5,12 +5,13 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
-from lpdec cimport JSONDecodable
+from lpdec.persistence cimport JSONDecodable
 from lpdec.codes cimport BinaryLinearBlockCode
 cimport numpy as np
 
 cdef class Decoder(JSONDecodable):
 
+    cdef public object name
     cdef public np.ndarray llrs
     cdef public np.ndarray solution
     cdef public double objectiveValue
