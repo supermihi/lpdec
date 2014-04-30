@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-# cython: boundscheck=False
-# cython: nonecheck=False
 # cython: embedsignature=True
 # Copyright 2014 Michael Helmling
 #
@@ -14,7 +12,6 @@ cimport cython
 cimport numpy as np
 import numpy as np
 
-@cython.boundscheck(False)
 cpdef gaussianElimination(np.int_t[:,:] matrix,
                           np.int_t[:] columns=None,
                           bint diagonalize=True):

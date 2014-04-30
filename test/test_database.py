@@ -15,7 +15,7 @@ from lpdec.codes.classic import HammingCode
 class TestCodePersistence(TestCase):
 
     def setUp(self):
-        database.init('sqlite:///:memory:')
+        database.init('sqlite:///:memory:', testMode=True)
         self.code = HammingCode(4)
         database.checkCode(self.code, insert=True)
 

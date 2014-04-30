@@ -5,7 +5,7 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
-from __future__ import division
+from __future__ import division, unicode_literals
 import os.path
 from collections import OrderedDict
 cimport numpy as np
@@ -99,4 +99,4 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
             pcm = matrices.writeBinaryMatrix(matrix, format='alist')
         else:
             pcm = matrix.tolist()
-        return OrderedDict([("parityCheckMatrix", pcm), ("name", self.name)])
+        return OrderedDict([('parityCheckMatrix', pcm), ('name', self.name)])

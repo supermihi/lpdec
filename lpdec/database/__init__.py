@@ -14,6 +14,7 @@ from __future__ import division
 
 from os.path import exists, join, expanduser
 import os
+import platform
 import numbers
 import atexit
 from lpdec.codes import BinaryLinearBlockCode
@@ -58,6 +59,9 @@ def saveDatabases():
         listFile.write('\n'.join(_knownDBs))
 
 
+engine = None
+
+
 def init(database=None, testMode=False):
     """Initialize the database package and connect to `database`, which is a connection string.
 
@@ -98,7 +102,7 @@ def init(database=None, testMode=False):
                                sqla.Column('id', sqla.Integer, primary_key=True),
                                sqla.Column('name', sqla.String(128), unique=True),
                                sqla.Column('classname', sqla.String(64)),
-                               sqla.Column('params', sqla.Text))
+                               sqla.Column('json', sqla.Text))
     metadata.create_all(engine)
     metadata.bind = engine
 
@@ -108,6 +112,11 @@ def teardown():
     if engine:
         engine.dispose()
     engine = metadata = decodersTable = codesTable = None
+
+
+def machineString():
+    """A string identifying the current machine."""
+    return '{0} ({1})'.format(platform.node(), platform.platform())
 
 
 def checkCode(code, insert=True):
@@ -120,19 +129,39 @@ def checkCode(code, insert=True):
     :returns: The code's primary ID (if it exists or was inserted by this method), otherwise
     `None`.
     """
-    s = sqla.select([codesTable], codesTable.c.name == code.name)
+    return _checkCodeOrDecoder('code', code, insert=True)
+
+
+def checkDecoder(decoder, insert=True):
+    """Tests if `decoder` is contained in the database. If there is a decoder with the same name
+    that does not match the given code, a :class:`DatabaseException` is raised.
+
+    The decoder will be inserted into the database if `insert` is `True` and the decoder not yet
+    contained.
+
+    :returns: The decoder's primary ID (if it exists or was inserted by this method), otherwise
+    `None`.
+    """
+    return _checkCodeOrDecoder('decoder', decoder, insert=True)
+
+
+def _checkCodeOrDecoder(which, obj, insert=True):
+    assert which in ('code', 'decoder')
+    table = codesTable if which == 'code' else decodersTable
+    s = sqla.select([codesTable], codesTable.c.name == obj.name)
     row = engine.execute(s).fetchone()
     if row is not None:
-        if row[codesTable.c.json] != code.toJSON():
-            raise DatabaseException('A code named "{}" with different JSON representation '
+        if row[table.c.json] != obj.toJSON():
+            raise DatabaseException('A {} named "{}" with different JSON representation '
+                                    .format(which, obj.name) +
                                     'already exists in the database')
-        return row[codesTable.c.id]
+        return row[table.c.id]
     elif insert:
-        result = codesTable.insert().execute(name=code.name,
-                                             classname=type(code).__name__,
-                                             json=code.toJSON(),
-                                             blocklength=code.blocklength,
-                                             infolength=code.infolength)
+        args = dict(name=obj.name, classname=type(obj).__name__, json=obj.toJSON())
+        if which == 'code':
+            args['blocklength'] = obj.blocklength
+            args['infolength'] = obj.infolength
+        result = table.insert().execute(**args)
         return result.inserted_primary_key[0]
 
 
@@ -149,7 +178,7 @@ def getCode(code):
     elif isinstance(code, BinaryLinearBlockCode):
         condition = codesTable.c.name == code.name
     else:
-        raise ValueError('{} is not a valid code identifier'.format(code))
+        raise ValueError('"{}" is not a valid code identifier'.format(code))
     s = sqla.select([codesTable], condition)
     codeRow = engine.execute(s).fetchone()
     if codeRow is None:
