@@ -11,6 +11,8 @@ from __future__ import print_function
 from collections import OrderedDict
 import sys
 import cplex
+import numpy as np
+from lpdec.decoders import Decoder
 
 
 def getInstance(**params):
@@ -58,6 +60,57 @@ def getCplexParams(cpx):
     return params
 
 
+class CplexDecoder(Decoder):
+    """Generic base class for CPLEX based integer programming decoders.
+
+    .. attribute:: x
+
+       Vector of names of the codeword variables
+    """
+
+    def __init__(self, code, name, cplexParams=dict()):
+        Decoder.__init__(self, code, name)
+        self.cplex = getInstance(**cplexParams)
+        self.cplex.objective.set_sense(self.cplex.objective.sense.minimize)
+        self.x = ['x' + str(num) for num in range(code.blocklength)]
+        self.cplex.variables.add(types=['B'] * code.blocklength, names=self.x)
+        self.callback = self.cplex.register_callback(ShortcutCallback)
+        self.callback.decoder = self
+
+    def setStats(self, stats):
+        if 'CPLEX nodes' not in stats:
+            stats['CPLEX nodes'] = 0
+        Decoder.setStats(self, stats)
+
+    def solve(self, sent=None, lb=-np.inf, ub=np.inf):
+        self.cplex.objective.set_linear(zip(self.x, self.llrs))
+        if sent is not None:
+            # add sent codeword as CPLEX MIP start solution
+            zValues = np.dot(self.code.parityCheckMatrix, np.asarray(sent) / 2).tolist()
+            self.cplex.MIP_starts.add([self.x + self.z, np.asarray(sent).tolist() + zValues],
+                                      self.cplex.MIP_starts.effort_level.auto)
+            self.callback.activate(np.dot(sent, self.llrs))
+        self.cpxSolve()
+        if sent is not None:
+            if self.callback.occured:
+                self.objectiveValue = self.callback.objectiveValue
+                self.solution = self.callback.solution
+                self.mlCertificate = False
+                self.foundCodeword = True
+            self.callback.deactivate()
+            self.cplex.MIP_starts.delete()
+        if sent is None or not self.callback.occured:
+            if not self.callback.occured:
+                checkKeyboardInterrupt(self.cplex)
+            self.mlCertificate = self.foundCodeword = True
+            self.objectiveValue = self.cplex.solution.get_objective_value()
+            self.solution = np.rint(self.cplex.solution.get_values(self.x))
+        self._stats['CPLEX nodes'] += self.cplex.solution.progress.get_num_nodes_processed()
+
+    def cpxSolve(self):
+        self.cplex.solve()
+
+
 class ShortcutCallback(cplex.callbacks.MIPInfoCallback):
     """A MIP callback that aborts computation codeword with an objective value below that of
     the sent codeword is found. In that event, it is sure that the ML decoder would fail,
@@ -78,16 +131,27 @@ class ShortcutCallback(cplex.callbacks.MIPInfoCallback):
 
     def __init__(self, *args, **kwargs):
         cplex.callbacks.MIPInfoCallback.__init__(self, *args, **kwargs)
-        self.codewordVars = self.objectiveValue = self.solution = None
+        self.active = False
+        self.occured = False
+        self.realObjective = 0
+        self.decoder = None
+
+    def activate(self, objective):
+        self.realObjective = objective
+        self.active = True
         self.occured = False
 
     def __call__(self):
-        if self.has_incumbent() and \
-                self.get_incumbent_objective_value() < self.realObjective - 1e-6:
-            self.occured = True
-            self.objectiveValue = self.get_incumbent_objective_value()
-            self.solution = self.get_incumbent_values(self.codewordVars)
-            self.abort()
+        if self.active and self.has_incumbent():
+            incObj = self.get_incumbent_objective_value()
+            if incObj < self.realObjective - 1e-6:
+                self.occured = True
+                self.objectiveValue = incObj
+                self.solution = np.rint(self.get_incumbent_values(self.decoder.x))
+                self.abort()
+
+    def deactivate(self):
+        self.active = False
 
 
 def checkKeyboardInterrupt(cpx):

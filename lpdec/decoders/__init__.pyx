@@ -33,14 +33,15 @@ cdef class Decoder(JSONDecodable):
     cpdef setLLRs(self, np.double_t[:] llrs):
         self.llrs = np.asarray(llrs, dtype=np.double)
 
-    cpdef solve(self, np.int_t[:] hint=None, double lb=-np.inf, double ub=np.inf):
+    cpdef solve(self, np.int_t[:] sent=None, double lb=-np.inf, double ub=np.inf):
         """Run the solver on :attr:`llrs`. A codeword may be given as hint.
 
         This is the main method to run the decoding algorithm; the LLR vector must be set
         in advance via the :attr:`llrs` attribute.
 
-        ``hint`` (optional) - a codeword used as decoding hint (e.g. the one that was actually
-        sent)
+        ``sent`` (optional) - the codeword that was actually sent. Might speed up simulations
+        because the error/non-error decision can be made faster, but is of course not available
+        in relasistic situations.
 
         ``lb`` (optional) - lower bound on the optimal objective value
 

@@ -18,7 +18,7 @@ from . import testData
 
 
 class TestCplexIPDecoder(unittest.TestCase):
-    """Run various test with an (8,4) code."""
+    """Run various test with the (23, 12) Golay code."""
     
     def setUp(self):
         self.code = BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N23_M11.txt'))
@@ -31,44 +31,38 @@ class TestCplexIPDecoder(unittest.TestCase):
             self.skipTest('CPLEX is not installed')
         self.decoder = CplexIPDecoder(self.code)
         distance, codeword = self.decoder.minimumDistance()
-        self.assertEqual(distance, 4)
-        self.assertEqual(codeword.sum(), 4)
+        self.assertEqual(distance, 7)
+        self.assertEqual(codeword.sum(), 7)
         self.assertIsInstance(codeword, np.ndarray)
 
     def test_decoding(self):
         seed = 3498543
-        for snr in [0, 1.5, 4]:
+        for snr in [0, 2, 4]:
             channelRC = AWGNC(snr, self.code.rate, seed=seed)
             channelZC = AWGNC(snr, self.code.rate, seed=seed)
-            decoderNormal = CplexIPDecoder(self.code)
-            decoderSC = CplexIPDecoder(self.code, shortCallback=True)
+            decoder = CplexIPDecoder(self.code)
             sigRC = channelRC.signalGenerator(self.code, wordSeed=seed, randomCodewords=True)
             sigZC = channelZC.signalGenerator(self.code, wordSeed=seed, randomCodewords=False)
             for i in range(100):
                 llrRC = next(sigRC)
                 llrZC = next(sigZC)
-                for decoder in decoderNormal, decoderSC:
-                    for useHint in True, False:
-                        if useHint:
-                            hintRC = sigRC.encoderOutput
-                            hintZC = sigZC.encoderOutput
-                        else:
-                            hintRC = hintZC = None
-                        outputRC = decoder.decode(llrRC, hint=hintRC)
-                        objRC = decoder.objectiveValue
-                        strikedRC = decoderSC.callback.occured
-                        outputZC = decoder.decode(llrZC, hint=hintZC)
-                        objZC = decoder.objectiveValue
-                        strikedSC = decoderSC.callback.occured
-                        errorRC = not np.allclose(outputRC, sigRC.encoderOutput)
-                        errorZC = not np.allclose(outputZC, sigZC.encoderOutput)
-                        if errorRC != errorZC:
-                            print(errorRC, errorZC, useHint, strikedRC, strikedSC, decoder is
-                                                                        decoderSC)
-                            print(objRC, objZC + sigRC.correctObjectiveValue(), sigRC.correctObjectiveValue())
-                        if decoder is decoderNormal:
-                            if not np.allclose(objRC, objZC + sigRC.correctObjectiveValue()):
-                                print('urgh', objRC, objZC + sigRC.correctObjectiveValue())
+                for useHint in True, False:
+                    if useHint:
+                        hintRC = sigRC.encoderOutput
+                        hintZC = sigZC.encoderOutput
+                    else:
+                        hintRC = hintZC = None
+                    outputRC = decoder.decode(llrRC, hint=hintRC)
+                    objRC = decoder.objectiveValue
+                    strikedRC = decoder.callback.occured
+                    outputZC = decoder.decode(llrZC, hint=hintZC)
+                    objZC = decoder.objectiveValue
+                    strikedSC = decoder.callback.occured
+                    errorRC = not np.allclose(outputRC, sigRC.encoderOutput)
+                    errorZC = not np.allclose(outputZC, sigZC.encoderOutput)
+                    self.assertEqual(errorRC, errorZC)
+                    if not useHint or (not strikedRC and not strikedSC):
+                        self.assertTrue(np.allclose(objRC, objZC + sigRC.correctObjectiveValue()))
 
 
 if __name__=='__main__':

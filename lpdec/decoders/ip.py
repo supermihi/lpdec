@@ -25,29 +25,21 @@ import numpy as np
 from lpdec.decoders import Decoder, cplexhelpers
 
 
-class CplexIPDecoder(Decoder):
+class CplexIPDecoder(cplexhelpers.CplexDecoder):
     """CPLEX implementation of the IPD maximum-likelihood decoder.
 
     For ML simulations, the decoding process can be speed up using a shortcut callback.
 
-    .. attribute:: x
-
-       Vector of names of the codeword variables
     .. attribute:: z
 
        Vector of names of the auxiliary variables
     """
-    def __init__(self, code, shortCallback=False, cplexParams=dict(), name=None):
+    def __init__(self, code, name=None, **kwargs):
         if name is None:
-            name = 'CplexIPDecoder' + ('[SC]' if shortCallback else '')
-        Decoder.__init__(self, code, name)
-        self.shortCallback = shortCallback
-        self.cplex = cplexhelpers.getInstance(**cplexParams)
-        self.cplex.objective.set_sense(self.cplex.objective.sense.minimize)
+            name = 'CplexIPDecoder'
+        cplexhelpers.CplexDecoder.__init__(self, code, name, **kwargs)
         matrix = code.parityCheckMatrix
-        self.x = ['x' + str(num) for num in range(matrix.shape[1])]
         self.z = ['z' + str(num) for num in range(matrix.shape[0])]
-        self.cplex.variables.add(types=['B'] * matrix.shape[1], names=self.x)
         self.cplex.variables.add(types=['I'] * matrix.shape[0], names=self.z)
         self.cplex.linear_constraints.add(
             names=['parity_check_' + str(num) for num in range(matrix.shape[0])])
@@ -57,40 +49,9 @@ class CplexIPDecoder(Decoder):
             self.cplex.linear_constraints.set_linear_components(
                 'parity_check_{0}'.format(cnt),
                 zip(*nonzero_indices))
-        if shortCallback:
-            self.callback = self.cplex.register_callback(cplexhelpers.ShortcutCallback)
-            self.callback.codewordVars = self.x
 
-    def setStats(self, stats):
-        if 'CPLEX nodes' not in stats:
-            stats['CPLEX nodes'] = 0
-        Decoder.setStats(self, stats)
 
-    def solve(self, hint=None, lb=-np.inf, ub=np.inf):
-        self.cplex.objective.set_linear(zip(self.x, self.llrs))
-        if hint is not None:
-            # add sent codeword as CPLEX MIP start solution
-            zValues = np.dot(self.code.parityCheckMatrix, np.asarray(hint) / 2).tolist()
-            self.cplex.MIP_starts.add([self.x + self.z, np.asarray(hint).tolist() + zValues],
-                                      self.cplex.MIP_starts.effort_level.auto)
-        if self.shortCallback:
-            self.callback.occured = False
-            self.callback.realObjective = 0 if hint is None else np.dot(hint, self.llrs)
-        self.cplex.solve()
-        if self.shortCallback and self.callback.occured:
-                self.objectiveValue = self.callback.objectiveValue
-                self.solution = np.array(self.callback.solution)
-                self.mlCertificate = False
-                self.foundCodeword = True
-        else:
-            if not self.shortCallback:
-                cplexhelpers.checkKeyboardInterrupt(self.cplex)
-            self.mlCertificate = self.foundCodeword = True
-            self.objectiveValue = self.cplex.solution.get_objective_value()
-            self.solution = np.rint(self.cplex.solution.get_values(self.x))
-        if hint is not None:
-            self.cplex.MIP_starts.delete()
-        self._stats['CPLEX nodes'] += self.cplex.solution.progress.get_num_nodes_processed()
+
 
     def minimumDistance(self, hint=None):
         """Calculate the minimum distance of :attr:`code` via integer programming.
