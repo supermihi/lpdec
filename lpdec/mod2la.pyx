@@ -8,7 +8,6 @@
 
 """This module contains linear algebra functions in mod2 arithmetics."""
 
-cimport cython
 cimport numpy as np
 import numpy as np
 

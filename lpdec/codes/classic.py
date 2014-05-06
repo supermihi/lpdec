@@ -39,5 +39,8 @@ class HammingCode(BinaryLinearBlockCode):
         self.extended = extended
 
     def params(self):
-        return OrderedDict([('r', self.r), ('extended', self.extended)])
+        ans = OrderedDict(r=self.r)
+        if self.extended:
+            ans['extended'] = True
+        return ans
 

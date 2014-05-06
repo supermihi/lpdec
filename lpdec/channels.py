@@ -22,7 +22,7 @@ __all__ = ['Channel', 'BSC', 'AWGNC', 'SignalGenerator']
 class Channel(JSONDecodable):
     """Abstract parent class for a channel.
 
-    :param seed: Optional initial random seed value for noise generation.
+    :param int seed: Optional initial random seed value for noise generation.
 
     .. attribute:: snr
 
@@ -61,9 +61,9 @@ class Channel(JSONDecodable):
 class AWGNC(Channel):
     """The additive white Gaussian noise channel.
 
-    :param snr: Signal-to-noise ratio (:math:`\\frac{E_b}{N_0}`) in dB.
-    :param coderate: Coding rate (needed to calculate :math:`E_c` from :math:`E_b`.
-    :param round: `(optional)` Number of decimals to which the resulting LLR value is rounded.
+    :param float snr: Signal-to-noise ratio (:math:`\\frac{E_b}{N_0}`) in dB.
+    :param float coderate: Coding rate (needed to calculate :math:`E_c` from :math:`E_b`.
+    :param int round: `(optional)` Number of decimals to which the resulting LLR value is rounded.
     """
 
     def __init__(self, snr, coderate, round=None, seed=None):
@@ -93,7 +93,7 @@ class AWGNC(Channel):
 class BSC(Channel):
     """The binary symmetric channel: Indepentently flips each bit with a fixed probability.
 
-    :param p: the crossover probability (:math:`0 \leq p \leq 1`)
+    :param  float p: the crossover probability (:math:`0 \leq p \leq 1`)
     """
 
     def __init__(self, p, seed=None):
@@ -103,6 +103,9 @@ class BSC(Channel):
         self.snr = 1 - p
 
     def __call__(self, input):
+        """Apply channel
+        :param np.ndarray input: output of the modulator
+        """
         noise = self.random.random_sample(input.shape) < self.p
         return (input * (1 - 2 * noise)).astype(np.double)
 
@@ -113,27 +116,33 @@ class BSC(Channel):
         return OrderedDict(parms)
 
 
-class SignalGenerator:
+class SignalGenerator(object):
     """An iterator class for generating noisy channel output of transmitted codewords.
 
-    Codewords are sent through a channel which adds noise. If `randomCodewords` is `False`, the
-    all-zero codeword is sent always; otherwise, random codewords are used. A random seed
-    `wordSeed` may be provided that is used for generating codewords.
+    Codewords are sent through a channel which adds noise. A random seed may be provided that is
+    used for generating codewords.
 
     The :class:`SignalGenerator` can be used as an iterator; every call to :func:`next` will yield
     another noisy signal. Afterwards, the attributes :attr:`encoderOutput`, :attr:`channelInput`
     and :attr:`channelOutput` are available and correspond to the output signal.
+
+    :param BinaryLinearBlockCode code: the code used
+    :param Channel channel: channel model
+    :param int wordSeed: (optional) random seed for generating codewords. The default value of
+        ``None`` uses a random seed. The special value ``-1`` indicates that all-zero simulation
+        should be performed instead.
     """
-    def __init__(self, code, channel, randomCodewords=True, wordSeed=None):
+    def __init__(self, code, channel, wordSeed=None):
         self.code = code
         self.channel = channel
-        self.randomCodewords = randomCodewords
+        self.allZero = wordSeed == -1
         self.channelOutput = self.channelInput = self.encoderOutput = None
-        if not randomCodewords:
+        if self.allZero:
             self.channelInput = np.ones(code.blocklength, dtype=np.double)
             self.encoderOutput = np.zeros(code.blocklength, dtype=np.int)
-        self.wordSeed = wordSeed
-        self.wordRandom = np.random.RandomState(wordSeed)
+        else:
+            self.wordSeed = wordSeed
+            self.wordRandom = np.random.RandomState(wordSeed)
 
     def __iter__(self):
         return self
@@ -148,14 +157,15 @@ class SignalGenerator:
         """
         zero = np.zeros(self.code.blocklength, dtype=np.int)
         for _ in xrange(num):
-            self.wordRandom.randint(0, 2, self.code.infolength)
+            if not self.allZero:
+                self.wordRandom.randint(0, 2, self.code.infolength)
             self.channel(zero)
     
     def __next__(self):
-        if self.randomCodewords:
+        if not self.allZero:
             infoWord = self.wordRandom.randint(0, 2, self.code.infolength)
             self.encoderOutput = self.code.encode(infoWord)
-            self.channelInput = 1 - 2 * self.encoderOutput # BPSK
+            self.channelInput = 1 - 2 * self.encoderOutput  # BPSK
         self.channelOutput = self.channel(self.channelInput)
         return self.channelOutput
 

@@ -37,7 +37,7 @@ with io.open(os.path.join(here, 'lpdec', '__init__.py'), 'r', encoding='UTF-8') 
     version = version_match.group(1)
 
 setup(
-    name='LP Decoding Package',
+    name='lpdec',
     version=version,
     author='Michael Helmling',
     author_email='helmling@uni-koblenz.de',

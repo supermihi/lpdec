@@ -60,6 +60,7 @@ def saveDatabases():
 
 
 engine = None
+initialized = False
 
 
 def init(database=None, testMode=False):
@@ -71,7 +72,9 @@ def init(database=None, testMode=False):
 
     If `database` is `None`, an interactive console dialogs asks the user to input a string.
     """
-    global codesTable, decodersTable, engine, metadata
+    global codesTable, decodersTable, engine, metadata, initialized
+    if initialized:
+        return
     if not testMode:
         known = knownDatabases()
         if database is None:
@@ -105,13 +108,15 @@ def init(database=None, testMode=False):
                                sqla.Column('json', sqla.Text))
     metadata.create_all(engine)
     metadata.bind = engine
+    initialized = True
 
 
 def teardown():
-    global engine, metadata, decodersTable, codesTable
+    global engine, metadata, decodersTable, codesTable, initialized
     if engine:
         engine.dispose()
     engine = metadata = decodersTable = codesTable = None
+    initialized = False
 
 
 def machineString():
@@ -129,7 +134,7 @@ def checkCode(code, insert=True):
     :returns: The code's primary ID (if it exists or was inserted by this method), otherwise
     `None`.
     """
-    return _checkCodeOrDecoder('code', code, insert=True)
+    return _checkCodeOrDecoder('code', code, insert=insert)
 
 
 def checkDecoder(decoder, insert=True):
@@ -142,13 +147,13 @@ def checkDecoder(decoder, insert=True):
     :returns: The decoder's primary ID (if it exists or was inserted by this method), otherwise
     `None`.
     """
-    return _checkCodeOrDecoder('decoder', decoder, insert=True)
+    return _checkCodeOrDecoder('decoder', decoder, insert=insert)
 
 
 def _checkCodeOrDecoder(which, obj, insert=True):
     assert which in ('code', 'decoder')
     table = codesTable if which == 'code' else decodersTable
-    s = sqla.select([codesTable], codesTable.c.name == obj.name)
+    s = sqla.select([table], table.c.name == obj.name)
     row = engine.execute(s).fetchone()
     if row is not None:
         if row[table.c.json] != obj.toJSON():

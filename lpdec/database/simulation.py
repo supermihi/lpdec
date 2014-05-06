@@ -6,20 +6,24 @@
 # published by the Free Software Foundation
 from __future__ import division, unicode_literals, print_function
 import json
-from collections import OrderedDict
 import sqlalchemy as sqla
-from sqlalchemy.sql import func
 import lpdec
 from lpdec import database as db
-from lpdec import simulation
 from lpdec.persistence import JSONDecodable
+
+
+initialized = False
 
 
 def init():
     """Initialize the simulations database module. This needs to be called before any other
     function of this module can be used, but after :func:`db.init`.
     """
-    global simTable, joinTable
+    global simTable, joinTable, initialized
+    if initialized:
+        return
+    if not db.initialized:
+        db.init()
     simTable = sqla.Table('simulations', db.metadata,
                           sqla.Column('id', sqla.Integer, primary_key=True),
                           sqla.Column('identifier', sqla.String(128)),
@@ -28,8 +32,9 @@ def init():
                           sqla.Column('channel_class', sqla.String(16)),
                           sqla.Column('snr', sqla.Float),
                           sqla.Column('channel_json', sqla.Text),
-                          sqla.Column('total_frames', sqla.Integer),
-                          sqla.Column('error_frames', sqla.Integer),
+                          sqla.Column('wordSeed', sqla.Integer),
+                          sqla.Column('samples', sqla.Integer),
+                          sqla.Column('errors', sqla.Integer),
                           sqla.Column('cputime', sqla.Float),
                           sqla.Column('stats', sqla.Text),
                           sqla.Column('date_start', sqla.DateTime),
@@ -39,7 +44,13 @@ def init():
                           sqla.Column('program_version', sqla.String(64)))
     db.metadata.create_all(db.engine)
     joinTable = simTable.join(db.codesTable).join(db.decodersTable)
-    module_initialized = True
+    initialized = True
+
+
+def teardown():
+    global simTable, joinTable, initialized
+    simTable = joinTable = None
+    initialized = False
 
 
 def existingIdentifiers():
@@ -50,7 +61,9 @@ def existingIdentifiers():
 
 
 def addDataPoint(point):
-    """Add (or update) a :class:`simulation.DataPoint` to the database."""
+    """Add (or update) a data point to the database.
+    :param simulation.DataPoint point: DataPoint instance.
+    ."""
     codeId = db.checkCode(point.code, insert=True)
     decoderId = db.checkDecoder(point.decoder, insert=True)
     channelJSON = point.channel.toJSON()
@@ -59,7 +72,8 @@ def addDataPoint(point):
         (simTable.c.identifier == point.identifier) &
         (simTable.c.code == codeId) &
         (simTable.c.decoder == decoderId) &
-        (simTable.c.channel_json == channelJSON)
+        (simTable.c.channel_json == channelJSON) &
+        (simTable.c.wordSeed == point.wordSeed)
     )
     values = dict(code=codeId,
                   decoder=decoderId,
@@ -67,6 +81,7 @@ def addDataPoint(point):
                   channel_class=channelClass,
                   snr=point.channel.snr,
                   channel_json=channelJSON,
+                  wordSeed=point.wordSeed,
                   samples=point.samples,
                   errors=point.errors,
                   cputime=point.cputime,
@@ -75,7 +90,7 @@ def addDataPoint(point):
                   machine=db.machineString(),
                   program_name='lpdec',
                   program_version=lpdec.__version__,
-                  stats=json.dumps(point.statistics, sort_keys=True))
+                  stats=json.dumps(point.stats, sort_keys=True))
     result = db.engine.execute(sqla.select([simTable.c.id], whereClause)).fetchall()
     if len(result) > 0:
         assert len(result) == 1
@@ -85,22 +100,24 @@ def addDataPoint(point):
     else:
         insert = simTable.insert().values(**values)
         db.engine.execute(insert)
-    point._dbSamples = point.samples
-    point._dbCputime = point.cputime
 
 
-def dataPoint(code, channel, decoder, identifier):
+def dataPoint(code, channel, wordSeed, decoder, identifier):
     """Return a :class:`simulation.DataPoint` object for the given parameters.
 
     If such one exists in the database, it is initialized with the data (samples, errors etc.) from
     there. Otherwise an empty point is created.
     """
     s = sqla.select([joinTable], (simTable.c.identifier == identifier) &
-                                 (db.codesTable.c.name == db.codeName(code)) &
-                                 (db.decodersTable.c.name == db.decoderName(decoder)) &
-                                 (simTable.c.channel_json == channel.toJSON()))
+                                 (db.codesTable.c.name == code.name) &
+                                 (db.decodersTable.c.name == decoder.name) &
+                                 (simTable.c.channel_json == channel.toJSON()) &
+                                 (simTable.c.wordSeed == wordSeed)
+    )
     ans = db.engine.execute(s).fetchone()
-    point = simulation.DataPoint(code, channel, decoder, identifier)
+    from lpdec import simulation
+
+    point = simulation.DataPoint(code, channel, wordSeed, decoder, identifier)
     if ans is not None:
         point.samples = point._dbSamples = ans[simTable.c.samples]
         point.errors = ans[simTable.c.errors]

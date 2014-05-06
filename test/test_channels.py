@@ -28,7 +28,7 @@ class TestBSC(unittest.TestCase):
         totals = flips = 0
         for i in range(TRIALS):
             # generate random BPSK vector of random size between 10 and 100
-            input = 1 - 2*np.random.randint(0,2,np.random.randint(10, 100))
+            input = 1 - 2*np.random.randint(0, 2, np.random.randint(10, 100))
             totals += input.size
             output = self.channel(input)
             self.assertEqual(input.shape, output.shape)
@@ -41,7 +41,7 @@ class TestBSC(unittest.TestCase):
         flips = 0
         totals = 0
         for i in range(TRIALS):
-            input = np.ones(np.random.randint(10, 100)) # generate random  length 1-vector
+            input = np.ones(np.random.randint(10, 100))  # generate random  length 1-vector
             totals += input.size
             output = self.channel(input)
             self.assertEqual(input.shape, output.shape)
@@ -52,8 +52,8 @@ class TestBSC(unittest.TestCase):
         channel2 = channels.BSC(self.p, self.channelSeed)
         input = np.ones(100)
         for _ in range(100):
-            self.assert_(np.all(self.channel(input)==channel2(input)))
+            self.assert_(np.all(self.channel(input) == channel2(input)))
         self.channel.resetSeed()
         channel2.resetSeed()
         for _ in range(100):
-            self.assert_(np.all(self.channel(input)==channel2(input)))
+            self.assert_(np.all(self.channel(input) == channel2(input)))

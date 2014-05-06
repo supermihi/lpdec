@@ -14,7 +14,7 @@ def strBinary(matrix, n=2):
     if matrix.ndim == 2:
         return "\n".join(strBinary(row, n) for row in matrix)
     else:
-        return "".join(('{0:' + str(n) + 'd}').format(int(k)) for k in matrix)
+        return "".join(('{0:' + unicode(n) + 'd}').format(int(k)) for k in matrix)
 
 
 def getBinaryMatrix(source):
@@ -34,7 +34,7 @@ def getBinaryMatrix(source):
                      for l in f.readlines()
                      if len(l.strip()) > 0]
     else:
-        assert hasattr(source, "__iter__") and hasattr(source[0], "__iter__")
+        assert hasattr(source, '__iter__') and hasattr(source[0], '__iter__')
         import copy
         lines = copy.copy(source)
     if lines[0][0] in (0, 1):  # explicit 0/1 representation

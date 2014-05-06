@@ -41,8 +41,8 @@ class TestCplexIPDecoder(unittest.TestCase):
             channelRC = AWGNC(snr, self.code.rate, seed=seed)
             channelZC = AWGNC(snr, self.code.rate, seed=seed)
             decoder = CplexIPDecoder(self.code)
-            sigRC = channelRC.signalGenerator(self.code, wordSeed=seed, randomCodewords=True)
-            sigZC = channelZC.signalGenerator(self.code, wordSeed=seed, randomCodewords=False)
+            sigRC = channelRC.signalGenerator(self.code, wordSeed=seed)
+            sigZC = channelZC.signalGenerator(self.code, wordSeed=-1)
             for i in range(100):
                 llrRC = next(sigRC)
                 llrZC = next(sigZC)
@@ -55,15 +55,15 @@ class TestCplexIPDecoder(unittest.TestCase):
                     outputRC = decoder.decode(llrRC, hint=hintRC)
                     objRC = decoder.objectiveValue
                     strikedRC = decoder.callback.occured
+                    if useHint:
+                        self.assertNotEqual(strikedRC, decoder.mlCertificate)
                     outputZC = decoder.decode(llrZC, hint=hintZC)
                     objZC = decoder.objectiveValue
-                    strikedSC = decoder.callback.occured
+                    strikedZC = decoder.callback.occured
+                    if useHint:
+                        self.assertNotEqual(strikedZC, decoder.mlCertificate)
                     errorRC = not np.allclose(outputRC, sigRC.encoderOutput)
                     errorZC = not np.allclose(outputZC, sigZC.encoderOutput)
                     self.assertEqual(errorRC, errorZC)
-                    if not useHint or (not strikedRC and not strikedSC):
+                    if not useHint or (not strikedRC and not strikedZC):
                         self.assertTrue(np.allclose(objRC, objZC + sigRC.correctObjectiveValue()))
-
-
-if __name__=='__main__':
-    unittest.main()
