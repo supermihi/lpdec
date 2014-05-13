@@ -16,3 +16,7 @@ The ``lpdec.mod2la`` module
 ---------------------------
 .. automodule:: lpdec.mod2la
    :members:
+
+The ``lpdec.utils`` module
+--------------------------
+.. automodule:: lpdec.utils

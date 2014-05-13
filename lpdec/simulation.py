@@ -140,7 +140,7 @@ class Simulator(object):
             sampleOffset = max(5, int(math.ceil(math.log10(i)))) + len(': ')
             if i == startSample or datetime.datetime.utcnow() - lastOutput > self.outputInterval:
                 # print status output
-                print('*** {} / {} / {} ***'.format(self.code, self.channel, self.identifier))
+                print('*** {} / {} / {} ***'.format(self.code.name, self.channel, self.identifier))
                 for row in 'name', 'errors', 'seconds':
                     print(' ' * sampleOffset, end='')
                     for decoder, point in self.dataPoints.items():
