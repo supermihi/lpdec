@@ -3,10 +3,6 @@ The lpdec package
 
 .. automodule:: lpdec
 
-Persistent object storage with JSON
------------------------------------
-.. automodule:: lpdec.persistence
-
 Channels
 --------
 

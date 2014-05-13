@@ -40,6 +40,7 @@ cdef class JSONDecodable(object):
         raise NotImplementedError()
 
     def toJSON(self):
+        """Returns a JSON string representing this object."""
         return json.dumps(self, cls=JSONEncoder)
 
     @classmethod

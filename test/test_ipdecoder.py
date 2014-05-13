@@ -1,6 +1,6 @@
 #!/usr/bin/python2.7
 # -*- coding: utf-8 -*-
-# Copyright 2011-2012 Michael Helmling
+# Copyright 2014 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
@@ -36,6 +36,10 @@ class TestCplexIPDecoder(unittest.TestCase):
         self.assertIsInstance(codeword, np.ndarray)
 
     def test_decoding(self):
+        try:
+            import cplex
+        except ImportError:
+            self.skipTest('CPLEX is not installed')
         seed = 3498543
         for snr in [0, 2, 4]:
             channelRC = AWGNC(snr, self.code.rate, seed=seed)
@@ -43,7 +47,7 @@ class TestCplexIPDecoder(unittest.TestCase):
             decoder = CplexIPDecoder(self.code)
             sigRC = channelRC.signalGenerator(self.code, wordSeed=seed)
             sigZC = channelZC.signalGenerator(self.code, wordSeed=-1)
-            for i in range(100):
+            for i in range(10):
                 llrRC = next(sigRC)
                 llrZC = next(sigZC)
                 for useHint in True, False:

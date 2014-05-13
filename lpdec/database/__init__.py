@@ -10,7 +10,7 @@
 Before any of the functions are used, the :func:`init` method must be called in order to initialize
 the database connection."""
 
-from __future__ import division
+from __future__ import division, unicode_literals
 
 from os.path import exists, join, expanduser
 import os
@@ -28,6 +28,8 @@ _knownDBs = None
 
 
 class DatabaseException(Exception):
+    """Exception that indicates a problem in the database connection or state.
+    """
     pass
 
 
@@ -112,6 +114,7 @@ def init(database=None, testMode=False):
 
 
 def teardown():
+    """Deallocate all database resources. This is mainly intended for testing."""
     global engine, metadata, decodersTable, codesTable, initialized
     if engine:
         engine.dispose()
@@ -120,7 +123,10 @@ def teardown():
 
 
 def machineString():
-    """A string identifying the current machine."""
+    """A string identifying the current machine, composed of the host name and platform
+    information.
+    :rtype: unicode
+    """
     return '{0} ({1})'.format(platform.node(), platform.platform())
 
 
@@ -132,7 +138,8 @@ def checkCode(code, insert=True):
     contained.
 
     :returns: The code's primary ID (if it exists or was inserted by this method), otherwise
-    `None`.
+        `None`.
+    :rtype: int
     """
     return _checkCodeOrDecoder('code', code, insert=insert)
 
@@ -145,7 +152,8 @@ def checkDecoder(decoder, insert=True):
     contained.
 
     :returns: The decoder's primary ID (if it exists or was inserted by this method), otherwise
-    `None`.
+        `None`.
+    :rtype: int
     """
     return _checkCodeOrDecoder('decoder', decoder, insert=insert)
 
