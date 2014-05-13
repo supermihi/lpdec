@@ -12,3 +12,17 @@ here = dirname(__file__)
 
 def testData(*pathParts):
     return join(here, 'data', *pathParts)
+
+
+def requireCPLEX(func):
+    """Can be used as a decorator for tests requiring CPLEX.
+
+    Will skip the test if CPLEX is not installed.
+    """
+    def newFunc(self, *args, **kwargs):
+        try:
+            import cplex
+        except ImportError:
+            self.skipTest('CPLEX is not installed')
+        return func(self, *args, **kwargs)
+    return newFunc

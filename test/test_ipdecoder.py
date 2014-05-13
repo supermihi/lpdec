@@ -7,14 +7,14 @@
 # published by the Free Software Foundation
 
 import unittest
-import os.path
-from collections import defaultdict, OrderedDict
+
+import numpy as np
+
 from lpdec.codes import BinaryLinearBlockCode
 from lpdec.channels import *
 from lpdec.decoders.ip import CplexIPDecoder
-
-import numpy as np
 from . import testData
+from test import requireCPLEX
 
 
 class TestCplexIPDecoder(unittest.TestCase):
@@ -22,29 +22,23 @@ class TestCplexIPDecoder(unittest.TestCase):
     
     def setUp(self):
         self.code = BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N23_M11.txt'))
-    
+
+    @requireCPLEX
     def test_minDistance(self):
         """Test if the minimum distance computation works."""
-        try:
-            import cplex
-        except ImportError:
-            self.skipTest('CPLEX is not installed')
         self.decoder = CplexIPDecoder(self.code)
         distance, codeword = self.decoder.minimumDistance()
         self.assertEqual(distance, 7)
         self.assertEqual(codeword.sum(), 7)
         self.assertIsInstance(codeword, np.ndarray)
 
+    @requireCPLEX
     def test_decoding(self):
-        try:
-            import cplex
-        except ImportError:
-            self.skipTest('CPLEX is not installed')
         seed = 3498543
         for snr in [0, 2, 4]:
             channelRC = AWGNC(snr, self.code.rate, seed=seed)
             channelZC = AWGNC(snr, self.code.rate, seed=seed)
-            decoder = CplexIPDecoder(self.code)
+            decoder = CplexIPDecoder(self.code, cplexParams={'threads': 1})
             sigRC = channelRC.signalGenerator(self.code, wordSeed=seed)
             sigZC = channelZC.signalGenerator(self.code, wordSeed=-1)
             for i in range(10):
