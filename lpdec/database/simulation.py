@@ -7,12 +7,15 @@
 from __future__ import division, unicode_literals, print_function
 import json
 import sqlalchemy as sqla
+from sqlalchemy.sql import expression
 import lpdec
 from lpdec import database as db
 from lpdec.persistence import JSONDecodable
+from lpdec import simulation
 
 
 initialized = False
+simTable = joinTable = None
 
 
 def init():
@@ -23,7 +26,7 @@ def init():
     if initialized:
         return
     if not db.initialized:
-        db.init()
+        raise RuntimeError('database.init() needs to be called before simulation.init()')
     simTable = sqla.Table('simulations', db.metadata,
                           sqla.Column('id', sqla.Integer, primary_key=True),
                           sqla.Column('identifier', sqla.String(128)),
@@ -115,8 +118,6 @@ def dataPoint(code, channel, wordSeed, decoder, identifier):
                                  (simTable.c.wordSeed == wordSeed)
     )
     ans = db.engine.execute(s).fetchone()
-    from lpdec import simulation
-
     point = simulation.DataPoint(code, channel, wordSeed, decoder, identifier)
     if ans is not None:
         point.samples = point._dbSamples = ans[simTable.c.samples]
@@ -127,3 +128,61 @@ def dataPoint(code, channel, wordSeed, decoder, identifier):
         point.stats = JSONDecodable.fromJSON(ans[simTable.c.stats])
         point.version = ans[simTable.c.program_version]
     return point
+
+
+def dataPointFromRow(row):
+    code = db.get('code', row[db.codesTable.c.name])
+    channel = JSONDecodable.fromJSON(row[simTable.c.channel_json])
+    wordSeed = row[simTable.c.wordSeed]
+    decoder = db.get('decoder', row[db.decodersTable.c.name], code=code)
+    identifier = row[simTable.c.identifier]
+    point = simulation.DataPoint(code, channel, wordSeed, decoder, identifier)
+    point.samples = point._dbSamples = row[simTable.c.samples]
+    point.errors = row[simTable.c.errors]
+    point.cputime = row[simTable.c.cputime]
+    point.date_start = row[simTable.c.date_start]
+    point.date_end = row[simTable.c.date_end]
+    point.stats = json.loads(row[simTable.c.stats])
+    point.version = row[simTable.c.program_version]
+    point.program = row[simTable.c.program_name]
+    point.machine = row[simTable.c.machine]
+    return point
+
+
+def search(what, **conditions):
+    if what == 'codename':
+        columns = [db.codesTable.c.name]
+    elif what == 'point':
+        columns = [simTable.c.identifier, db.codesTable.c.name, db.decodersTable.c.name,
+                   simTable.c.channel_json, simTable.c.wordSeed, simTable.c.samples,
+                   simTable.c.errors, simTable.c.cputime, simTable.c.date_start,
+                   simTable.c.date_end, simTable.c.machine, simTable.c.program_name,
+                   simTable.c.program_version, simTable.c.stats]
+    else:
+        raise ValueError('unknown search: "{}"'.format(what))
+    condition = expression.true()
+    for key, val in conditions.items():
+        if key == 'identifier':
+            condition &= simTable.c.identifier.in_(val)
+        elif key == 'code':
+            condition &= db.codesTable.c.name.in_(val)
+        else:
+            raise ValueError()
+    s = sqla.select(columns, whereclause=condition, from_obj=joinTable, distinct=True,
+                    use_labels=True)
+    ans = db.engine.execute(s).fetchall()
+    if what == 'point':
+        return [dataPointFromRow(row) for row in ans]
+    return db.engine.execute(s).fetchall()
+
+def simulations(**conditions):
+    points = search('point', **conditions)
+    sims = {}
+    for point in points:
+        identifier = (point.code.name, point.decoder.name, point.channel.__class__,
+                      point.identifier,
+                      point.wordSeed, point.program, point.version)
+        if identifier not in sims:
+            sims[identifier] = simulation.Simulation()
+        sims[identifier].add(point)
+    return list(sims.values())

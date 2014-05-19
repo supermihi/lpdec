@@ -6,6 +6,7 @@
 # published by the Free Software Foundation
 from __future__ import print_function, unicode_literals
 from contextlib import contextmanager
+from collections import namedtuple
 import os
 
 
@@ -36,3 +37,10 @@ def stopwatch():
     yield timer
     tmp = os.times()
     timer.end = tmp[0] + tmp[2]
+
+
+# terminal color codes
+TERM_BOLD_RED = '\033[31;1m'
+TERM_RED = '\033[31m'
+TERM_BOLD = '\033[0;1m'
+TERM_NORMAL = '\033[0m'

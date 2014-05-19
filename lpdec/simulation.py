@@ -10,8 +10,8 @@ import datetime
 import math
 import numpy as np
 import lpdec
-from lpdec import database as db, utils
-from lpdec.database import simulation as dbsim
+import lpdec.database as db
+from lpdec.utils import TERM_BOLD_RED, TERM_BOLD, TERM_NORMAL, TERM_RED, stopwatch
 
 
 class DataPoint:
@@ -28,9 +28,12 @@ class DataPoint:
         self.date_start = datetime.datetime.utcnow()
         self.date_end = None
         self.stats = {}
+        self.program = 'lpdec'
         self.version = lpdec.__version__
+        self.machine = db.machineString()
         self._dbCputime = self._dbSamples = 0
 
+    @property
     def frameErrorRate(self):
         if self.samples == 0:
             return 0
@@ -47,6 +50,7 @@ class DataPoint:
         return self.samples - self._dbSamples
 
     def store(self):
+        from lpdec.database import simulation as dbsim
         self.date_end = datetime.datetime.utcnow()
         self.stats = self.decoder.stats()
         dbsim.addDataPoint(self)
@@ -54,10 +58,57 @@ class DataPoint:
         self._dbCputime = self.cputime
 
 
-TERM_BOLD_RED = '\033[31;1m'
-TERM_RED = '\033[31m'
-TERM_BOLD = '\033[0;1m'
-TERM_NORMAL = '\033[0m'
+class Simulation(list):
+    """Data class to encapsulate the information about one "Simulation", i.e., frame-error rates
+    for a specific tuple of (code, decoder, channel type, identifier) run for different SNR values.
+    """
+    def __init__(self, points=None):
+        list.__init__(self)
+        if points:
+            self.extend(sorted(points, key=lambda point: point.channel.snr))
+
+    def minSNR(self):
+        return self[0].channel.snr
+
+    def maxSNR(self):
+        return self[-1].channel.snr
+
+    @property
+    def code(self):
+        return self[0].code
+
+    @property
+    def decoder(self):
+        return self[0].decoder
+
+    @property
+    def identifier(self):
+        return self[0].identifier
+
+    @property
+    def channelClass(self):
+        return type(self[0].channel)
+
+    @property
+    def date_start(self):
+        """Return the earliest computation start of the run."""
+        return min(point.date_start for point in self)
+
+    @property
+    def date_end(self):
+        """Return the latest computation end of the run."""
+        return max(point.date_end for point in self)
+
+    def add(self, newPoint):
+        for i, point in enumerate(self):
+            if point.snr >= newPoint.snr:
+                assert newPoint.snr != point.snr
+                self.insert(i, newPoint)
+                break
+        else:
+            self.append(newPoint)
+
+
 
 
 class Simulator(object):
@@ -81,6 +132,7 @@ class Simulator(object):
         self.outputInterval = datetime.timedelta(seconds=30)
         #  check if the code exists in the database but has different parameters. This avoids
         #  a later error which would imply a waste of time.
+        from lpdec.database import simulation as dbsim
         if not dbsim.initialized:
             dbsim.init()
         db.checkCode(code, insert=False)
@@ -110,6 +162,7 @@ class Simulator(object):
         Error is formatted as integer 4-digits. Cputime as "general" with precision 4, hence the
         cputime column has width max(len(decoder.name), 9 + len(" sec") = 13)
         """
+        from lpdec.database import simulation as dbsim
         self.dataPoints = OrderedDict()  # maps decoders to DataPoint instances
         #  check for problems with the decoders before time is spent on computations
         for decoder in self.decoders:
@@ -138,7 +191,8 @@ class Simulator(object):
         for i in xrange(startSample, self.maxSamples+1):
             channelOutput = next(signaller)
             sampleOffset = max(5, int(math.ceil(math.log10(i)))) + len(': ')
-            if i == startSample or datetime.datetime.utcnow() - lastOutput > self.outputInterval:
+            if i == startSample or \
+                    (datetime.datetime.utcnow() - lastOutput).total_seconds() > self.outputInterval:
                 # print status output
                 print('*** {} / {} / {} ***'.format(self.code.name, self.channel, self.identifier))
                 for row in 'name', 'errors', 'seconds':
@@ -163,7 +217,7 @@ class Simulator(object):
                 if point.samples > i:
                     print(outputFormat[decoder].format('skip'), end='')
                     continue
-                with utils.stopwatch() as timer:
+                with stopwatch() as timer:
                     if self.revealSent:
                         decoder.decode(channelOutput, sent=signaller.encoderOutput)
                     else:
@@ -189,6 +243,6 @@ class Simulator(object):
                 val = 0 if abs(decoder.objectiveValue) < 1e-8 else decoder.objectiveValue
                 outputString = '{:<.7f}'.format(val) + ('*' if store else '')
                 print(outputFormat[decoder].format(outputString) + TERM_NORMAL, end='')
-            print('')
+            print(' {}'.format(signaller.correctObjectiveValue()))
             if unfinishedDecoders == 0:
                 break

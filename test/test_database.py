@@ -23,7 +23,7 @@ class TestCodePersistence(TestCase):
         database.teardown()
 
     def test_persistence(self):
-        retrieved = database.getCode(self.code.name)
+        retrieved = database.get('code', self.code.name)
         self.assertEqual(retrieved.toJSON(), self.code.toJSON())
 
     def test_wrongName(self):

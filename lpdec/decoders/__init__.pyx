@@ -87,3 +87,4 @@ cdef class Decoder(JSONDecodable):
                                               cr = repr(self.code),
                                               p = paramString)
 
+

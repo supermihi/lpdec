@@ -44,5 +44,6 @@ setup(
     install_requires=['numpy', 'sqlalchemy', 'cython'],
     ext_modules=makeExtensions(),
     packages=['lpdec'],
+    entry_points={'console_scripts': ['lpdec = lpdec.cli:script',]},
     test_suite='test',
 )

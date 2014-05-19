@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 # cython: embedsignature=True
+# cython: boundscheck=False
+# cython: nonecheck=False
+# cython: cdivision=True
+# cython: wraparound=False
 # Copyright 2014 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -11,9 +15,7 @@
 cimport numpy as np
 import numpy as np
 
-cpdef gaussianElimination(np.int_t[:,:] matrix,
-                          np.int_t[:] columns=None,
-                          bint diagonalize=True):
+cpdef gaussianElimination(np.int_t[:,:] matrix, np.int_t[:] columns=None, bint diagonalize=True):
         """The Gaussian elimination algorithm in GF(2) arithmetics.
 
         When called on a `(k × n)` matrix, the algorithm performs Gaussian elimination,
@@ -38,6 +40,8 @@ cpdef gaussianElimination(np.int_t[:,:] matrix,
         if columns is None:
             columns = np.arange(ncols)
         while True:
+            if colIndex >= columns.size:
+                break
             curCol = columns[colIndex]
             # search for a pivot row
             pivotRow = -1
@@ -50,8 +54,6 @@ cpdef gaussianElimination(np.int_t[:,:] matrix,
                 # did not find a pivot row -> this column is linearly dependent of the previously
                 # visited; continue with next column
                 colIndex += 1
-                if colIndex >= columns.size:
-                    break
                 continue
             if pivotRow > curRow:
                 # need to swap rows

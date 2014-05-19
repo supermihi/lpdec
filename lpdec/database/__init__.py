@@ -18,6 +18,7 @@ import platform
 import numbers
 import atexit
 from lpdec.codes import BinaryLinearBlockCode
+from lpdec.decoders import Decoder
 
 import sqlalchemy as sqla
 
@@ -61,7 +62,7 @@ def saveDatabases():
         listFile.write('\n'.join(_knownDBs))
 
 
-engine = None
+engine = codesTable = decodersTable = engine = metadata = None
 initialized = False
 
 
@@ -178,24 +179,36 @@ def _checkCodeOrDecoder(which, obj, insert=True):
         return result.inserted_primary_key[0]
 
 
-def getCode(code):
-    """Retrieve a code from the database. The parameter `code` can be either the primary key or
-    the name of the code.
-    :returns: The :class:`BinaryLinearBlockCode` object corresponding to the input.
-    :raises: :class:`DatabaseException` if the code was not found.
+def get(what, identifier, code=None):
+    """Retrieve a code or decoder from the database. `what` is one of ("code", "decoder") and
+    specifies what to retrieve. The `identifier` can be either the primary key or the name or
+    the instance object of the code or decoder.
+    :returns: The code or decoder object corresponding to the input identifier.
+    :raises: :class:`DatabaseException` if it was not found.
     """
-    if isinstance(code, numbers.Integral):
-        condition = codesTable.c.id == code
-    elif isinstance(code, basestring):
-        condition = codesTable.c.name == code
-    elif isinstance(code, BinaryLinearBlockCode):
-        condition = codesTable.c.name == code.name
+    if what == 'code':
+        cls = BinaryLinearBlockCode
+        table = codesTable
+    elif what == 'decoder':
+        cls = Decoder
+        table = decodersTable
     else:
-        raise ValueError('"{}" is not a valid code identifier'.format(code))
-    s = sqla.select([codesTable], condition)
-    codeRow = engine.execute(s).fetchone()
-    if codeRow is None:
-        raise DatabaseException('Code "{}" not found'.format(code))
-    if isinstance(code, BinaryLinearBlockCode):
-        return code
-    return BinaryLinearBlockCode.fromJSON(codeRow[codesTable.c.json])
+        raise ValueError('"what" has to be one of ("code", "decoder")')
+    if isinstance(identifier, numbers.Integral):
+        condition = table.c.id == identifier
+    elif isinstance(identifier, basestring):
+        condition = table.c.name == identifier
+    elif isinstance(identifier, cls):
+        condition = table.c.name == identifier.name
+    else:
+        raise ValueError('"{}" is not a valid {} identifier'.format(identifier, what))
+    s = sqla.select([table], condition)
+    row = engine.execute(s).fetchone()
+    if row is None:
+        raise DatabaseException('{} "{}" not found'.format(what, identifier))
+    elif isinstance(identifier, cls):
+        return identifier
+    elif what == 'code':
+        return cls.fromJSON(row[table.c.json])
+    else:
+        return cls.fromJSON(row[table.c.json], code=code)

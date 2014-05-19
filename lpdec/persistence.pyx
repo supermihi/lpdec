@@ -20,15 +20,20 @@ class JSONEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-def jsonObjectHook(dct):
-    """Specialized JSON object decoder can create :class:`JSONDecodable` objects."""
-    from lpdec import subclasses
-    classes = subclasses(JSONDecodable)
-    if 'className' in dct and dct['className'] in classes:
-        clsName = dct['className']
-        del dct['className']
-        return classes[clsName](**dct)
-    return dct
+def makeObjectHook(**kwargs):
+    def jsonObjectHook(dct):
+        """Specialized JSON object decoder can create :class:`JSONDecodable` objects."""
+        from lpdec import subclasses
+        classes = subclasses(JSONDecodable)
+        if 'className' in dct:
+            if dct['className'] not in classes:
+                raise RuntimeError('Class "{}" not loaded'.format(dct['className']))
+            clsName = dct['className']
+            del dct['className']
+            dct.update(kwargs)
+            return classes[clsName](**dct)
+        return dct
+    return jsonObjectHook
 
 cdef class JSONDecodable(object):
     """Base class for objects that can be serialized using JSON.
@@ -44,10 +49,10 @@ cdef class JSONDecodable(object):
         return json.dumps(self, cls=JSONEncoder)
 
     @classmethod
-    def fromJSON(cls, paramString, classname=None):
+    def fromJSON(cls, paramString, classname=None, **kwargs):
         """Create object of this class or a subclass from the JSON string `paramString`.
         """
-        decoded = json.loads(paramString, object_hook=jsonObjectHook)
+        decoded = json.loads(paramString, object_hook=makeObjectHook(**kwargs))
         if not isinstance(decoded, JSONDecodable):
             if classname is None:
                 raise ValueError('Classname must be given if paramString does not contain one.')
@@ -62,9 +67,12 @@ cdef class JSONDecodable(object):
         paramString = ', '.join('{0}={1}'.format(k, repr(v)) for k, v in self.params().items())
         return '{c}({p})'.format(c=self.__class__.__name__, p=paramString)
 
-    def __richcmp__(self, other, op):
+    def __richcmp__(self, other, int op):
         if op == 2: # '=='
             return type(self) == type(other) and self.params() == other.params()
         elif op == 3: # '!='
             return type(self) != type(other) or self.params() != other.params()
         raise TypeError()
+
+    def __hash__(self):
+        return object.__hash__(self)
