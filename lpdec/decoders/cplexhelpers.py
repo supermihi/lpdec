@@ -56,7 +56,7 @@ def getCplexParams(cpx):
     params = OrderedDict()
     params['version'] = cpx.get_version()
     for param, value in cpx.parameters.get_changed():
-        params[repr(param)] = value
+        params[repr(param).split('.', 1)[1]] = value
     return params
 
 

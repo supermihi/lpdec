@@ -11,7 +11,9 @@ import numpy as np
 
 from lpdec.codes import BinaryLinearBlockCode
 from lpdec.channels import *
+from lpdec.codes.classic import HammingCode
 from lpdec.decoders.ip import CplexIPDecoder
+from lpdec.persistence import JSONDecodable
 from . import testData
 from test import requireCPLEX
 
@@ -64,3 +66,26 @@ class TestCplexIPDecoder(unittest.TestCase):
                     self.assertEqual(errorRC, errorZC)
                     if not useHint or (not strikedRC and not strikedZC):
                         self.assertTrue(np.allclose(objRC, objZC + sigRC.correctObjectiveValue()))
+
+
+class TestCplexIPPersistence(unittest.TestCase):
+
+    def setUp(self):
+        self.code = HammingCode(4)
+
+    @requireCPLEX
+    def testDefault(self):
+        decoders = [CplexIPDecoder(self.code),
+                    CplexIPDecoder(self.code, name='OtherDecoder'),
+                    CplexIPDecoder(self.code, cplexParams=dict(threads=1))]
+        for decoder in decoders:
+            self.assertEqual(len(decoders[0].cplex.parameters.get_changed()), 0)
+            parms = decoder.toJSON()
+
+            reloaded = JSONDecodable.fromJSON(parms, code=self.code)
+            self.assertEqual(decoder, reloaded)
+
+            def reprParms(cpx):
+                return [(repr(x), y) for (x, y) in cpx.parameters.get_changed()]
+            self.assertEqual(reprParms(decoder.cplex),
+                             reprParms(reloaded.cplex))

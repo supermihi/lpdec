@@ -8,7 +8,7 @@
 import jinja2
 
 
-jinjaString = \
+homepageTemplate = \
 """{{sim.code.name}} ({{sim.code.blocklength}},{{sim.code.infolength}}) Code: ML Simulation Results
 Channel: {{sim.channelClass.__name__}}
 Modulation: BPSK
@@ -25,8 +25,14 @@ University of Kaiserslautern, Germany, {{"{:%Y}".format(sim.date_end)}}
 
 This file was downloaded from: http://www.uni-kl.de/channel-codes/"""
 
+consoleTemplate = \
+"""{{sim.identifier}}: {{sim.code.name}} // {{sim.decoder.name}}:
+  snr   samples    errors     FER      av.cpu
+{% for point in sim %}  {{"{:<4.2f}  {:<10d} {:<10d} {:<8.2e} {:<.6f}".format(point.snr,
+point.samples, point.errors, point.frameErrorRate, point.cputime/point.samples)}}
+{% endfor %}"""
 
-def getTemplate():
+def getTemplate(template):
     env = jinja2.Environment(autoescape=False)
-    template = env.from_string(jinjaString)
+    template = env.from_string(consoleTemplate if template=='cli' else homepageTemplate)
     return template

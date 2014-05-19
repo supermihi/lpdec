@@ -17,6 +17,8 @@ def script():
     subparsers = parser.add_subparsers(title='Commands')
     parser_browse = subparsers.add_parser('browse', help='browse and plot results')
     parser_browse.add_argument('-i', '--identifier')
+    parser_browse.add_argument('-t', '--template', choices=('cli', 'hp'), default='cli',
+                               help='template for the output format of simulation results')
     parser_browse.set_defaults(func=browse)
     parser_codes = subparsers.add_parser('codes', help='code toolkit')
     parser_codes.set_defaults(func=codes)
@@ -67,7 +69,7 @@ def browse(args):
         nums = [int(n) for n in ans.split()]
     runs = [ runs[i] for i in range(len(runs)) if i in nums ]
     from . import simTemplate
-    template = simTemplate.getTemplate()
+    template = simTemplate.getTemplate(args.template)
     for run in runs:
         print(template.render(sim=run))
 
