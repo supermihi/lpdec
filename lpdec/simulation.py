@@ -129,7 +129,7 @@ class Simulator(object):
         self.wordSeed = None
         self.dbStoreSampleInterval = self.maxSamples
         self.dbStoreTimeInterval = 60*5  # 5 minutes
-        self.outputInterval = datetime.timedelta(seconds=30)
+        self.outputInterval = 30 # number of seconds between extended output
         #  check if the code exists in the database but has different parameters. This avoids
         #  a later error which would imply a waste of time.
         from lpdec.database import simulation as dbsim
