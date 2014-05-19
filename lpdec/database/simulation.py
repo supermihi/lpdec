@@ -125,7 +125,7 @@ def dataPoint(code, channel, wordSeed, decoder, identifier):
         point.cputime = ans[simTable.c.cputime]
         point.date_start = ans[simTable.c.date_start]
         point.date_end = ans[simTable.c.date_end]
-        point.stats = JSONDecodable.fromJSON(ans[simTable.c.stats])
+        point.stats = json.loads(ans[simTable.c.stats])
         point.version = ans[simTable.c.program_version]
     return point
 
