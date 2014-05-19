@@ -188,24 +188,25 @@ class Simulator(object):
             print('skipping {} frames ...'.format(startSample-1))
             signaller.skip(startSample - 1)
         lastOutput = datetime.datetime.min
+        def printStatus():
+            print('*** {} / {} / {} ***'.format(self.code.name, self.channel, self.identifier))
+            for row in 'name', 'errors', 'seconds':
+                print(' ' * sampleOffset, end='')
+                for decoder, point in self.dataPoints.items():
+                    if row == 'name':
+                        string = decoder.name
+                    elif row == 'errors':
+                        string = '{} errors'.format(point.errors)
+                    elif row == 'seconds':
+                        string = '{:.4g} sec'.format(point.cputime)
+                    print(outputFormat[decoder].format(string), end='')
+                print('')
         for i in xrange(startSample, self.maxSamples+1):
             channelOutput = next(signaller)
             sampleOffset = max(5, int(math.ceil(math.log10(i)))) + len(': ')
             if i == startSample or \
                     (datetime.datetime.utcnow() - lastOutput).total_seconds() > self.outputInterval:
-                # print status output
-                print('*** {} / {} / {} ***'.format(self.code.name, self.channel, self.identifier))
-                for row in 'name', 'errors', 'seconds':
-                    print(' ' * sampleOffset, end='')
-                    for decoder, point in self.dataPoints.items():
-                        if row == 'name':
-                            string = decoder.name
-                        elif row == 'errors':
-                            string = '{} errors'.format(point.errors)
-                        elif row == 'seconds':
-                            string = '{:.4g} sec'.format(point.cputime)
-                        print(outputFormat[decoder].format(string), end='')
-                    print('')
+                printStatus()
                 lastOutput = datetime.datetime.utcnow()
             print(('{:' + str(sampleOffset-2) + 'd}: ').format(i), end='')
             unfinishedDecoders = len(self.dataPoints)
@@ -245,4 +246,5 @@ class Simulator(object):
                 print(outputFormat[decoder].format(outputString) + TERM_NORMAL, end='')
             print(' {}'.format(signaller.correctObjectiveValue()))
             if unfinishedDecoders == 0:
+                printStatus()
                 break

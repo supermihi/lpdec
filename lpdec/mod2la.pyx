@@ -15,6 +15,7 @@
 cimport numpy as np
 import numpy as np
 
+
 cpdef gaussianElimination(np.int_t[:,:] matrix, np.int_t[:] columns=None, bint diagonalize=True):
         """The Gaussian elimination algorithm in GF(2) arithmetics.
 
@@ -40,7 +41,7 @@ cpdef gaussianElimination(np.int_t[:,:] matrix, np.int_t[:] columns=None, bint d
         if columns is None:
             columns = np.arange(ncols)
         while True:
-            if colIndex >= columns.size:
+            if colIndex >= columns.shape[0]:
                 break
             curCol = columns[colIndex]
             # search for a pivot row
@@ -81,16 +82,18 @@ cpdef gaussianElimination(np.int_t[:,:] matrix, np.int_t[:] columns=None, bint d
                             matrix[row, i] ^= matrix[colIndex, i]
         return successfulCols[:numSuccessfulCols]
 
+
 def rank(matrix):
     """Return the rank (in GF(2)) of a matrix."""
     ans = gaussianElimination(matrix.copy(), diagonalize=False)
     return ans.size
 
-def orthogonalComplement(matrix):
+
+def orthogonalComplement(matrix, columns=None):
     """Computes an orthogonal complement (in GF(2)) to the given matrix."""
     matrix = np.asarray(matrix.copy())
     m, n = matrix.shape
-    unitCols = gaussianElimination(matrix, diagonalize=True)
+    unitCols = gaussianElimination(matrix, columns, diagonalize=True)
     nonunitCols = np.array([x for x in xrange(n) if x not in unitCols])
     rank = unitCols.size
     nonunitPart = matrix[:rank, nonunitCols].transpose()

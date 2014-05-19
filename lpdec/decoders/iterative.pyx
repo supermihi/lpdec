@@ -38,22 +38,23 @@ cdef class IterativeDecoder(Decoder):
             if reencodeOrder >= 0:
                 name += '[order-{}]'.format(reencodeOrder)
         Decoder.__init__(self, code, name)
-        if reencodeOrder >= 0:
-            self.syndrome = np.empty(code.blocklength, dtype=np.int)
-            self.candidate = np.empty(code.blocklength, dtype=np.int)
-            self.indices = np.empty(reencodeOrder, dtype=np.int)
-            self.matrix = code.parityCheckMatrix.copy()
-            self.pool = np.empty(code.blocklength, dtype=np.int)
         self.name = name
         self.minSum = minSum
         self.reencodeRange = reencodeRange
-        self.maxRange = int(self.reencodeRange * self.code.blocklength)
         self.excludeZero = excludeZero
         self.iterations = iterations
         self.reencodeOrder = reencodeOrder
         self.reencodeIfCodeword = reencodeIfCodeword
         mat = self.code.parityCheckMatrix
         k, n = code.parityCheckMatrix.shape
+        if reencodeOrder >= 0:
+            self.syndrome = np.zeros(code.blocklength, dtype=np.int)
+            self.candidate = np.zeros(code.blocklength, dtype=np.int)
+            self.indices = np.zeros(reencodeOrder, dtype=np.int)
+            self.matrix = mat.copy()
+            self.pool = np.zeros(code.blocklength, dtype=np.int)
+            self.varNeigh2 = np.zeros((n, k), dtype=np.int)
+            self.varDeg2 = np.zeros(code.blocklength, dtype=np.int)
         self.fixes = np.zeros(n, dtype=np.double)
         self.solution = np.empty(n, dtype=np.double)
         self.checkNodeSatStates = np.empty(k, dtype=np.int)
@@ -81,13 +82,11 @@ cdef class IterativeDecoder(Decoder):
                     self.checkNeighbors[i, self.checkNodeDegree[i]] = j
                     self.checkNodeDegree[i] += 1
 
-
     cpdef setStats(self, object stats):
         for param in 'iterations', 'noncodewords':
             if param not in stats:
                 stats[param] = 0
         Decoder.setStats(self, stats)
-
 
     cpdef fix(self, int index, int val):
         """Variable fixing is implemented by adding :attr:`fixes` to the LLRs. This vector
@@ -95,12 +94,10 @@ cdef class IterativeDecoder(Decoder):
         """
         self.fixes[index] = (.5 - val) * inf
 
-
     cpdef release(self, int index):
         self.fixes[index] = 0
 
-
-    cpdef solve(self, np.int_t[:] hint=None, double lb=-np.inf, double ub=np.inf):
+    cpdef solve(self, np.int_t[:] hint=None, double lb=-inf, double ub=inf):
         cdef:
             np.int_t[:] checkNodeSatStates = self.checkNodeSatStates
 
@@ -198,105 +195,96 @@ cdef class IterativeDecoder(Decoder):
                 self.reprocess()
         self._stats['iterations'] += iteration
 
-
-    cdef void _flipBit(self, int index):
-        cdef int row
-        cdef np.int_t[:] syndrome = self.syndrome, candidate = self.candidate
-        cdef np.int_t[:,:] matrix = self.matrix
-        candidate[index] = 1 - candidate[index]
-        for row in range(matrix.shape[0]):
-            if matrix[row, index] == 1:
-                syndrome[row] = 1 - syndrome[row]
-
-
-    cdef void _reencode(self):
-        cdef int i
-        cdef double objVal = 0
-        cdef np.int_t[:] candidate = self.candidate, syndrome = self.syndrome, unit = self.unit
-        cdef np.double_t[:] llrs = self.llrs
-        for i in range(unit.shape[0]):
-            candidate[unit[i]] = syndrome[i]
-        for i in range(self.code.blocklength):
-            objVal += candidate[i]*llrs[i]
-        if objVal < self.objectiveValue and (not self.excludeZero or objVal != 0):
-            self.objectiveValue = objVal
-            self.foundCodeword = True
-            for i in range(self.code.blocklength):
-                self.solution[i] = candidate[i]
-            assert self.solution in self.code
-
-
-    cdef int reprocess(self):
-        cdef int mod2sum, i, j, index
+    cdef void reprocess(self):
+        cdef int mod2sum, i, j, index, order, poolSize = 0
+        cdef double objVal
         cdef np.int_t[:] sorted = np.argsort(np.abs(self.varSoftBits))
         cdef np.int_t[:] indices = self.indices, pool = self.pool
         cdef np.int_t[:] candidate = self.candidate, syndrome = self.syndrome
+        cdef np.int_t[:] varHardBits = self.varHardBits, varDeg = self.varDeg2
         cdef np.int_t[:,:] matrix = self.matrix
-        self.unit = np.asarray(gaussianElimination(self.matrix, sorted, True))
-        self.pool = np.array([i for i in sorted[:self.maxRange]
-                              if i not in self.unit and self.fixes[i] == 0])
-        self.objectiveValue = np.inf
-        pool = self.pool
+        cdef np.int_t[:,:] varNeigh = self.varNeigh2
+        cdef np.double_t[:] fixes = self.fixes, solution = self.solution, llrs = self.llrs
+        cdef np.int_t[:] unit = np.asarray(gaussianElimination(matrix, sorted, True))
+        for i in range(self.code.blocklength):
+            j = sorted[i]
+            if j not in unit and fixes[j] == 0:
+                pool[poolSize] = j
+                poolSize += 1
+        maxRange = int(poolSize * self.reencodeRange)
+        self.objectiveValue = inf
+        for j in range(poolSize):
+            varDeg[j] = 0
+            for i in range(matrix.shape[0]):
+                if matrix[i, pool[j]] == 1:
+                    varNeigh[j, varDeg[j]] = i
+                    varDeg[j] += 1
 
-        for self.order in range(0, self.reencodeOrder+1):
+        for order in range(0, self.reencodeOrder+1):
             # need at least ``order`` flippable positions!
-            if self.order > pool.shape[0]:
+            if order > poolSize:
                 break
             # reset candidate and syndrome
             for j in range(self.code.blocklength):
-                candidate[j] = <int>self.solution[j]
-            for i in range(self.matrix.shape[0]):
-                mod2sum = 0
-                for j in range(pool.size):
-                    if self.matrix[i, pool[j]] == 1:
-                        mod2sum += candidate[pool[j]]
-                self.syndrome[i] = mod2sum % 2
+                candidate[j] = <int>varHardBits[j]
+            for row in range(matrix.shape[0]):
+                syndrome[row] = 0
+            for j in range(poolSize):
+                if candidate[pool[j]]:
+                    for i in range(varDeg[j]):
+                        syndrome[varNeigh[j, i]] ^= 1
             # this is inspired by the example implementation of itertools.combinations in the
             # python docs
-            for i in range(self.order):
+            for i in range(order):
                 indices[i] = i
-                self._flipBit(pool[i])
-            self._reencode()
-            if self.order == 0:
-                continue
+                candidate[pool[indices[i]]] ^= 1
+                for j in range(varDeg[indices[i]]):
+                    syndrome[varNeigh[indices[i], j]] ^= 1
+            # reencode
+            objVal = 0
+            for row in range(unit.shape[0]):
+                candidate[unit[row]] = syndrome[row]
+            for j in range(self.code.blocklength):
+                objVal += candidate[j]*llrs[j]
+            if objVal < self.objectiveValue and (not self.excludeZero or objVal != 0):
+                self.objectiveValue = objVal
+                self.foundCodeword = True
+                for j in range(self.code.blocklength):
+                    solution[j] = candidate[j]
             while True:
-                for i in range(self.order - 1, -1, -1):
-                    if indices[i] != i + pool.shape[0] - self.order:
+                for i in range(order - 1, -1, -1):
+                    if indices[i] != i + maxRange - order:
                         break
                 else:
                     break
-                #self._flipBit(pool[indices[i]])
                 index = pool[indices[i]]
-                candidate[index] = 1 - candidate[index]
-                for row in range(matrix.shape[0]):
-                    if matrix[row, index] == 1:
-                        syndrome[row] = 1 - syndrome[row]
+                candidate[pool[indices[i]]] ^= 1
+                for j in range(varDeg[indices[i]]):
+                    syndrome[varNeigh[indices[i], j]] ^= 1
                 indices[i] += 1
                 index = pool[indices[i]]
-                candidate[index] = 1 - candidate[index]
-                for row in range(matrix.shape[0]):
-                    if matrix[row, index] == 1:
-                        syndrome[row] = 1 - syndrome[row]
-                for j in range(i + 1, self.order):
-                    index = pool[indices[j]]
-                    candidate[index] = 1 - candidate[index]
-                    for row in range(matrix.shape[0]):
-                        if matrix[row, index] == 1:
-                            syndrome[row] = 1 - syndrome[row]
+                candidate[pool[indices[i]]] ^= 1
+                for j in range(varDeg[indices[i]]):
+                    syndrome[varNeigh[indices[i], j]] ^= 1
+                for j in range(i + 1, order):
+                    candidate[pool[indices[j]]] ^= 1
+                    for index in range(varDeg[indices[j]]):
+                        syndrome[varNeigh[indices[j], index]] ^= 1
                     indices[j] = indices[j-1] + 1
-                    index = pool[indices[j]]
-                    candidate[index] = 1 - candidate[index]
-                    for row in range(matrix.shape[0]):
-                        if matrix[row, index] == 1:
-                            syndrome[row] = 1 - syndrome[row]
-                self._reencode()
-            # un-flip all bits
-            for i in range(self.order):
-                index = pool[indices[i]]
-                candidate[index] = 1 - candidate[index]
-                for row in range(matrix.shape[0]):
-                    if matrix[row, index] == 1:
-                        syndrome[row] = 1 - syndrome[row]
+                    candidate[pool[indices[j]]] ^= 1
+                    for index in range(varDeg[indices[j]]):
+                        syndrome[varNeigh[indices[j], index]] ^= 1
+                # reencode
+                objVal = 0
+                for row in range(unit.shape[0]):
+                    candidate[unit[row]] = syndrome[row]
+                for j in range(self.code.blocklength):
+                    objVal += candidate[j] * llrs[j]
+                if objVal < self.objectiveValue and (not self.excludeZero or objVal != 0):
+                    self.objectiveValue = objVal
+                    self.foundCodeword = True
+                    for j in range(self.code.blocklength):
+                        solution[j] = candidate[j]
 
     cpdef params(self):
         parms = OrderedDict()

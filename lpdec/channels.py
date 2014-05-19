@@ -135,7 +135,7 @@ class SignalGenerator(object):
     def __init__(self, code, channel, wordSeed=None):
         self.code = code
         self.channel = channel
-        self.allZero = wordSeed == -1
+        self.allZero = (wordSeed == -1)
         self.channelOutput = self.channelInput = self.encoderOutput = None
         if self.allZero:
             self.channelInput = np.ones(code.blocklength, dtype=np.double)
