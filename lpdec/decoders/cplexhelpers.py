@@ -68,8 +68,10 @@ class CplexDecoder(Decoder):
        Vector of names of the codeword variables
     """
 
-    def __init__(self, code, name, cplexParams=dict()):
+    def __init__(self, code, name, cplexParams=None):
         Decoder.__init__(self, code, name)
+        if cplexParams is None:
+            cplexParams = {}
         self.cplex = getInstance(**cplexParams)
         self.cplex.objective.set_sense(self.cplex.objective.sense.minimize)
         self.x = ['x' + str(num) for num in range(code.blocklength)]
@@ -155,6 +157,7 @@ class ShortcutCallback(cplex.callbacks.MIPInfoCallback):
         self.active = False
 
 
+# noinspection PyProtectedMember
 def checkKeyboardInterrupt(cpx):
     """Checks the solution status of the given :class:`cplex.Cplex` instance for keyboard
     interrupts, and raises a :class:`KeyboardInterrupt` exception in that case.

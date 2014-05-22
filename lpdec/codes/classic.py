@@ -23,6 +23,7 @@ class HammingCode(BinaryLinearBlockCode):
         "normal" one.
     """
 
+    # noinspection PyArgumentList
     def __init__(self, r, extended=False):
         blocklength = 2 ** r - (0 if extended else 1)
         infolength = 2 ** r - r - 1

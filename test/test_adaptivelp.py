@@ -19,7 +19,6 @@ class TestAdaptiveLPDecoder(unittest.TestCase):
     def setUp(self):
         self.code = BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N23_M11.txt'))
 
-
     def test_decoding(self):
         channel = AWGNC(1, self.code.rate, seed=100)
         decoders = [AdaptiveLPDecoder(self.code, maxRPCrounds=i) for i in [0, 3, -1]]

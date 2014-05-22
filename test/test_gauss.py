@@ -21,14 +21,14 @@ class SmallGaussTest(unittest.TestCase):
                                 [0, 0, 1, 0, 1, 1, 1]], dtype=np.int)
         self.diagAuto = self.matrix
         self.diag456 = np.array([[0, 1, 1, 1, 0, 0, 1],
-                             [1, 1, 0, 0, 1, 0, 1],
-                             [1, 1, 1, 0, 0, 1, 0]])
-        self.tridiag456 = np.array([[1, 0, 0, 1, 0, 1, 1],
                                  [1, 1, 0, 0, 1, 0, 1],
                                  [1, 1, 1, 0, 0, 1, 0]])
+        self.tridiag456 = np.array([[1, 0, 0, 1, 0, 1, 1],
+                                    [1, 1, 0, 0, 1, 0, 1],
+                                    [1, 1, 1, 0, 0, 1, 0]])
         self.tridiag345 = np.array([[0, 0, 1, 0, 1, 1, 1],
-                                 [0, 1, 0, 1, 1, 1, 0],
-                                 [1, 1, 0, 0, 1, 0, 1]])
+                                    [0, 1, 0, 1, 1, 1, 0],
+                                    [1, 1, 0, 0, 1, 0, 1]])
 
     def test_diag123(self):
         gaussianElimination(self.matrix)

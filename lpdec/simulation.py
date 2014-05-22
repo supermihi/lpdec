@@ -172,6 +172,7 @@ class Simulator(object):
             print('skipping {} frames ...'.format(startSample-1))
             signaller.skip(startSample - 1)
         lastOutput = datetime.datetime.min
+
         def printStatus():
             print('*** {} / {} / {} ***'.format(self.code.name, self.channel, self.identifier))
             for row in 'name', 'errors', 'seconds':
@@ -181,7 +182,7 @@ class Simulator(object):
                         string = decoder.name
                     elif row == 'errors':
                         string = '{} errors'.format(point.errors)
-                    elif row == 'seconds':
+                    else:  # row == 'seconds':
                         string = '{:.4g} sec'.format(point.cputime)
                     print(outputFormat[decoder].format(string), end='')
                 print('')

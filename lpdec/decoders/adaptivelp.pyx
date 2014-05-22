@@ -285,7 +285,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                 continue
             elif integral:
                 break
-            elif rpcrounds >= self.maxRPCrounds and self.maxRPCrounds != -1:
+            elif rpcrounds >= self.maxRPCrounds != -1:
                 self.foundCodeword = self.mlCertificate = False
                 break
             else:

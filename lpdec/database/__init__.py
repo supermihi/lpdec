@@ -80,7 +80,7 @@ def saveDatabases():
         listFile.write('\n'.join(_knownDBs))
 
 
-engine = codesTable = decodersTable = engine = metadata = None
+codesTable = decodersTable = engine = metadata = None
 initialized = False
 
 

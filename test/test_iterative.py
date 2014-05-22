@@ -19,7 +19,6 @@ class TestIterativeDecoder(unittest.TestCase):
     def setUp(self):
         self.code = BinaryLinearBlockCode(parityCheckMatrix=testData('BCH_127_85_6_strip.alist'))
 
-
     def test_decoding(self):
         for snr, minSum, rr in itertools.product([1, 3], [True, False], [0.1, 0.5, 1]):
             channel = AWGNC(snr, self.code.rate, seed=100)

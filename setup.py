@@ -41,7 +41,7 @@ setup(
     version=version,
     author='Michael Helmling',
     author_email='helmling@uni-koblenz.de',
-    install_requires=['numpy', 'sqlalchemy', 'cython', 'python-dateutil'],
+    install_requires=['numpy', 'sqlalchemy', 'cython', 'python-dateutil', 'jinja2'],
     ext_modules=makeExtensions(),
     packages=['lpdec'],
     entry_points={'console_scripts': ['lpdec = lpdec.cli:script',]},
