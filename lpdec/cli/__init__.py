@@ -6,12 +6,14 @@
 # published by the Free Software Foundation
 from __future__ import print_function, division, unicode_literals
 import argparse
-from collections import OrderedDict
+from dateutil import tz
 import lpdec.database
 import lpdec.database.simulation as dbsim
 
 
 def script():
+    import locale
+    locale.resetlocale()
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--database', metavar='DB', help='database connection string')
     subparsers = parser.add_subparsers(title='Commands')
@@ -25,6 +27,7 @@ def script():
 
     args = parser.parse_args()
     args.func(args)
+
 
 def browse(args):
     import lpdec.jsonloads
@@ -51,7 +54,6 @@ def browse(args):
     else:
         nums = [int(n) for n in ans.split()]
     selectedCodes = [codes[num] for num in nums]
-
     runs = dbsim.simulations(code=selectedCodes, identifier=identifiers)
     print('These simulation runs match your selection:')
     print('{:>3s}  {:30s} {:40s} {:16s} {:10s} {}\n'
@@ -59,10 +61,11 @@ def browse(args):
     for i, run in enumerate(runs):
         print('{:>3d}: {:30s} {:40s} {:16s} {:10s} {}'
               .format(i, run.code.name, run.decoder.name, run.identifier,
-                      '{}-{}'.format(run.minSNR(), run.maxSNR()),
-                      '{}-{}'.format(run.date_start, run.date_end)))
-    print("{0:>3s}: *select all*".format("A"))
-    ans = raw_input("Select number(s): ")
+                      '{}–{}'.format(run.minSNR(), run.maxSNR()),
+                      '{:%c} – {:%c}'.format(run.date_start.astimezone(tz.tzlocal()),
+                                             run.date_end.astimezone(tz.tzlocal()))))
+    print('{0:>3s}: *select all*'.format('A'))
+    ans = raw_input('Select number(s): ')
     if ans in 'aA':
         nums = list(range(len(runs)))
     else:

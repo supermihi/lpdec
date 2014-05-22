@@ -6,8 +6,9 @@
 # published by the Free Software Foundation
 from __future__ import print_function, unicode_literals
 from contextlib import contextmanager
-from collections import namedtuple
+import datetime
 import os
+from dateutil import tz
 
 
 class Timer(object):
@@ -37,6 +38,10 @@ def stopwatch():
     yield timer
     tmp = os.times()
     timer.end = tmp[0] + tmp[2]
+
+
+def utcnow():
+    return datetime.datetime.now(tz.tzutc())
 
 
 # terminal color codes

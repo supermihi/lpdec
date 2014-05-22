@@ -34,7 +34,7 @@ cdef class IterativeDecoder(Decoder):
         double         reencodeRange
         np.int_t[:,:]  matrix
 
-    cpdef solve(self, np.int_t[:] hint=?, double lb=?, double ub=?)
+    cpdef solve(self, double lb=?, double ub=?)
     cpdef params(self)
 
     cpdef fix(self, int index, int val)

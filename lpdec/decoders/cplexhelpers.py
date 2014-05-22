@@ -82,16 +82,17 @@ class CplexDecoder(Decoder):
             stats['CPLEX nodes'] = 0
         Decoder.setStats(self, stats)
 
-    def solve(self, sent=None, lb=-np.inf, ub=np.inf):
+    def solve(self, lb=-np.inf, ub=np.inf):
         self.cplex.objective.set_linear(zip(self.x, self.llrs))
-        if sent is not None:
+        if self.sent is not None:
+            sent = np.asarray(self.sent)
             # add sent codeword as CPLEX MIP start solution
-            zValues = np.dot(self.code.parityCheckMatrix, np.asarray(sent) / 2).tolist()
-            self.cplex.MIP_starts.add([self.x + self.z, np.asarray(sent).tolist() + zValues],
+            zValues = np.dot(self.code.parityCheckMatrix, sent / 2).tolist()
+            self.cplex.MIP_starts.add([self.x + self.z, sent.tolist() + zValues],
                                       self.cplex.MIP_starts.effort_level.auto)
-            self.callback.activate(np.dot(sent, self.llrs))
+            self.callback.activate(np.dot(self.sent, self.llrs))
         self.cpxSolve()
-        if sent is not None:
+        if self.sent is not None:
             if self.callback.occured:
                 self.objectiveValue = self.callback.objectiveValue
                 self.solution = self.callback.solution
@@ -99,7 +100,7 @@ class CplexDecoder(Decoder):
                 self.foundCodeword = True
             self.callback.deactivate()
             self.cplex.MIP_starts.delete()
-        if sent is None or not self.callback.occured:
+        if self.sent is None or not self.callback.occured:
             if not self.callback.occured:
                 checkKeyboardInterrupt(self.cplex)
             self.mlCertificate = self.foundCodeword = True

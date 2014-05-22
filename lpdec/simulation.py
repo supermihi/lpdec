@@ -11,7 +11,7 @@ import math
 import numpy as np
 import lpdec
 import lpdec.database as db
-from lpdec.utils import TERM_BOLD_RED, TERM_BOLD, TERM_NORMAL, TERM_RED, stopwatch
+from lpdec.utils import TERM_BOLD_RED, TERM_BOLD, TERM_NORMAL, TERM_RED, stopwatch, utcnow
 
 
 class DataPoint:
@@ -25,7 +25,7 @@ class DataPoint:
         self.decoder = decoder
         self.identifier = identifier
         self.samples = self.errors = self.cputime = 0
-        self.date_start = datetime.datetime.utcnow()
+        self.date_start = utcnow()
         self.date_end = None
         self.stats = {}
         self.program = 'lpdec'
@@ -51,7 +51,7 @@ class DataPoint:
 
     def store(self):
         from lpdec.database import simulation as dbsim
-        self.date_end = datetime.datetime.utcnow()
+        self.date_end = utcnow()
         self.stats = self.decoder.stats()
         dbsim.addDataPoint(self)
         self._dbSamples = self.samples
@@ -109,8 +109,6 @@ class Simulation(list):
             self.append(newPoint)
 
 
-
-
 class Simulator(object):
     """A Simulator computes frame error rates for a code / channel combination with different
     decoders by monte-carlo simulations.
@@ -125,7 +123,6 @@ class Simulator(object):
         self.dataPoints = None
         # options
         self.revealSent = False
-        self.checkWord = True
         self.wordSeed = None
         self.dbStoreSampleInterval = self.maxSamples
         self.dbStoreTimeInterval = 60*5  # 5 minutes
@@ -136,19 +133,6 @@ class Simulator(object):
         if not dbsim.initialized:
             dbsim.init()
         db.checkCode(code, insert=False)
-
-    def decodingCorrect(self, decoder, signalGenerator):
-        """Helper to check for decoding error.
-
-        Depending on :attr:`checkWord`, this either checks if the sent codeword from
-        ``signalGenerator`` matches the output of the decoding algorithm, or compares the decoder's
-        objective value with the scalar product of LLR vector and codeword.
-        """
-        if self.checkWord:
-            return np.allclose(decoder.solution, signalGenerator.encoderOutput, 1e-7)
-        else:
-            objectiveDiff = abs(decoder.objectiveValue - signalGenerator.correctObjectiveValue())
-            return objectiveDiff < 1e-8
 
     def run(self):
         """Output of the information line:
@@ -204,10 +188,9 @@ class Simulator(object):
         for i in xrange(startSample, self.maxSamples+1):
             channelOutput = next(signaller)
             sampleOffset = max(5, int(math.ceil(math.log10(i)))) + len(': ')
-            if i == startSample or \
-                    (datetime.datetime.utcnow() - lastOutput).total_seconds() > self.outputInterval:
+            if i == startSample or (utcnow() - lastOutput).total_seconds() > self.outputInterval:
                 printStatus()
-                lastOutput = datetime.datetime.utcnow()
+                lastOutput = utcnow()
             print(('{:' + str(sampleOffset-2) + 'd}: ').format(i), end='')
             unfinishedDecoders = len(self.dataPoints)
             for decoder, point in self.dataPoints.items():
@@ -225,7 +208,7 @@ class Simulator(object):
                         decoder.decode(channelOutput)
                 point.cputime += timer.duration
                 point.samples += 1
-                if not self.decodingCorrect(decoder, signaller):
+                if not np.allclose(decoder.solution, signaller.encoderOutput, 1e-7):
                     point.errors += 1
                     print(TERM_BOLD_RED if decoder.mlCertificate else TERM_RED, end='')
                 else:

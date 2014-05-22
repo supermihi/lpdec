@@ -51,12 +51,12 @@ class TestCplexIPDecoder(unittest.TestCase):
                         hintZC = sigZC.encoderOutput
                     else:
                         hintRC = hintZC = None
-                    outputRC = decoder.decode(llrRC, hint=hintRC)
+                    outputRC = decoder.decode(llrRC, sent=hintRC)
                     objRC = decoder.objectiveValue
                     strikedRC = decoder.callback.occured
                     if useHint:
                         self.assertNotEqual(strikedRC, decoder.mlCertificate)
-                    outputZC = decoder.decode(llrZC, hint=hintZC)
+                    outputZC = decoder.decode(llrZC, sent=hintZC)
                     objZC = decoder.objectiveValue
                     strikedZC = decoder.callback.occured
                     if useHint:

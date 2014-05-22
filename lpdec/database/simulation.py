@@ -40,8 +40,8 @@ def init():
                           sqla.Column('errors', sqla.Integer),
                           sqla.Column('cputime', sqla.Float),
                           sqla.Column('stats', sqla.Text),
-                          sqla.Column('date_start', sqla.DateTime),
-                          sqla.Column('date_end', sqla.DateTime),
+                          sqla.Column('date_start', db.UTCDateTime),
+                          sqla.Column('date_end', db.UTCDateTime),
                           sqla.Column('machine', sqla.Text),
                           sqla.Column('program_name', sqla.String(64)),
                           sqla.Column('program_version', sqla.String(64)))
@@ -122,7 +122,7 @@ def dataPoint(code, channel, wordSeed, decoder, identifier):
     if ans is not None:
         point.samples = point._dbSamples = ans[simTable.c.samples]
         point.errors = ans[simTable.c.errors]
-        point.cputime = ans[simTable.c.cputime]
+        point.cputime = point._dbCputime = ans[simTable.c.cputime]
         point.date_start = ans[simTable.c.date_start]
         point.date_end = ans[simTable.c.date_end]
         point.stats = json.loads(ans[simTable.c.stats])

@@ -97,43 +97,37 @@ cdef class IterativeDecoder(Decoder):
     cpdef release(self, int index):
         self.fixes[index] = 0
 
-    cpdef solve(self, np.int_t[:] hint=None, double lb=-inf, double ub=inf):
+    cpdef solve(self, double lb=-inf, double ub=inf):
         cdef:
             np.int_t[:] checkNodeSatStates = self.checkNodeSatStates
-
-            np.double_t[:] varSoftBits = self.varSoftBits
             np.int_t[:]    varHardBits = self.varHardBits
             np.int_t[:]    varNodeDegree = self.varNodeDegree
             np.int_t[:]    checkNodeDegree = self.checkNodeDegree
-            np.int_t[:,:]  varNeighbors = self.varNeighbors
-            np.int_t[:,:]  checkNeighbors = self.checkNeighbors
-            np.double_t[:,:]  varToChecks = self.varToChecks
-            np.double_t[:,:]  checkToVars = self.checkToVars
-            int i, j, deg, iteration, outerIteration = 0
-            int checkIndex, varIndex
+            np.int_t[:,:]  varNeighbors = self.varNeighbors, checkNeighbors = self.checkNeighbors
+            np.double_t[:,:]  varToChecks = self.varToChecks, checkToVars = self.checkToVars
+            np.double_t[:] varSoftBits = self.varSoftBits, bP = self.bP, fP = self.fP
+            np.double_t[:] llrs = self.llrs, solution = self.solution
+            np.double_t[:] llrFixed = self.llrs + self.fixes
+            int i, j, deg, iteration, checkIndex, varIndex
             int numVarNodes = self.code.blocklength
             int numCheckNodes = self.code.parityCheckMatrix.shape[0]
             bint codeword, sign
-            np.double_t[:] bP = self.bP, fP = self.fP
-            np.double_t[:] llrs = self.llrs
-            np.double_t[:] solution = self.solution
-            np.double_t[:] llrFixed = self.llrs + self.fixes
 
         self.foundCodeword = False
+        # reset messages
         for j in range(numVarNodes):
             for i in range(varNodeDegree[j]):
                 varToChecks[j, varNeighbors[j, i]] = 0
         for i in range(numCheckNodes):
             for j in range(checkNodeDegree[i]):
                 checkToVars[i, checkNeighbors[i, j]] = 0
-
+        # reset satisfy state of check nodes
         for i in range(numCheckNodes):
             checkNodeSatStates[i] = False
 
         iteration = 0
         while iteration < self.iterations:
             iteration += 1
-
             # variable node processing
             for i in range(numVarNodes):
                 varSoftBits[i] = llrFixed[i]
@@ -144,14 +138,12 @@ cdef class IterativeDecoder(Decoder):
                     checkIndex = varNeighbors[i,j]
                     varToChecks[i, checkIndex] = varSoftBits[i] - checkToVars[checkIndex, i]
                     checkNodeSatStates[checkIndex] ^= varHardBits[i]
-
             # check node processing
             codeword = True
             for i in range(numCheckNodes):
                 deg = checkNodeDegree[i]
                 if checkNodeSatStates[i]:
-                    codeword = False
-                    checkNodeSatStates[i] = False # reset for next iteration
+                    codeword =  checkNodeSatStates[i] = False # reset for next iteration
                 if self.minSum:
                     fP[0] = bP[deg] = inf
                     sign = False
@@ -183,6 +175,7 @@ cdef class IterativeDecoder(Decoder):
                 self.foundCodeword = True
                 break
         self.objectiveValue = 0
+        # create solution from varHardBits
         for i in range(numVarNodes):
             solution[i] = varHardBits[i]
             if varHardBits[i]:
@@ -196,6 +189,8 @@ cdef class IterativeDecoder(Decoder):
         self._stats['iterations'] += iteration
 
     cdef void reprocess(self):
+        """Perform order-i reprocessing, where i is given by :attr:`self.reencodeOrder`.
+        """
         cdef int mod2sum, i, j, index, order, poolSize = 0
         cdef double objVal
         cdef np.int_t[:] sorted = np.argsort(np.abs(self.varSoftBits))
@@ -293,6 +288,8 @@ cdef class IterativeDecoder(Decoder):
         parms['iterations'] = self.iterations
         if self.reencodeOrder != -1:
             parms['reencodeOrder'] = self.reencodeOrder
+        if self.reencodeRange != 1:
+            parms['reencodeRange'] = self.reencodeRange
         if self.reencodeIfCodeword:
             parms['reencodeIfCodeword'] = True
         if self.excludeZero:

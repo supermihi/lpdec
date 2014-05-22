@@ -6,4 +6,5 @@ API Documentation
 
    lpdec
    codes
+   decoders
    database

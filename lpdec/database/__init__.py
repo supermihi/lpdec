@@ -17,15 +17,34 @@ import os
 import platform
 import numbers
 import atexit
+import sqlalchemy.types as types
+import sqlalchemy as sqla
+from dateutil import tz
 from lpdec.codes import BinaryLinearBlockCode
 from lpdec.decoders import Decoder
-
-import sqlalchemy as sqla
 
 
 CONF_DIR = expanduser(join('~', '.config', 'lpdec'))
 DB_LIST_FILE = join(CONF_DIR, 'databases')
 _knownDBs = None
+
+
+class UTCDateTime(types.TypeDecorator):
+    """Subclasses :class:`sqla.DateTime` in order to add UTC timezone info to all objects.
+
+    When used as bind parameter, any supplied datetime object will be converted to UTC (if a
+    timezone exists). Retrieved datetimes will always have the UTC timezone set.
+    """
+
+    impl = types.DateTime
+
+    def process_bind_param(self, value, dialect):
+        if value.tzinfo and value.tzinfo != tz.tzutc():
+            value = value.astimezone(tz.tzutc())
+        return value.replace(tzinfo=None)
+
+    def process_result_value(self, value, dialect):
+        return value.replace(tzinfo=tz.tzutc())
 
 
 class DatabaseException(Exception):
@@ -40,7 +59,6 @@ def knownDatabases():
     The returned list may be modified in order to add/remove database strings. It is
     automatically stored at program exit.
     """
-
     global _knownDBs
     if _knownDBs is None:
         # register exit handler on first call
