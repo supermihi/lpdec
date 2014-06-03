@@ -141,14 +141,6 @@ def teardown():
     initialized = False
 
 
-def machineString():
-    """A string identifying the current machine, composed of the host name and platform
-    information.
-    :rtype: unicode
-    """
-    return '{0} ({1})'.format(platform.node(), platform.platform())
-
-
 def checkCode(code, insert=True):
     """Tests if `code` is contained in the database. If there is a code with the same name that does
     not match the given code, a :class:`DatabaseException` is raised.

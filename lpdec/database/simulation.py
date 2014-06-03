@@ -10,9 +10,8 @@ from collections import OrderedDict
 import sqlalchemy as sqla
 from sqlalchemy.sql import expression
 import lpdec
-from lpdec import database as db
 from lpdec.persistence import JSONDecodable
-from lpdec import simulation
+from lpdec import simulation, utils, database as db
 
 
 initialized = False
@@ -68,6 +67,7 @@ def addDataPoint(point):
     """Add (or update) a data point to the database.
     :param simulation.DataPoint point: DataPoint instance.
     ."""
+    point.checkResume()
     codeId = db.checkCode(point.code, insert=True)
     decoderId = db.checkDecoder(point.decoder, insert=True)
     channelJSON = point.channel.toJSON()
@@ -79,6 +79,8 @@ def addDataPoint(point):
         (simTable.c.channel_json == channelJSON) &
         (simTable.c.wordSeed == point.wordSeed)
     )
+    if utils.machineString() not in point.machine:
+        point.machine = '{}/{}'.format(point.machine, utils.machineString())
     values = dict(code=codeId,
                   decoder=decoderId,
                   identifier=point.identifier,
@@ -91,9 +93,9 @@ def addDataPoint(point):
                   cputime=point.cputime,
                   date_start=point.date_start,
                   date_end=point.date_end,
-                  machine=db.machineString(),
+                  machine=point.machine,
                   program_name='lpdec',
-                  program_version=lpdec.__version__,
+                  program_version=lpdec.exactVersion(),
                   stats=json.dumps(point.stats, sort_keys=True))
     result = db.engine.execute(sqla.select([simTable.c.id], whereClause)).fetchall()
     if len(result) > 0:
@@ -175,6 +177,7 @@ def search(what, **conditions):
     if what == 'point':
         return [dataPointFromRow(row) for row in ans]
     return db.engine.execute(s).fetchall()
+
 
 def simulations(**conditions):
     points = search('point', **conditions)

@@ -10,10 +10,11 @@ import datetime
 import math
 import numpy as np
 import lpdec
-import lpdec.database as db
+from lpdec import database as db, utils
 from lpdec.utils import TERM_BOLD_RED, TERM_BOLD, TERM_NORMAL, TERM_RED, Timer, utcnow
 
 DEBUG_SAMPLE = -1
+ALLOW_DIRTY_VERSION = False
 
 
 class DataPoint:
@@ -31,8 +32,8 @@ class DataPoint:
         self.date_end = None
         self.stats = {}
         self.program = 'lpdec'
-        self.version = lpdec.__version__
-        self.machine = db.machineString()
+        self.version = lpdec.exactVersion()
+        self.machine = utils.machineString()
         self._dbCputime = self._dbSamples = 0
 
     @property
@@ -58,6 +59,18 @@ class DataPoint:
         dbsim.addDataPoint(self)
         self._dbSamples = self.samples
         self._dbCputime = self.cputime
+
+    def checkResume(self):
+        """Check if computation for this code can be resumed."""
+        # version check
+        if self.program != 'lpdec':
+            raise RuntimeError('Program name mismatch: "{}" != "lpdec"'.format(self.program))
+        if self.version != lpdec.exactVersion():
+            raise RuntimeError('Version mismatch: "{}" != "{}"'.format(self.version,
+                                                                       lpdec.exactVersion()))
+
+        if not ALLOW_DIRTY_VERSION and lpdec.exactVersion().endswith('dirty'):
+            raise RuntimeError('Dirty program version {}'.format(lpdec.exactVersion()))
 
 
 class Simulation(list):
@@ -150,9 +163,7 @@ class Simulator(object):
                                     self.identifier)
             if point.samples >= self.maxSamples or point.errors >= self.maxErrors:
                 continue  # point is already done
-            if point.version != lpdec.__version__:
-                raise RuntimeError('VERSION MISMATCH {} != {}'.format(point.version,
-                                                                      lpdec.__version__))
+            point.checkResume()
             self.dataPoints[decoder] = point
             decoder.setStats(point.stats)
             outputFormat[decoder] = '{:<' + str(max(len(decoder.name), 13)) + 's} '

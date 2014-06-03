@@ -8,6 +8,7 @@
 from __future__ import division
 
 __version__ = '2014.2'
+_exactVersion = None
 
 
 def subclasses(base):
@@ -21,6 +22,7 @@ def subclasses(base):
         toCheck.extend(cls.__subclasses__())
     return dict((cls.__name__, cls) for cls in found)
 
+
 def exactVersion():
     """Returns the version of the lpdec package.
 
@@ -28,10 +30,14 @@ def exactVersion():
     of the parent directory), then the output of ``git describe --dirty`` is returned. Otherwise,
     the value of the above variable ``__version__`` is returned.
     """
-    import subprocess
+    global _exactVersion
+    if _exactVersion:
+        return _exactVersion
+    from subprocess import check_output
     from os.path import normpath, join, dirname, exists
     topdir = normpath(join(dirname(__file__), '..'))
+    version = __version__
     if exists(join(topdir, '.git')):
-        version = subprocess.check_output(['git', 'describe', '--dirty'], cwd=topdir)
-        return version.decode().strip()
-    return __version__
+        version = check_output(['git', 'describe', '--dirty'], cwd=topdir).decode().strip()
+    _exactVersion = version
+    return version

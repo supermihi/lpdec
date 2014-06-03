@@ -8,6 +8,7 @@ from __future__ import print_function, unicode_literals
 from contextlib import contextmanager
 import datetime
 import os
+import platform
 from dateutil import tz
 
 
@@ -58,6 +59,14 @@ def frange(start, end, step=1):
     while current < end:
         yield current
         current += step
+
+
+def machineString():
+    """A string identifying the current machine, composed of the host name and platform
+    information.
+    :rtype: unicode
+    """
+    return '{0} ({1})'.format(platform.node(), platform.platform())
 
 
 # terminal color codes
