@@ -15,6 +15,7 @@ from lpdec.utils import TERM_BOLD_RED, TERM_BOLD, TERM_NORMAL, TERM_RED, Timer, 
 
 DEBUG_SAMPLE = -1
 
+
 class DataPoint:
     """Data class storing information about a single point of measurement, i.e. a certain
     combination of code, decoder, channel, and identifier.
@@ -138,17 +139,6 @@ class Simulator(object):
         db.checkCode(code, insert=False)
 
     def run(self):
-        """Output of the information line:
-        ** <code> / <channel> / <identifier>
-                  <name of decoder1>|<name of decoder2>
-                  <#err> errors     |<#err> errors
-                  <#cputime> sec    |<#cputime> sec
-        Output of a single line:
-        <sample>: <objValue>        |<objValue>
-
-        Error is formatted as integer 4-digits. Cputime as "general" with precision 4, hence the
-        cputime column has width max(len(decoder.name), 9 + len(" sec") = 13)
-        """
         from lpdec.database import simulation as dbsim
         self.dataPoints = OrderedDict()  # maps decoders to DataPoint instances
         #  check for problems with the decoders before time is spent on computations
@@ -179,6 +169,17 @@ class Simulator(object):
         lastOutput = datetime.datetime.min
 
         def printStatus():
+            """Output of the information line:
+            ** <code> / <channel> / <identifier>
+                      <name of decoder1>|<name of decoder2>
+                      <#err> errors     |<#err> errors
+                      <#cputime> sec    |<#cputime> sec
+            Output of a single line:
+            <sample>: <objValue>        |<objValue>
+
+            Error is formatted as integer 4-digits. Cputime as "general" with precision 4, hence the
+            cputime column has width max(len(decoder.name), 9 + len(" sec") = 13)
+            """
             print('*** {} / {} / {} ***'.format(self.code.name, self.channel, self.identifier))
             for row in 'name', 'errors', 'seconds':
                 print(' ' * sampleOffset, end='')

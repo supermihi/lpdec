@@ -50,13 +50,14 @@ def utcnow():
     return datetime.datetime.now(tz.tzutc())
 
 
-def frange(start, end, interval=1):
-    """An extension of the built-in xrange() function that supports fractional step sizes.
+def frange(start, end, step=1):
+    """Generalization of the built-in :func:`xrange` function that supports fractional step
+    sizes.
     """
     current = start
     while current < end:
         yield current
-        current += interval
+        current += step
 
 
 # terminal color codes

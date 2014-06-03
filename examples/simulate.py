@@ -6,11 +6,7 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
-from lpdec.decoders.ip import CplexIPDecoder
-from lpdec.decoders.branchcut import BranchAndCutDecoder
-from lpdec.codes.classic import HammingCode
-from lpdec.channels import *
-from lpdec.simulation import *
+from lpdec.imports import *
 
 code = HammingCode(4)
 decoder1 = CplexIPDecoder(code, name='Decoder 1')
@@ -26,7 +22,7 @@ decoder2 = BranchAndCutDecoder(code, name='B&C Decoder',
                                                reencodeOrder=2,
                                                reencodeIfCodeword=False))
 
-for snr in [1, 1.5, 2]:
+for snr in frange(1, 2, step=.5):
     channel = AWGNC(snr, code.rate)
     simulator = Simulator(code, channel, [decoder1, decoder2], 'example')
     simulator.maxSamples = 10000
