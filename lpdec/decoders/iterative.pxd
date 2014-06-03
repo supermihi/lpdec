@@ -28,7 +28,7 @@ cdef class IterativeDecoder(Decoder):
         int            reencodeOrder
         bint           minSum, excludeZero, reencodeIfCodeword
         # helpers for the order-i reprocessing
-        np.int_t[:]    syndrome, candidate, indices, pool, varDeg2
+        np.int_t[:]    syndrome, candidate, indices, pool, varDeg2, fixSyndrome
         np.int_t[:,:]  varNeigh2
         int            maxRange
         double         reencodeRange
@@ -40,4 +40,4 @@ cdef class IterativeDecoder(Decoder):
     cpdef fix(self, int index, int val)
     cpdef release(self, int index)
 
-    cdef void reprocess(self)
+    cdef int reprocess(self) except 1

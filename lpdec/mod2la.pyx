@@ -59,7 +59,10 @@ cpdef gaussianElimination(np.int_t[:,:] matrix, np.int_t[:] columns=None, bint d
             if pivotRow > curRow:
                 # need to swap rows
                 for i in range(ncols):
-                    matrix[curRow, i], matrix[pivotRow, i] = matrix[pivotRow, i], matrix[curRow, i]
+                    val = matrix[curRow, i]
+                    matrix[curRow, i] = matrix[pivotRow, i]
+                    matrix[pivotRow, i] = val
+            # do the actual pivoting
             for row in range(curRow + 1, nrows):
                 val = matrix[row, curCol]
                 if val != 0:

@@ -55,6 +55,7 @@ cdef class IterativeDecoder(Decoder):
             self.pool = np.zeros(code.blocklength, dtype=np.int)
             self.varNeigh2 = np.zeros((n, k), dtype=np.int)
             self.varDeg2 = np.zeros(code.blocklength, dtype=np.int)
+            self.fixSyndrome = np.zeros(code.blocklength, dtype=np.int)
         self.fixes = np.zeros(n, dtype=np.double)
         self.solution = np.empty(n, dtype=np.double)
         self.checkNodeSatStates = np.empty(k, dtype=np.int)
@@ -143,7 +144,7 @@ cdef class IterativeDecoder(Decoder):
             for i in range(numCheckNodes):
                 deg = checkNodeDegree[i]
                 if checkNodeSatStates[i]:
-                    codeword =  checkNodeSatStates[i] = False # reset for next iteration
+                    codeword = checkNodeSatStates[i] = False # reset for next iteration
                 if self.minSum:
                     fP[0] = bP[deg] = inf
                     sign = False
@@ -184,30 +185,39 @@ cdef class IterativeDecoder(Decoder):
         if not codeword or (self.excludeZero and self.objectiveValue == 0) or self.reencodeIfCodeword:
             if not codeword:
                 self._stats['noncodewords'] += 1
+                self.objectiveValue = inf
             if self.reencodeOrder >= 0:
                 self.reprocess()
         self._stats['iterations'] += iteration
 
-    cdef void reprocess(self):
+    cdef int reprocess(self) except 1:
         """Perform order-i reprocessing, where i is given by :attr:`self.reencodeOrder`.
         """
         cdef int mod2sum, i, j, index, order, poolSize = 0
         cdef double objVal
         cdef np.int_t[:] sorted = np.argsort(np.abs(self.varSoftBits))
         cdef np.int_t[:] indices = self.indices, pool = self.pool
-        cdef np.int_t[:] candidate = self.candidate, syndrome = self.syndrome
+        cdef np.int_t[:] candidate = self.candidate, syndrome = self.syndrome, fixSyndrome = \
+            self.fixSyndrome
         cdef np.int_t[:] varHardBits = self.varHardBits, varDeg = self.varDeg2
         cdef np.int_t[:,:] matrix = self.matrix
         cdef np.int_t[:,:] varNeigh = self.varNeigh2
         cdef np.double_t[:] fixes = self.fixes, solution = self.solution, llrs = self.llrs
         cdef np.int_t[:] unit = np.asarray(gaussianElimination(matrix, sorted, True))
+
+        for j in range(matrix.shape[0]):
+            fixSyndrome[j] = 0
         for i in range(self.code.blocklength):
             j = sorted[i]
-            if j not in unit and fixes[j] == 0:
-                pool[poolSize] = j
-                poolSize += 1
+            if j not in unit:
+                if fixes[j] == 0:
+                    pool[poolSize] = j
+                    poolSize += 1
+                elif fixes[j] == -inf:
+                    for row in range(matrix.shape[0]):
+                        fixSyndrome[row] ^= matrix[row, j]
+
         maxRange = int(poolSize * self.reencodeRange)
-        self.objectiveValue = inf
         for j in range(poolSize):
             varDeg[j] = 0
             for i in range(matrix.shape[0]):
@@ -223,7 +233,7 @@ cdef class IterativeDecoder(Decoder):
             for j in range(self.code.blocklength):
                 candidate[j] = <int>varHardBits[j]
             for row in range(matrix.shape[0]):
-                syndrome[row] = 0
+                syndrome[row] = fixSyndrome[row]
             for j in range(poolSize):
                 if candidate[pool[j]]:
                     for i in range(varDeg[j]):

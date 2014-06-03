@@ -11,36 +11,42 @@ import os
 from dateutil import tz
 
 
+def clock():
+    tmp = os.times()
+    return tmp[0] + tmp[2]
+
+
 class Timer(object):
-    """Data class that stores timing information. Has the attributes :attr:`start`, :attr:`end`
-    and :attr:`duration`.
-    """
-    def __init__(self, start):
-        self.start = start
-        self.end = None
-
-    @property
-    def duration(self):
-        return None if self.end is None else self.end - self.start
-
-
-@contextmanager
-def stopwatch():
-    """Context manager to measure user time of python code plus called subprocesses.
-
-    Use like this:
-    >>> with stopwatch() as timer:
+    """Class for time measurement. Has the attributes :attr:`startTime`, :attr:`endTime` and
+    :attr:`duration`. Can be used as context manager like this:
+    >>> with Timer() as timer:
     >>>     x = 1 + 2
     >>> cpuTime = timer.duration
     """
-    tmp = os.times()
-    timer = Timer(tmp[0] + tmp[2])
-    yield timer
-    tmp = os.times()
-    timer.end = tmp[0] + tmp[2]
+    def __init__(self):
+        self.startTime = self.endTime = None
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        self.stop()
+
+    @property
+    def duration(self):
+        return None if self.endTime is None else self.endTime - self.startTime
+
+    def start(self):
+        self.startTime = clock()
+
+    def stop(self):
+        self.endTime = clock()
+        return self.duration
 
 
 def utcnow():
+    """Returns a timezone-aware datetime object representing the current date and time in UTC."""
     return datetime.datetime.now(tz.tzutc())
 
 

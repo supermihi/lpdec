@@ -14,6 +14,7 @@
 
 from __future__ import division, print_function
 from collections import OrderedDict
+import logging
 import numpy as np
 cimport numpy as np
 from libc.math cimport fabs, sqrt
@@ -23,7 +24,9 @@ from lpdec.decoders cimport glpk
 from lpdec.mod2la cimport gaussianElimination
 from lpdec.codes cimport BinaryLinearBlockCode
 from lpdec.decoders cimport Decoder
+from lpdec.utils import Timer
 
+logger = logging.getLogger('alp')
 
 cdef class AdaptiveLPDecoder(Decoder):
     """
@@ -51,6 +54,7 @@ cdef class AdaptiveLPDecoder(Decoder):
       frame.
     :param int insertActive: Determine if and when cuts that are active at the sent or hinted
       codeword are inserted. The value is an OR-combination of:
+
       * ``0``: never insert active constraints (default)
       * ``1``: insert constraints active at the sent codewords during :func:`setLLRs`,
         it that was given.
@@ -79,8 +83,9 @@ cdef class AdaptiveLPDecoder(Decoder):
     cdef glpk.glp_smcp parm
     cdef np.double_t[:] diffFromHalf
     cdef np.ndarray setV, Nj
-    cdef public np.int_t[:] hint
+    cdef public np.ndarray hint
     cdef np.int_t[:] fixes
+    cdef public object timer
 
     def __init__(self, BinaryLinearBlockCode code,
                  maxRPCrounds=-1,
@@ -122,6 +127,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         self.Nj = np.empty(1+code.blocklength, dtype=np.intc)
         self.fixes = -np.ones(code.blocklength, dtype=np.int)
         self.numConstrs = 0
+        self.timer = Timer()
         if allZero:
             self.insertZeroConstraints()
         self.nrFixedConstraints = glpk.glp_get_num_rows(self.prob)
@@ -158,7 +164,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             mat = self.hmat
         else:
             mat = self.htilde
-        
+
         for i in range(mat.shape[0]):
             Njsize = 0
             setVsize = 0
@@ -206,7 +212,7 @@ cdef class AdaptiveLPDecoder(Decoder):
 
 
     cpdef setStats(self, object stats):
-        statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached"]
+        statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime']
         if self.insertActive != 0:
             statNames.extend(['activeCuts'])
         for item in statNames:
@@ -214,25 +220,31 @@ cdef class AdaptiveLPDecoder(Decoder):
                 stats[item] = 0
         Decoder.setStats(self, stats)
 
-    def fix(self, int i, int val):
+    cpdef fix(self, int i, int val):
         glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_FX, val, val)
         self.fixes[i] = val
 
-    def release(self, int i):
+    cpdef release(self, int i):
         glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_DB, 0.0, 1.0)
         self.fixes[i] = -1
     
     cpdef setLLRs(self, np.double_t[:] llrs, np.int_t[:] sent=None):
         cdef int j
+        cdef np.ndarray[dtype=np.int_t, ndim=1] hint
         for j in range(self.code.blocklength):
             glpk.glp_set_obj_coef(self.prob, 1+j, llrs[j])
         Decoder.setLLRs(self, llrs, sent)
-        if self.insertActive & 1 and sent is not None:
+
+        if self.insertActive & 1:
+            hint = self.hint if self.hint is not None else np.asarray(sent)
+            if hint is None:
+                return
             self.removeNonfixedConstraints()
-            if self.allZero and np.all(np.asarray(sent) == 0):
+            if self.allZero and np.all(hint) == 0:
                 #  zero-active constraints are already in the model
                 return
-            self.insertActiveConstraints(sent)
+            logger.debug('insert active for {}'.format(hint))
+            self.insertActiveConstraints(hint)
 
 
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
@@ -247,7 +259,9 @@ cdef class AdaptiveLPDecoder(Decoder):
         self.objectiveValue = -np.inf
         while True:
             iteration += 1
-            i = glpk.glp_simplex(self.prob, &self.parm)
+            with self.timer:
+                i = glpk.glp_simplex(self.prob, &self.parm)
+            self._stats['lpTime'] += self.timer.duration
             if i != 0:
                 raise RuntimeError("GLPK Simplex Error ({}) {}".format(i, glpk.glp_get_num_rows(self.prob)))
             self._stats["totalLPs"] += 1
@@ -257,15 +271,18 @@ cdef class AdaptiveLPDecoder(Decoder):
             if i == glpk.GLP_NOFEAS or i == glpk.GLP_UNBND:
                 self.objectiveValue = np.inf
                 self.foundCodeword = self.mlCertificate = False
-                return
+                break
             elif i != glpk.GLP_OPT:
                 raise RuntimeError("GLPK error {}".format(i))
             self.objectiveValue = glpk.glp_get_obj_val(self.prob)
+            #logger.debug('solved to {} with {} constraints'.format(self.objectiveValue,
+            # self.numConstrs))
             if self.objectiveValue >= ub - 1e-6:
+                logger.debug('reached ub: {}'.format(self.objectiveValue))
                 self.objectiveValue = np.inf
                 self._stats["ubReached"] += 1
                 self.foundCodeword = self.mlCertificate = False
-                return
+                break
             integral = True
             for i in range(self.code.blocklength):
                 solution[i] = glpk.glp_get_col_prim(self.prob, 1+i)
@@ -285,7 +302,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                 continue
             elif integral:
                 break
-            elif rpcrounds >= self.maxRPCrounds != -1:
+            elif rpcrounds >= self.maxRPCrounds and self.maxRPCrounds != -1:
                 self.foundCodeword = self.mlCertificate = False
                 break
             else:
@@ -295,6 +312,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                     self.mlCertificate = self.foundCodeword = False
                     break
                 rpcrounds += 1
+        self.hint = None
  
  
     cdef void removeInactiveConstraints(self):
@@ -350,7 +368,6 @@ cdef class AdaptiveLPDecoder(Decoder):
                         lambdaSum -= llrs[Njsize]
                     Njsize += 1
             normDenom = absLambda * Njsize
-            
             for ind in range(Njsize):
                 if coeff[1+ind] == 1:
                     if (lambdaSum-2*llrs[Nj[ind+1]-1]) / normDenom  < self.maxActiveAngle:

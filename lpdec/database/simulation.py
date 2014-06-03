@@ -6,6 +6,7 @@
 # published by the Free Software Foundation
 from __future__ import division, unicode_literals, print_function
 import json
+from collections import OrderedDict
 import sqlalchemy as sqla
 from sqlalchemy.sql import expression
 import lpdec
@@ -142,7 +143,7 @@ def dataPointFromRow(row):
     point.cputime = row[simTable.c.cputime]
     point.date_start = row[simTable.c.date_start]
     point.date_end = row[simTable.c.date_end]
-    point.stats = json.loads(row[simTable.c.stats])
+    point.stats = json.loads(row[simTable.c.stats], object_pairs_hook=OrderedDict)
     point.version = row[simTable.c.program_version]
     point.program = row[simTable.c.program_name]
     point.machine = row[simTable.c.machine]

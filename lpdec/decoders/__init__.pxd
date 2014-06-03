@@ -23,3 +23,5 @@ cdef class Decoder(JSONDecodable):
     cpdef solve(self, double lb=?, double ub=?)
     cpdef object stats(self)
     cpdef setStats(self, object stats)
+    cpdef fix(self, int index, int value)
+    cpdef release(self, int index)

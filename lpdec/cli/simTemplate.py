@@ -4,7 +4,8 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
-
+from __future__ import division, unicode_literals
+from collections import OrderedDict
 import jinja2
 
 
@@ -29,10 +30,32 @@ consoleTemplate = \
 """{{sim.identifier}}: {{sim.code.name}} // {{sim.decoder.name}}:
   snr   samples    errors     FER      av.cpu
 {% for point in sim %}  {{"{:<4.2f}  {:<10d} {:<10d} {:<8.2e} {:<.6f}".format(point.snr,
-point.samples, point.errors, point.frameErrorRate, point.cputime/point.samples)}}
+point.samples, point.errors, point.frameErrorRate, point.cputime/point.samples)}}\
+{% if verbose %}
+  {{point|formatStats}}
+{% endif %}
 {% endfor %}"""
+
+
+def formatStats(point):
+    ret = ''
+    stats = OrderedDict()
+    for key, val in point.stats.items():
+        if isinstance(val, dict):
+            for kkey, vval in val.items():
+                stats["{}.{}".format(key, kkey)] = vval
+        else:
+            stats[key] = val
+    maxLen = max(len(s) for s in stats)
+    for stat, val in stats.items():
+        import numbers
+        if isinstance(val, numbers.Number):
+            val = "{:<6f} avg".format(val / point.samples)
+        ret += ("      {:"+str(maxLen) + "s} = {}\n").format(stat, val)
+    return ret
 
 def getTemplate(template):
     env = jinja2.Environment(autoescape=False)
+    env.filters['formatStats'] = formatStats
     template = env.from_string(consoleTemplate if template=='cli' else homepageTemplate)
     return template

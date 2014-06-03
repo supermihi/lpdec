@@ -90,12 +90,12 @@ cdef class Decoder(JSONDecodable):
     cpdef object stats(self):
         return self._stats
 
-    def fix(self, index, value):
+    cpdef fix(self, int index, int value):
         """Fix codeword variable with index `index` to `value` :math:`\in \{0,1\}`.
         """
         raise NotImplementedError()
 
-    def release(self, index):
+    cpdef release(self, int index):
         """Release the constraint on a previously fixed variable."""
         raise NotImplementedError()
 

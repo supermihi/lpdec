@@ -11,8 +11,9 @@ import math
 import numpy as np
 import lpdec
 import lpdec.database as db
-from lpdec.utils import TERM_BOLD_RED, TERM_BOLD, TERM_NORMAL, TERM_RED, stopwatch, utcnow
+from lpdec.utils import TERM_BOLD_RED, TERM_BOLD, TERM_NORMAL, TERM_RED, Timer, utcnow
 
+DEBUG_SAMPLE = -1
 
 class DataPoint:
     """Data class storing information about a single point of measurement, i.e. a certain
@@ -130,6 +131,8 @@ class Simulator(object):
         #  check if the code exists in the database but has different parameters. This avoids
         #  a later error which would imply a waste of time.
         from lpdec.database import simulation as dbsim
+        if not db.initialized:
+            db.init()
         if not dbsim.initialized:
             dbsim.init()
         db.checkCode(code, insert=False)
@@ -167,6 +170,8 @@ class Simulator(object):
             return
         signaller = self.channel.signalGenerator(self.code, wordSeed=self.wordSeed)
         startSample = min(point.samples for point in self.dataPoints.values()) + 1
+        if DEBUG_SAMPLE != -1:
+            startSample = self.maxSamples = DEBUG_SAMPLE
         if startSample > 1:
             #  ensure random seed matches
             print('skipping {} frames ...'.format(startSample-1))
@@ -202,7 +207,7 @@ class Simulator(object):
                 if point.samples > i:
                     print(outputFormat[decoder].format('skip'), end='')
                     continue
-                with stopwatch() as timer:
+                with Timer() as timer:
                     if self.revealSent:
                         decoder.decode(channelOutput, sent=signaller.encoderOutput)
                     else:
