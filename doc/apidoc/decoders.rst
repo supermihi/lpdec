@@ -21,3 +21,8 @@ Adaptive LP Decoder with optional RPC cuts
 ==========================================
 
 .. automodule:: lpdec.decoders.adaptivelp
+
+Branch-and-Cut Decoder
+======================
+
+.. automodule:: lpdec.decoders.branchcut

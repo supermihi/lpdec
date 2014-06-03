@@ -7,13 +7,24 @@
 # published by the Free Software Foundation
 
 from lpdec.decoders.ip import CplexIPDecoder
+from lpdec.decoders.branchcut import BranchAndCutDecoder
 from lpdec.codes.classic import HammingCode
 from lpdec.channels import *
 from lpdec.simulation import *
 
 code = HammingCode(4)
 decoder1 = CplexIPDecoder(code, name='Decoder 1')
-decoder2 = CplexIPDecoder(code, name='Decoder 2')
+decoder2 = BranchAndCutDecoder(code, name='B&C Decoder',
+                               selectionMethod='mixed-/30/100/5/2',
+                               childOrder='llr',
+                               lpParams=dict(removeInactive=100,
+                                             insertActive=0,
+                                             keepCuts=True,
+                                             maxRPCrounds=100,
+                                             minCutoff=.2),
+                               iterParams=dict(iterations=100,
+                                               reencodeOrder=2,
+                                               reencodeIfCodeword=False))
 
 for snr in [1, 1.5, 2]:
     channel = AWGNC(snr, code.rate)

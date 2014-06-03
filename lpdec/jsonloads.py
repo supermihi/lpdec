@@ -13,3 +13,4 @@ from lpdec.codes.classic import *
 from lpdec.decoders import *
 from lpdec.decoders.iterative import *
 from lpdec.decoders.ip import *
+from lpdec.decoders.branchcut import *
