@@ -32,7 +32,7 @@ def script():
 
 
 def browse(args):
-    import lpdec.jsonloads
+    import lpdec.imports
     lpdec.database.init(args.database)
     dbsim.init()
     identifiers = dbsim.existingIdentifiers()
