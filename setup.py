@@ -5,14 +5,14 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
-
+from __future__ import unicode_literals
 import os
 import fnmatch
 import io
 import re
 from os.path import join, dirname, abspath
 
-from setuptools import setup
+from setuptools import setup, find_packages
 from Cython.Build import cythonize
 import numpy as np
 
@@ -24,7 +24,7 @@ def makeExtensions():
     """Returns an Extension object for the given submodule of lpdecoding."""
 
     sources = []
-    for root, dirnames, filenames in os.walk(join(here, 'lpdec')):
+    for root, dirnames, filenames in os.walk(join(here, b'lpdec')):
         for filename in fnmatch.filter(filenames, '*.pyx'):
             sources.append(join(root, filename))
     extensions = cythonize(sources, include_path=[np.get_include()])
@@ -43,7 +43,7 @@ setup(
     author_email='helmling@uni-koblenz.de',
     install_requires=['numpy', 'sqlalchemy', 'cython', 'python-dateutil', 'jinja2'],
     ext_modules=makeExtensions(),
-    packages=['lpdec'],
+    packages=[p for p in find_packages() if p != b'test'],
     entry_points={'console_scripts': ['lpdec = lpdec.cli:script',]},
     test_suite='test',
 )
