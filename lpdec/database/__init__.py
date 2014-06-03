@@ -91,7 +91,9 @@ def init(database=None, testMode=False):
     - sqlite:///myresults.sqlite
     - mysql://username:password@localhost/port
 
-    If `database` is `None`, an interactive console dialogs asks the user to input a string.
+    If `database` is `None`, an interactive console dialogs asks the user to input a string. The
+    database string may as well be a single number; in that case, the connection will be made to
+    the entry with that position in the list of known databases.
     """
     global codesTable, decodersTable, engine, metadata, initialized
     if initialized:
@@ -111,6 +113,8 @@ def init(database=None, testMode=False):
                     database = ans
             else:
                 database = raw_input('Please enter a database connection string: ')
+        elif database.isdigit():
+            database = known[int(database)]
     engine = sqla.create_engine(database, pool_recycle=3600)
     if not testMode and database not in known:
         known.append(database)
