@@ -20,14 +20,12 @@ class ArrayLDPCCode(BinaryLinearBlockCode):
     def __init__(self, q, m):
         assert m <= q
         self.q, self.m = q, m
-        hmatrix = np.empty((q * m, q * q), dtype=np.int)
-        P = np.zeros((q, q))
-        P[0, q-1] = 1
-        for i in range(q - 1):
-            P[i + 1, i] = 1
-        for i in range(m):
-            for j in range(q):
-                hmatrix[q * i:q * (i + 1), q * j:q * (j + 1)] = np.linalg.matrix_power(P, i * j)
+        hmatrix = np.zeros((q * m, q * q), dtype=np.int)
+        for row in range(m):
+            for column in range(q):
+                shift = row * column
+                for i in range(q):
+                    hmatrix[row*q+((shift + i) % q), column * q + i] = 1
         BinaryLinearBlockCode.__init__(self, parityCheckMatrix=hmatrix,
                                        name="({0},{1}) Array LDPC Code".format(q, m))
 

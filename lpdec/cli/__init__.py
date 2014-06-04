@@ -23,7 +23,7 @@ def script():
     parser_browse.add_argument('-c', '--code')
     parser_browse.add_argument('-a', '--all', action = 'store_true',
                                help='select all simulations for given identifier/code')
-    parser_browse.add_argument('-t', '--template', choices=('cli', 'hp'), default='cli',
+    parser_browse.add_argument('-t', '--template', choices=('cli', 'hp', 'verb'), default='cli',
                                help='template for the output format of simulation results')
     parser_browse.add_argument('-v', '--verbose', action='store_true', help='enable verbose output')
     parser_browse.set_defaults(func=browse)

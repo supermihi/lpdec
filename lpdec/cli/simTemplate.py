@@ -36,6 +36,16 @@ point.samples, point.errors, point.frameErrorRate, point.cputime/point.samples)}
 {% endif %}
 {% endfor %}"""
 
+verboseTemplate = \
+"""{{sim.identifier}}: {{sim.code.name}} // {{sim.decoder.name}}:
+  channel          samples    errors     FER      av.cpu
+{% for point in sim %}  {{"{:16s}  {:<10d} {:<10d} {:<8.2e} {:<.6f}".format(point.channel,
+point.samples, point.errors, point.frameErrorRate, point.cputime/point.samples)}}\
+{% if verbose %}
+  {{point|formatStats}}
+{% endif %}
+{% endfor %}"""
+
 
 def formatStats(point):
     ret = ''
@@ -54,8 +64,15 @@ def formatStats(point):
         ret += ("      {:"+str(maxLen) + "s} = {}\n").format(stat, val)
     return ret
 
+
 def getTemplate(template):
     env = jinja2.Environment(autoescape=False)
     env.filters['formatStats'] = formatStats
-    template = env.from_string(consoleTemplate if template=='cli' else homepageTemplate)
+    if template == 'cli':
+        templateString = consoleTemplate
+    elif template == 'hp':
+        templateString = homepageTemplate
+    elif template == 'verb':
+        templateString = verboseTemplate
+    template = env.from_string(templateString)
     return template
