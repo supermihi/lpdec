@@ -6,7 +6,7 @@
 # published by the Free Software Foundation
 from __future__ import print_function, division, unicode_literals
 import argparse
-from collections import OrderedDict
+import sys
 from dateutil import tz
 import lpdec.database
 import lpdec.database.simulation as dbsim
@@ -26,6 +26,7 @@ def script():
     parser_browse.add_argument('-t', '--template', choices=('cli', 'hp', 'verb'), default='cli',
                                help='template for the output format of simulation results')
     parser_browse.add_argument('-v', '--verbose', action='store_true', help='enable verbose output')
+    parser_browse.add_argument('-o', '--outfile', help='(optional) filename for output')
     parser_browse.set_defaults(func=browse)
     parser_codes = subparsers.add_parser('codes', help='code toolkit')
     parser_codes.set_defaults(func=codes)
@@ -82,8 +83,14 @@ def browse(args):
         runs = [ runs[i] for i in range(len(runs)) if i in nums ]
     from . import simTemplate
     template = simTemplate.getTemplate(args.template)
+    if args.outfile:
+        out = open(args.outfile, 'wt')
+    else:
+        out = sys.stdout
     for run in runs:
-        print(template.render(sim=run, verbose=args.verbose))
+        out.write(template.render(sim=run, verbose=args.verbose) + '\n')
+    if args.outfile:
+        out.close()
 
 
 def codes(args):
