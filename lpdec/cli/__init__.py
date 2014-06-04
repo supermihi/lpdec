@@ -20,6 +20,9 @@ def script():
     subparsers = parser.add_subparsers(title='Commands')
     parser_browse = subparsers.add_parser('browse', help='browse and plot results')
     parser_browse.add_argument('-i', '--identifier')
+    parser_browse.add_argument('-c', '--code')
+    parser_browse.add_argument('-a', '--all', action = 'store_true',
+                               help='select all simulations for given identifier/code')
     parser_browse.add_argument('-t', '--template', choices=('cli', 'hp'), default='cli',
                                help='template for the output format of simulation results')
     parser_browse.add_argument('-v', '--verbose', action='store_true', help='enable verbose output')
@@ -45,34 +48,38 @@ def browse(args):
         ans = raw_input('Select number(s): ')
         nums = [ int(s) for s in ans.split() ]
         identifiers = [identifiers[num] for num in nums]
-    codes = [row[0] for row in dbsim.search('codename', identifier=identifiers)]
-    print('Available codes:')
-    for i, code in enumerate(codes):
-        print('{:>3d}: {}'.format(i, code))
-    print('{:>3s}: select all'.format('A'))
-    ans = raw_input('Select number(s): ')
-    if ans in 'aA':
-        nums = list(range(len(codes)))
+    if args.code:
+        selectedCodes = [args.code]
     else:
-        nums = [int(n) for n in ans.split()]
-    selectedCodes = [codes[num] for num in nums]
+        codes = [row[0] for row in dbsim.search('codename', identifier=identifiers)]
+        print('Available codes:')
+        for i, code in enumerate(codes):
+            print('{:>3d}: {}'.format(i, code))
+        print('{:>3s}: select all'.format('A'))
+        ans = raw_input('Select number(s): ')
+        if ans in 'aA':
+            nums = list(range(len(codes)))
+        else:
+            nums = [int(n) for n in ans.split()]
+        selectedCodes = [codes[num] for num in nums]
     runs = dbsim.simulations(code=selectedCodes, identifier=identifiers)
-    print('These simulation runs match your selection:')
-    print('{:>3s}  {:30s} {:40s} {:16s} {:10s} {}\n'
-          .format("i", "code", "decoder", "identifier", "snr-range", "date"))
-    for i, run in enumerate(runs):
-        print('{:>3d}: {:30s} {:40s} {:16s} {:10s} {}'
-              .format(i, run.code.name, run.decoder.name, run.identifier,
-                      '{}–{}'.format(run.minSNR(), run.maxSNR()),
-                      '{:%c} – {:%c}'.format(run.date_start.astimezone(tz.tzlocal()),
-                                             run.date_end.astimezone(tz.tzlocal()))))
-    print('{0:>3s}: *select all*'.format('A'))
-    ans = raw_input('Select number(s): ')
-    if ans in 'aA':
-        nums = list(range(len(runs)))
-    else:
-        nums = [int(n) for n in ans.split()]
-    runs = [ runs[i] for i in range(len(runs)) if i in nums ]
+    if not args.all:
+        print('These simulation runs match your selection:')
+        print('{:>3s}  {:30s} {:40s} {:16s} {:10s} {}\n'
+              .format("i", "code", "decoder", "identifier", "snr-range", "date"))
+        for i, run in enumerate(runs):
+            print('{:>3d}: {:30s} {:40s} {:16s} {:10s} {}'
+                  .format(i, run.code.name, run.decoder.name, run.identifier,
+                          '{}–{}'.format(run.minSNR(), run.maxSNR()),
+                          '{:%c} – {:%c}'.format(run.date_start.astimezone(tz.tzlocal()),
+                                                 run.date_end.astimezone(tz.tzlocal()))))
+        print('{0:>3s}: *select all*'.format('A'))
+        ans = raw_input('Select number(s): ')
+        if ans in 'aA':
+            nums = list(range(len(runs)))
+        else:
+            nums = [int(n) for n in ans.split()]
+        runs = [ runs[i] for i in range(len(runs)) if i in nums ]
     from . import simTemplate
     template = simTemplate.getTemplate(args.template)
     for run in runs:

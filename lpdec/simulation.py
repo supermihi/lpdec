@@ -162,7 +162,7 @@ class Simulator(object):
             point = dbsim.dataPoint(self.code, self.channel, self.wordSeed, decoder,
                                     self.identifier)
             if point.samples >= self.maxSamples or point.errors >= self.maxErrors:
-                continue  # point is already done
+                continue
             point.checkResume()
             self.dataPoints[decoder] = point
             decoder.setStats(point.stats)
