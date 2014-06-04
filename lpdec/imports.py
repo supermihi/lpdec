@@ -5,6 +5,8 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
+import logging
+
 from lpdec.channels import *
 
 from lpdec.codes import *
@@ -13,7 +15,10 @@ from lpdec.codes.ldpc import *
 
 from lpdec.decoders import *
 from lpdec.decoders.iterative import *
-from lpdec.decoders.ip import *
+try:
+    from lpdec.decoders.ip import *
+except ImportError:
+    logging.warning('Skipping import of IP solvers because CPLEX is not installed')
 from lpdec.decoders.branchcut import *
 
 from lpdec.utils import *

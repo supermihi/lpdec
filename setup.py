@@ -10,6 +10,7 @@ import os
 import fnmatch
 import io
 import re
+import sys
 from os.path import join, dirname, abspath
 
 from setuptools import setup, find_packages
@@ -28,6 +29,9 @@ def makeExtensions():
         for filename in fnmatch.filter(filenames, '*.pyx'):
             sources.append(join(root, filename))
     extensions = cythonize(sources, include_path=[np.get_include()])
+    if '--no-glpk' in sys.argv:
+        extensions = [e for e in extensions if 'glpk' not in e.libraries]
+        sys.argv.remove('--no-glpk')
     return extensions
 
 
