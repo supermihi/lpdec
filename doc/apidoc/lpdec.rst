@@ -8,15 +8,15 @@ Channels
 
 .. automodule:: lpdec.channels
 
-The ``lpdec.matrices`` module
------------------------------
+Matrix Input and Output
+-----------------------
 .. automodule:: lpdec.matrices
 
-The ``lpdec.mod2la`` module
----------------------------
+Handing of Binary (GF(2)) Matrices
+-----------------------------------
 .. automodule:: lpdec.mod2la
    :members:
 
-The ``lpdec.utils`` module
---------------------------
+Various Utilities
+-----------------
 .. automodule:: lpdec.utils

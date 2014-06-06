@@ -67,8 +67,8 @@ def formatMatrix(matrix, format='plain', width=2, filename=None):
     """Converts a matrix to a string in the requested format.
 
     :param str format: The output format. It is either ``'plain'`` (the default), which is the
-    "canonical" representation (entries separated by spaces and newlines), or 'alist',
-    which leads to MacKay's Alist format.
+        "canonical" representation (entries separated by spaces and newlines), or 'alist',
+        which leads to MacKay's Alist format.
     :param str width: For `plain` output format, this specifies the width in which a matrix entry is
         formatted.
     :param str filename: If given, the string is written to the given file; otherwise it is

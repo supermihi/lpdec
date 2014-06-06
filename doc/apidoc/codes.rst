@@ -11,3 +11,8 @@ Classical Codes
 ===============
 
 .. automodule::  lpdec.codes.classic
+
+LDPC Codes
+==========
+
+.. automodule:: lpdec.codes.ldpc
