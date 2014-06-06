@@ -226,3 +226,12 @@ def get(what, identifier, code=None):
         return cls.fromJSON(row[table.c.json])
     else:
         return cls.fromJSON(row[table.c.json], code=code)
+
+
+def names(what='codes'):
+    """Return the names of all codes or decoders, depending on the parameter `what` which is one of
+    ('decoders', 'codes').
+    """
+    table = codesTable if what == 'codes' else decodersTable
+
+    return [row[0] for row in engine.execute(sqla.select([table.c.name]))]

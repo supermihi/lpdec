@@ -40,5 +40,5 @@ coverage.xml
 .idea/
 
 # Sphinx documentation
-docs/_build/
+doc/_build/
 

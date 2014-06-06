@@ -98,7 +98,7 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
         matrix = self.parityCheckMatrix
         if np.sum(matrix) / ( matrix.shape[0] * matrix.shape[1]) < .1:
             # sparse matrix
-            pcm = matrices.writeBinaryMatrix(matrix, format='alist')
+            pcm = matrices.toListAlist(matrix)
         else:
             pcm = matrix.tolist()
         return OrderedDict([('parityCheckMatrix', pcm), ('name', self.name)])

@@ -6,10 +6,7 @@
 # published by the Free Software Foundation
 from __future__ import print_function, division, unicode_literals
 import argparse
-import sys
-from dateutil import tz
-import lpdec.database
-import lpdec.database.simulation as dbsim
+from lpdec.cli import code, browse
 
 
 def script():
@@ -17,84 +14,18 @@ def script():
     locale.resetlocale()
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--database', metavar='DB', help='database connection string')
+    parser.add_argument('-v', '--verbose', action='store_true', help='be more verbose')
+    parser.add_argument('-o', '--outfile', help='write output to given file instead of stdout')
     subparsers = parser.add_subparsers(title='Commands')
-    parser_browse = subparsers.add_parser('browse', help='browse and plot results')
-    parser_browse.add_argument('-i', '--identifier')
-    parser_browse.add_argument('-c', '--code')
-    parser_browse.add_argument('-a', '--all', action = 'store_true',
-                               help='select all simulations for given identifier/code')
-    parser_browse.add_argument('-t', '--template', choices=('cli', 'hp', 'verb'), default='cli',
-                               help='template for the output format of simulation results')
-    parser_browse.add_argument('-v', '--verbose', action='store_true', help='enable verbose output')
-    parser_browse.add_argument('-o', '--outfile', help='(optional) filename for output')
-    parser_browse.set_defaults(func=browse)
-    parser_codes = subparsers.add_parser('codes', help='code toolkit')
-    parser_codes.set_defaults(func=codes)
+    parserBrowse = subparsers.add_parser('browse', help='browse and plot results')
+    browse.initParser(parserBrowse)
+    parserBrowse.set_defaults(func=browse.browse)
+    parserCodes = subparsers.add_parser('code', help='code toolkit')
+    code.initParser(parserCodes)
 
     args = parser.parse_args()
     args.func(args)
 
-
-def browse(args):
-    import lpdec.imports
-    lpdec.database.init(args.database)
-    dbsim.init()
-    identifiers = dbsim.existingIdentifiers()
-    if args.identifier:
-        identifiers = [ args.identifier ]
-    else:
-        print('Available identifiers:')
-        for i, ident in enumerate(identifiers):
-            print('{0:2d}: {1}'.format(i, ident))
-        ans = raw_input('Select number(s): ')
-        nums = [ int(s) for s in ans.split() ]
-        identifiers = [identifiers[num] for num in nums]
-    if args.code:
-        selectedCodes = [args.code]
-    else:
-        codes = [row[0] for row in dbsim.search('codename', identifier=identifiers)]
-        print('Available codes:')
-        for i, code in enumerate(codes):
-            print('{:>3d}: {}'.format(i, code))
-        print('{:>3s}: select all'.format('A'))
-        ans = raw_input('Select number(s): ')
-        if ans in 'aA':
-            nums = list(range(len(codes)))
-        else:
-            nums = [int(n) for n in ans.split()]
-        selectedCodes = [codes[num] for num in nums]
-    runs = dbsim.simulations(code=selectedCodes, identifier=identifiers)
-    if not args.all:
-        print('These simulation runs match your selection:')
-        print('{:>3s}  {:30s} {:40s} {:16s} {:10s} {}\n'
-              .format("i", "code", "decoder", "identifier", "snr-range", "date"))
-        for i, run in enumerate(runs):
-            print('{:>3d}: {:30s} {:40s} {:16s} {:10s} {}'
-                  .format(i, run.code.name, run.decoder.name, run.identifier,
-                          '{}–{}'.format(run.minSNR(), run.maxSNR()),
-                          '{:%c} – {:%c}'.format(run.date_start.astimezone(tz.tzlocal()),
-                                                 run.date_end.astimezone(tz.tzlocal()))))
-        print('{0:>3s}: *select all*'.format('A'))
-        ans = raw_input('Select number(s): ')
-        if ans in 'aA':
-            nums = list(range(len(runs)))
-        else:
-            nums = [int(n) for n in ans.split()]
-        runs = [ runs[i] for i in range(len(runs)) if i in nums ]
-    from . import simTemplate
-    template = simTemplate.getTemplate(args.template)
-    if args.outfile:
-        out = open(args.outfile, 'wt')
-    else:
-        out = sys.stdout
-    for run in runs:
-        out.write(template.render(sim=run, verbose=args.verbose) + '\n')
-    if args.outfile:
-        out.close()
-
-
-def codes(args):
-    pass
 
 if __name__ == '__main__':
     script()

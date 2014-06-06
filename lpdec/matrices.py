@@ -9,14 +9,6 @@ from __future__ import unicode_literals, print_function
 import numpy as np
 
 
-def strBinary(matrix, n=2):
-    """Convert a binary matrix to a string using `n` characters for each column."""
-    if matrix.ndim == 2:
-        return "\n".join(strBinary(row, n) for row in matrix)
-    else:
-        return "".join(('{0:' + unicode(n) + 'd}').format(int(k)) for k in matrix)
-
-
 def getBinaryMatrix(source):
     """Creates a binary matrix of type :class:`np.ndarray` from either a file or a
     two-dimensional python list.
@@ -57,18 +49,62 @@ def getBinaryMatrix(source):
     return data
 
 
-def writeBinaryMatrix(matrix, filename=None, format='01'):
-    """Writes the matrix to a file. Format is one of '01' or 'alist'"""
-    if format == 'alist':
-        if filename is None:
-            out = [[matrix.shape[1], matrix.shape[0]], []]
-            for i in range(matrix.shape[1]):
-                out.append((matrix[:, i].nonzero()[0] + 1).tolist())
-            return out
-        with open(filename, 'wt') as f:
-            writeAList(matrix, f)
-    elif format == '01':
-        with open(filename, 'wt') as f:
-            f.write(strBinary(matrix))
+def toListAlist(matrix):
+    """Convert the matrix into an "alist-like" representation as list of lists.
+
+    The result is a list of lists. The first entry is a pair containing number of columns and rows,
+    respectively. The second entry is an empty list (in MacKay's Alist format, this contains the
+    max number of entries per column and row, respectively). Then, for each column, a list of
+    nonzero positions follows.
+    """
+    out = [[matrix.shape[1], matrix.shape[0]], []]
+    for i in range(matrix.shape[1]):
+        out.append((matrix[:, i].nonzero()[0] + 1).tolist())
+    return out
+
+
+def formatMatrix(matrix, format='plain', width=2, filename=None):
+    """Converts a matrix to a string in the requested format.
+
+    :param str format: The output format. It is either ``'plain'`` (the default), which is the
+    "canonical" representation (entries separated by spaces and newlines), or 'alist',
+    which leads to MacKay's Alist format.
+    :param str width: For `plain` output format, this specifies the width in which a matrix entry is
+        formatted.
+    :param str filename: If given, the string is written to the given file; otherwise it is
+        returned.
+    """
+    if format == 'plain':
+        if matrix.ndim == 2:
+            mstring = '\n'.join(formatMatrix(row, width=width) for row in matrix)
+        else:
+            mstring = ''.join(('{:' + unicode(width) + 'd}').format(k) for k in matrix)
     else:
-        raise ValueError('Unknown matrix format string: {0}'.format(format))
+        assert format == 'alist'
+        import cStringIO
+        output = cStringIO.StringIO()
+        maxColSum = max(col.sum() for col in matrix.T)
+        maxRowSum = max(row.sum() for row in matrix)
+        output.write('{1} {0}\n'.format(*matrix.shape))
+        output.write('{0} {1}\n'.format(maxColSum, maxRowSum))
+        output.write(' '.join(str(col.sum()) for col in matrix.transpose()) + '\n')
+        output.write(' '.join(str(row.sum()) for row in matrix) + '\n')
+        for i in range(matrix.shape[1]):
+            nzIndices = matrix[:, i].nonzero()[0] + 1  # indices start with '1' in alist format
+            output.write(' '.join(str(v) for v in nzIndices))
+            for j in range(nzIndices.size, maxColSum):
+                output.write(' 0')
+            output.write('\n')
+        for row in matrix:
+            nzIndices = row.nonzero()[0] + 1
+            output.write(' '.join(str(v) for v in nzIndices))
+            for j in range(nzIndices.size, maxRowSum):
+                output.write(' 0')
+            output.write('\n')
+        mstring = output.getvalue()
+        output.close()
+    if filename:
+        with open(filename, 'wt') as f:
+            f.write(mstring)
+    else:
+        return mstring
