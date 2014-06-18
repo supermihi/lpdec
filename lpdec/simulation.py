@@ -141,7 +141,8 @@ class Simulator(object):
         self.wordSeed = None
         self.dbStoreSampleInterval = self.maxSamples
         self.dbStoreTimeInterval = 60*5  # 5 minutes
-        self.outputInterval = 30 # number of seconds between extended output
+        self.outputInterval = 30 # number of seconds between status output
+        self.verbose = True # print information for every frame
         #  check if the code exists in the database but has different parameters. This avoids
         #  a later error which would imply a waste of time.
         from lpdec.database import simulation as dbsim
@@ -152,6 +153,9 @@ class Simulator(object):
         db.checkCode(code, insert=False)
 
     def run(self):
+        def prv(*args, **kwargs):
+            if self.verbose:
+                print(*args, **kwargs)
         from lpdec.database import simulation as dbsim
         self.dataPoints = OrderedDict()  # maps decoders to DataPoint instances
         #  check for problems with the decoders before time is spent on computations
@@ -209,15 +213,15 @@ class Simulator(object):
             if i == startSample or (utcnow() - lastOutput).total_seconds() > self.outputInterval:
                 printStatus()
                 lastOutput = utcnow()
-            print(('{:' + str(sampleOffset-2) + 'd}: ').format(i), end='')
+            prv(('{:' + str(sampleOffset-2) + 'd}: ').format(i), end='')
             unfinishedDecoders = len(self.dataPoints)
             for decoder, point in self.dataPoints.items():
                 if point.errors >= self.maxErrors or point.samples >= self.maxSamples:
-                    print(outputFormat[decoder].format('finished'), end='')
+                    prv(outputFormat[decoder].format('finished'), end='')
                     unfinishedDecoders -= 1
                     continue
                 if point.samples > i:
-                    print(outputFormat[decoder].format('skip'), end='')
+                    prv(outputFormat[decoder].format('skip'), end='')
                     continue
                 with Timer() as timer:
                     if self.revealSent:
@@ -228,9 +232,9 @@ class Simulator(object):
                 point.samples += 1
                 if not np.allclose(decoder.solution, signaller.encoderOutput, 1e-7):
                     point.errors += 1
-                    print(TERM_BOLD_RED if decoder.mlCertificate else TERM_RED, end='')
+                    prv(TERM_BOLD_RED if decoder.mlCertificate else TERM_RED, end='')
                 else:
-                    print(TERM_BOLD if decoder.mlCertificate else TERM_NORMAL, end='')
+                    prv(TERM_BOLD if decoder.mlCertificate else TERM_NORMAL, end='')
                 store = False
                 if point.samples == self.maxSamples or point.errors == self.maxErrors:
                     store = True
@@ -244,8 +248,8 @@ class Simulator(object):
                 #  avoid "-0" in the output
                 val = 0 if abs(decoder.objectiveValue) < 1e-8 else decoder.objectiveValue
                 outputString = '{:<.7f}'.format(val) + ('*' if store else '')
-                print(outputFormat[decoder].format(outputString) + TERM_NORMAL, end='')
-            print(' {}'.format(signaller.correctObjectiveValue()))
+                prv(outputFormat[decoder].format(outputString) + TERM_NORMAL, end='')
+            prv(' {}'.format(signaller.correctObjectiveValue()))
             if unfinishedDecoders == 0:
                 printStatus()
                 break
