@@ -251,6 +251,8 @@ cdef class AdaptiveLPDecoder(Decoder):
             self.insertActiveConstraints(self.hint)
         self.foundCodeword = self.mlCertificate = False
         self.objectiveValue = -np.inf
+        if self.sent is not None and ub == np.inf:
+            ub = np.dot(self.sent, self.llrs) + 2e-6
         while True:
             iteration += 1
             with self.timer:

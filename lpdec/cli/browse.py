@@ -92,14 +92,14 @@ def browse(args):
     env = jinja2.Environment(autoescape=False)
     env.filters['formatStats'] = formatStats
     template = env.from_string(TEMPLATES[args.template])
-    if args.outfile:
-        out = open(args.outfile, 'wt')
-    else:
-        out = sys.stdout
     for run in runs:
+        if args.outfile:
+            out = open(args.outfile.format(code=run.code.name), 'wt')
+        else:
+            out = sys.stdout
         out.write(template.render(sim=run, verbose=args.verbose) + '\n')
-    if args.outfile:
-        out.close()
+        if args.outfile:
+            out.close()
 
 
 TEMPLATES = dict()

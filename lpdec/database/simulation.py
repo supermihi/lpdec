@@ -172,7 +172,7 @@ def search(what, **conditions):
         else:
             raise ValueError()
     s = sqla.select(columns, whereclause=condition, from_obj=joinTable, distinct=True,
-                    use_labels=True)
+                    use_labels=True).order_by(db.codesTable.c.name)
     ans = db.engine.execute(s).fetchall()
     if what == 'point':
         return [dataPointFromRow(row) for row in ans]
