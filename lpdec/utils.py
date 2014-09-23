@@ -19,10 +19,11 @@ def clock():
 
 class Timer(object):
     """Class for time measurement. Has the attributes :attr:`startTime`, :attr:`endTime` and
-    :attr:`duration`. Can be used as context manager like this:
-    >>> with Timer() as timer:
-    >>>     x = 1 + 2
-    >>> cpuTime = timer.duration
+    :attr:`duration`. Can be used as context manager like this::
+
+        >>> with Timer() as timer:
+        >>>     x = 1 + 2
+        >>> cpuTime = timer.duration
     """
     def __init__(self):
         self.startTime = self.endTime = None

@@ -1,5 +1,5 @@
 numpy
 Cython
 sqlalchemy
-python-datetuil
+python-dateutil
 jinja2

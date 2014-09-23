@@ -256,10 +256,11 @@ cdef class AdaptiveLPDecoder(Decoder):
         while True:
             iteration += 1
             with self.timer:
-                i = glpk.glp_simplex(self.prob, &self.parm)
+                error = glpk.glp_simplex(self.prob, &self.parm)
             self._stats['lpTime'] += self.timer.duration
-            if i != 0:
-                raise RuntimeError("GLPK Simplex Error ({}) {}".format(i, glpk.glp_get_num_rows(self.prob)))
+            if error != 0:
+                raise RuntimeError("GLPK Simplex Error ({}) {}"
+                                   .format(i, glpk.glp_get_num_rows(self.prob)))
             self._stats["totalLPs"] += 1
             self.numConstrs = glpk.glp_get_num_rows(self.prob)
             self._stats["totalConstraints"] += self.numConstrs
@@ -287,7 +288,8 @@ cdef class AdaptiveLPDecoder(Decoder):
                 else:
                     integral = False
                 diffFromHalf[i] = fabs(solution[i]-.499999)
-            if self.removeInactive != 0 and self.numConstrs - self.nrFixedConstraints >= self.removeInactive:
+            if self.removeInactive != 0 \
+                    and self.numConstrs - self.nrFixedConstraints >= self.removeInactive:
                 self.removeInactiveConstraints()
             self.foundCodeword = self.mlCertificate = True
             numCuts = self.cutSearchAlgorithm(True)
@@ -342,6 +344,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             assert self.numConstrs == glpk.glp_get_num_rows(self.prob)
 
     cdef void insertActiveConstraints(self, np.int_t[:] codeword):
+        """Inserts constraints that are active at the given codeword."""
         cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV, llrs = self.llrs
         cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
         cdef int ind, i, j, absG, Njsize, rowIndex
@@ -369,7 +372,8 @@ cdef class AdaptiveLPDecoder(Decoder):
                         coeff[1+ind] = -1
                         rowIndex = glpk.glp_add_rows(self.prob, 1)
                         glpk.glp_set_row_bnds(self.prob, rowIndex, glpk.GLP_UP, 0.0, absG-2)
-                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize, <int*>Nj.data, <double*>coeff.data)
+                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize,
+                                             <int*>Nj.data, <double*>coeff.data)
                         coeff[1+ind] = 1
                         self._stats["activeCuts"] += 1
                         self.numConstrs += 1
@@ -378,12 +382,16 @@ cdef class AdaptiveLPDecoder(Decoder):
                         coeff[1+ind] = 1
                         rowIndex = glpk.glp_add_rows(self.prob, 1)
                         glpk.glp_set_row_bnds(self.prob, rowIndex, glpk.GLP_UP, 0.0, absG)
-                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize, <int*>Nj.data, <double*>coeff.data)
+                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize,
+                                             <int*>Nj.data, <double*>coeff.data)
                         coeff[1+ind] = -1
                         self._stats["activeCuts"] += 1
                         self.numConstrs += 1
 
     cdef void insertZeroConstraints(self):
+        """Inserts constraints that are active at the zero codeword. This can be used in case of
+        all-zero decoding to avoid frequent adaptive insertion of the same constraints.
+        """
         cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV
         cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
         cdef int ind, i, j, Njsize, rowIndex
@@ -404,6 +412,11 @@ cdef class AdaptiveLPDecoder(Decoder):
                 self.numConstrs += 1
     
     cdef void removeNonfixedConstraints(self):
+        """Remove all but the fixed constraints from the model.
+
+        Usually there are no fixed constraints. In case of all-zero decoding, the zero
+        constraints are fixed and not removed by this function.
+        """
         cdef np.ndarray[dtype=int, ndim=1] indices
         self.numConstrs = glpk.glp_get_num_rows(self.prob)
         if self.numConstrs > self.nrFixedConstraints:

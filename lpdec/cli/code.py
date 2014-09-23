@@ -40,7 +40,7 @@ def codeCommand(args):
         for i, code in enumerate(codes):
             print('{:>3d}: {}'.format(i, code))
         ans = raw_input('Select number: ')
-        import lpdec.imports
+        import lpdec.imports  # ensures that all classes are loaded for JSON decoding
         args.code = db.get('code', codes[int(ans.strip())])
     if args.action == 'print':
         printCode(args)

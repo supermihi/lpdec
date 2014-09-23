@@ -63,7 +63,33 @@ cdef void move(Decoder lbProv, Decoder ubProv, Node node, Node newNode):
 
 
 cdef class Node:
-    """A node in the branch-and-bound tree."""
+    """
+    A node in the branch-and-bound tree.
+
+    .. attribute:: parent
+
+      pointer to the parent node
+
+    .. attribute:: branchIndex
+
+      index of the variable on which is branched
+
+    .. attribute:: branchValue
+
+      value of the branched variable (0 or 1)
+
+    .. attribute:: depth
+
+      depth in the tree (root has depth=0)
+
+    .. attribute:: lb
+
+      current local lower bound of the tree below this node
+
+    .. attribute:: lbChild0, lbChild1
+
+      lower bounds from left and right child, respectively. Used for bound updates.
+    """
     def __init__(self, **kwargs):
         self.parent = kwargs.get("parent", None)
         self.branchIndex = kwargs.get("branchIndex", -1)
@@ -223,6 +249,8 @@ cdef class BranchAndCutDecoder(Decoder):
 
 
     cdef int branchIndex(self):
+        """Determines the index of the current branching variable, according to the selected
+        branch method."""
         cdef:
             int index, i
             double minDiff = np.inf
@@ -233,6 +261,7 @@ cdef class BranchAndCutDecoder(Decoder):
                     index = i
                     minDiff = fabs(solution[i] - .5)
             if solution[index] < 1e-6 or solution[index] > 1-1e-6:
+                #  no fractional value exists -> branch on first free position
                 for index in range(self.code.blocklength):
                     if not self.fixed(index):
                         return index
@@ -288,15 +317,17 @@ cdef class BranchAndCutDecoder(Decoder):
             int i, branchIndex
             str depthStr
         ub = 0
+        #  ensure there are no leftover fixes from previous decodings
         for i in range(self.code.blocklength):
             self.lbProvider.release(i)
             self.ubProvider.release(i)
         self.foundCodeword = self.mlCertificate = True
-        root = node = Node() # root node
-        self.selectCnt = 0
+        root = node = Node() #  root node
+        self.selectCnt = 0 #  parameter used for the mixed node selection strategy
         self._stats["nodes"] += 1
         if self.selectionMethod == mixed:
             self.lbProvider.maxRPCrounds = self.maxRPCspecial
+
         for i in itertools.count(start=1):
 
             # statistic collection and debug output
@@ -425,7 +456,9 @@ cdef class BranchAndCutDecoder(Decoder):
         else:
             selectionMethodNames = { dfs: "dfs", bfs: "bfs", bbs: "bbs"}
             method = selectionMethodNames[self.selectionMethod]
-        branchMethodNames = {mostFractional: "mostFractional", leastReliable: "leastReliable", eiriksPaper: "eiriksPaper"}
+        branchMethodNames = {mostFractional: "mostFractional",
+                             leastReliable: "leastReliable",
+                             eiriksPaper: "eiriksPaper"}
         parms = OrderedDict()
         if self.branchMethod != mostFractional:
             parms['branchMethod'] = branchMethodNames[self.branchMethod]

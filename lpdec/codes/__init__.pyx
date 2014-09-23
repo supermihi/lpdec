@@ -36,11 +36,10 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
                 hmatrix = matrices.getBinaryMatrix(self.filename)
                 if name is None:
                     name = os.path.basename(self.filename)
+            elif not isinstance(parityCheckMatrix, np.ndarray):
+                hmatrix = matrices.getBinaryMatrix(parityCheckMatrix)
             else:
-                if not isinstance(parityCheckMatrix, np.ndarray):
-                    hmatrix = matrices.getBinaryMatrix(parityCheckMatrix)
-                else:
-                    hmatrix = parityCheckMatrix
+                hmatrix = parityCheckMatrix
             self._parityCheckMatrix = hmatrix
             cols = hmatrix.shape[1]
             rank = mod2la.rank(hmatrix)
