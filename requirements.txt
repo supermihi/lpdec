@@ -1,0 +1,5 @@
+numpy
+Cython
+sqlalchemy
+python-datetuil
+jinja2
