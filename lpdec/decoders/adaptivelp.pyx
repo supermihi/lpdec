@@ -233,8 +233,8 @@ cdef class AdaptiveLPDecoder(Decoder):
             val = self.erasureDecoder.solution[i]
             if val == -1:
                 glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_DB, 0.0, 1.0)
-            elif val > 1:
-                glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLPK_FX, val, val)
+            else:
+                glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_FX, val, val)
 
     cpdef release(self, int i):
         glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_DB, 0.0, 1.0)

@@ -461,9 +461,6 @@ cdef class BranchAndCutDecoder(Decoder):
                 if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
                     candidate = self.ubProvider.solution.copy()
                     ub = self.ubProvider.objectiveValue
-                    if cyclic:
-                        assert candidate[0] == 1
-                        assert candidate in self.code
                 # lower bound calculation
                 self.timer.start()
 
@@ -486,15 +483,10 @@ cdef class BranchAndCutDecoder(Decoder):
                             self.lbProvider.objectiveValue))
                         ub = self.lbProvider.objectiveValue
                         logger.debug('ub improved to {}'.format(ub))
-                        if cyclic:
-                            assert candidate[0] == 1
-                            assert candidate in self.code
                         self._stats['prOpt'] += 1
                 elif node.lb < ub-1+delta:
                     # branch
                     branchIndex = self.branchIndex()
-                    if cyclic:
-                        assert branchIndex != 0
                     if branchIndex == -1:
                         node.lb = np.inf
                         print('********** PRUNE 000000 ***************')
