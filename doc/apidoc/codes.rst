@@ -16,3 +16,7 @@ LDPC Codes
 ==========
 
 .. automodule:: lpdec.codes.ldpc
+
+Factor Graphs
+=============
+.. automodule:: lpdec.codes.factorgraph

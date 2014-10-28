@@ -160,7 +160,7 @@ cdef class BranchAndCutDecoder(Decoder):
     """
     cdef:
         bint calcUb  # indicates whether to run the iterative decoder in the next iteration
-        bint ubBB, highSNR
+        bint ubBB, highSNR, minDistance
         object childOrder
         object timer
         SelectionMethod selectionMethod
@@ -291,6 +291,8 @@ cdef class BranchAndCutDecoder(Decoder):
             if self.ubProvider.foundCodeword:
                 self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
                 logger.debug('init ub={}'.format(self.ubProvider.objectiveValue))
+                # codeword will be used in first iteration of main algorithm; no need to copy it
+                # here
         self.lbProvider.setLLRs(llrs, sent)
         Decoder.setLLRs(self, llrs)
 
@@ -311,7 +313,7 @@ cdef class BranchAndCutDecoder(Decoder):
 
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
         cdef:
-            Node node, root, newNode0, newNode1, newNode
+            Node node, newNode0, newNode1, newNode
             list activeNodes = []
             np.ndarray[dtype=np.double_t, ndim=1] candidate = np.zeros(self.code.blocklength, dtype=np.double)
             int i, branchIndex
@@ -322,7 +324,7 @@ cdef class BranchAndCutDecoder(Decoder):
             self.lbProvider.release(i)
             self.ubProvider.release(i)
         self.foundCodeword = self.mlCertificate = True
-        root = node = Node() #  root node
+        self.root = node = Node() #  root node
         self.selectCnt = 0 #  parameter used for the mixed node selection strategy
         self._stats["nodes"] += 1
         if self.selectionMethod == mixed:
@@ -332,9 +334,6 @@ cdef class BranchAndCutDecoder(Decoder):
 
             # statistic collection and debug output
             depthStr = str(node.depth)
-            # logger.info('{}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'
-            #             .format(root.lb, ub, node.depth, len(activeNodes), self.lbProvider.numConstrs,
-            #                     i, self._stats['lpTime'], self._stats['iterTime']))
             if depthStr not in self._stats["nodesPerDepth"]:
                 self._stats["nodesPerDepth"][depthStr] = 0
             self._stats["nodesPerDepth"][depthStr] += 1
@@ -398,7 +397,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 self._stats["prBd2"] += 1
             if node.parent is not None:
                 node.parent.updateBound(node.lb, node.branchValue)
-                if root.lb >= ub - 1e-6:
+                if self.root.lb >= ub - 1e-6:
                     self._stats["termGap"] += 1
                     break
             if len(activeNodes) == 0:
@@ -413,6 +412,122 @@ cdef class BranchAndCutDecoder(Decoder):
         self.objectiveValue = ub
 
 
+    def minimumDistance(self, randomized=True, cyclic=False):
+        """Compute the minimum distance of the code."""
+        # switch to min distance computation mode
+        self.ubProvider.excludeZero = self.minDistance = True
+        llrs = np.ones(self.code.blocklength, dtype=np.double)
+
+        if randomized:
+            # add small random values to the llrs, to enforce a unique solution
+            delta = 0.001
+            epsilon = delta/self.code.blocklength
+            np.random.seed(239847)
+            llrs += epsilon*np.random.random_sample(self.code.blocklength)
+        else:
+            delta = 1e-5
+        if cyclic:
+            self.fix(0, 1)
+        self.setLLRs(llrs)
+        self.selectCnt = 1
+        self.root = node = Node()
+        self.root.lb = 1
+        activeNodes = []
+        candidate = None
+        ub = np.inf
+        self._stats['nodes'] += 1
+        for i in itertools.count(start=1):
+            # statistic collection and debug output
+            depthStr = str(node.depth)
+            if i % 1000 == 0:
+                logger.info('MD {}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(
+                    self.root.lb,ub, node.depth,len(activeNodes), self.lbProvider.numConstrs, i,
+                    self._stats["lpTime"], self._stats['iterTime']))
+            if depthStr not in self._stats['nodesPerDepth']:
+                self._stats['nodesPerDepth'][depthStr] = 0
+            self._stats["nodesPerDepth"][depthStr] += 1
+            pruned = False # store if current node can be pruned
+            if node.lb >= ub-1+delta:
+                node.lb = np.inf
+                pruned = True
+            if not pruned:
+                # upper bound calculation
+
+                if i > 1 and self.calcUb: # for first iteration this was done in setLLR
+                    self.timer.start()
+                    self.ubProvider.solve()
+                    self._stats['iterTime'] += self.timer.stop()
+
+                if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
+                    candidate = self.ubProvider.solution.copy()
+                    ub = self.ubProvider.objectiveValue
+                    if cyclic:
+                        assert candidate[0] == 1
+                        assert candidate in self.code
+                # lower bound calculation
+                self.timer.start()
+
+                if (i == 1 or self.calcUb) and self.ubProvider.foundCodeword:
+                    self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
+                else:
+                    self.lbProvider.hint = None
+                self.lbProvider.solve(-inf, ub - 1 + delta)
+                self._stats['lpTime'] += self.timer.stop()
+                if self.lbProvider.objectiveValue > node.lb:
+                    node.lb = self.lbProvider.objectiveValue
+                if node.lb == np.inf:
+                    self._stats['prInf'] += 1
+                elif self.lbProvider.foundCodeword and self.lbProvider.objectiveValue > .5:
+                    # solution is integral
+                    logger.debug('node pruned by integrality')
+                    if self.lbProvider.objectiveValue < ub:
+                        candidate = self.lbProvider.solution.copy()
+                        print('new candidate from LP with weight {}'.format(
+                            self.lbProvider.objectiveValue))
+                        ub = self.lbProvider.objectiveValue
+                        logger.debug('ub improved to {}'.format(ub))
+                        if cyclic:
+                            assert candidate[0] == 1
+                            assert candidate in self.code
+                        self._stats['prOpt'] += 1
+                elif node.lb < ub-1+delta:
+                    # branch
+                    branchIndex = self.branchIndex()
+                    if cyclic:
+                        assert branchIndex != 0
+                    if branchIndex == -1:
+                        node.lb = np.inf
+                        print('********** PRUNE 000000 ***************')
+                    else:
+                        newNodes = [Node(parent=node, branchIndex=branchIndex, branchValue=i) for i in (0,1) ]
+                        if self.childOrder == 'random':
+                            random.shuffle(newNodes)
+                        elif (self.childOrder == 'llr' and self.llrs[branchIndex] < 0) or self.childOrder == '10':
+                            newNodes.reverse()
+                        activeNodes.extend(newNodes)
+                        self._stats['nodes'] += 2
+                else:
+                    logger.debug("node pruned by bound 2")
+                    self._stats["prBd2"] += 1
+            if node.parent is not None:
+                node.parent.updateBound(node.lb, node.branchValue)
+                if self.root.lb >= ub - 1 + delta:
+                    self._stats["termGap"] += 1
+                    break
+            if len(activeNodes) == 0:
+                self._stats["termEx"] += 1
+                break
+            newNode = self.selectNode(activeNodes, node, ub)
+            move(self.lbProvider, self.ubProvider, node, newNode)
+            node = newNode
+        self.solution = candidate
+        print(candidate)
+        assert self.solution in self.code
+        self.objectiveValue = np.rint(ub)
+        # restore normal (decoding) mode
+        self.ubProvider.excludeZero = self.minDistance = False
+        return self.objectiveValue
+
     cdef Node popMinNode(self, list activeNodes):
         cdef int i, minIndex
         cdef double minValue = np.inf
@@ -425,8 +540,8 @@ cdef class BranchAndCutDecoder(Decoder):
 
     cdef Node selectNode(self, list activeNodes, Node currentNode, double ub):
         if self.selectionMethod == mixed:
-            if (self.selectCnt >= self.mixParam) and (ub - currentNode.lb) > self.mixGap:
-                # best bound
+            if (self.selectCnt >= self.mixParam or (self.minDistance and self.root.lb == 1)) and (ub - currentNode.lb) > self.mixGap:
+                # best bound step
                 newNode = self.popMinNode(activeNodes)
                 self.selectCnt = 1
                 self.lbProvider.maxRPCrounds = self.maxRPCspecial #np.rint(ub-newNode.lb)

@@ -26,7 +26,8 @@ cdef class IterativeDecoder(Decoder):
         np.double_t[:] fixes
         int            iterations
         int            reencodeOrder
-        bint           minSum, excludeZero, reencodeIfCodeword
+        bint           minSum, reencodeIfCodeword
+        public bint    excludeZero
         # helpers for the order-i reprocessing
         np.int_t[:]    syndrome, candidate, indices, pool, varDeg2, fixSyndrome
         np.int_t[:,:]  varNeigh2

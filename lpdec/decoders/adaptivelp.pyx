@@ -72,7 +72,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         hint to insert active constraints.
     """
 
-    cdef public bint removeAboveAverageSlack, keepCuts, allZero
+    cdef public bint removeAboveAverageSlack, keepCuts, allZero, variableFixing
     cdef int nrFixedConstraints, insertActive
     cdef public double maxActiveAngle, minCutoff
     cdef public int removeInactive, numConstrs, maxRPCrounds
@@ -83,7 +83,7 @@ cdef class AdaptiveLPDecoder(Decoder):
     cdef np.ndarray setV, Nj
     cdef public np.ndarray hint
     cdef np.int_t[:] fixes
-    cdef public object timer
+    cdef public object timer, erasureDecoder
 
     def __init__(self, BinaryLinearBlockCode code,
                  maxRPCrounds=-1,
@@ -94,6 +94,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                  insertActive=0,
                  maxActiveAngle=1,
                  allZero=False,
+                 variableFixing=False,
                  name=None):
         if name is None:
             name = 'AdaptiveLPDecoder'
@@ -106,7 +107,10 @@ cdef class AdaptiveLPDecoder(Decoder):
         self.insertActive = insertActive
         self.maxActiveAngle=maxActiveAngle
         self.allZero = allZero
-
+        self.variableFixing = variableFixing
+        if variableFixing:
+            from lpdec.decoders.erasure import ErasureDecoder
+            self.erasureDecoder = ErasureDecoder(self.code)
         # initialize GLPK
         self.prob = glpk.glp_create_prob()
         glpk.glp_init_smcp(&self.parm)
@@ -215,10 +219,28 @@ cdef class AdaptiveLPDecoder(Decoder):
     cpdef fix(self, int i, int val):
         glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_FX, val, val)
         self.fixes[i] = val
+        if self.variableFixing:
+            self.doVariableFixing()
+
+    def doVariableFixing(self):
+        for i in range(self.code.blocklength):
+            if self.fixes[i] == -1:
+                self.erasureDecoder.llrs[i] = 0
+            else:
+                self.erasureDecoder.llrs[i] = 1 - 2*self.fixes[i]
+        self.erasureDecoder.solve()
+        for i in range(self.code.blocklength):
+            val = self.erasureDecoder.solution[i]
+            if val == -1:
+                glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_DB, 0.0, 1.0)
+            elif val > 1:
+                glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLPK_FX, val, val)
 
     cpdef release(self, int i):
         glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_DB, 0.0, 1.0)
         self.fixes[i] = -1
+        if self.variableFixing:
+            self.doVariableFixing()
 
     def fixed(self, int i):
         """Returns True if and only if the given index is fixed."""

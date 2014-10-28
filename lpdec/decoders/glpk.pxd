@@ -5,7 +5,10 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
-cdef extern from "glpk.h":
+"""cdef headers for talking to the GLPK C library through Cython. See the GLPK manual for
+explanations of the interface."""
+
+cdef extern from 'glpk.h':
     ctypedef struct glp_prob:
         pass
     ctypedef struct glp_smcp:

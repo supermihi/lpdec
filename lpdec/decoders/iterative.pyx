@@ -31,7 +31,6 @@ cdef class IterativeDecoder(Decoder):
                  reencodeOrder=-1,
                  reencodeRange=1,
                  reencodeIfCodeword=False,
-                 excludeZero=False,
                  name=None):
         if name is None:
             name = ('MinSum' if minSum else 'SumProduct') + '({})'.format(iterations)
@@ -41,7 +40,6 @@ cdef class IterativeDecoder(Decoder):
         self.name = name
         self.minSum = minSum
         self.reencodeRange = reencodeRange
-        self.excludeZero = excludeZero
         self.iterations = iterations
         self.reencodeOrder = reencodeOrder
         self.reencodeIfCodeword = reencodeIfCodeword
@@ -100,15 +98,15 @@ cdef class IterativeDecoder(Decoder):
 
     cpdef solve(self, double lb=-inf, double ub=inf):
         cdef:
-            np.int_t[:] checkNodeSatStates = self.checkNodeSatStates
-            np.int_t[:]    varHardBits = self.varHardBits
-            np.int_t[:]    varNodeDegree = self.varNodeDegree
-            np.int_t[:]    checkNodeDegree = self.checkNodeDegree
-            np.int_t[:,:]  varNeighbors = self.varNeighbors, checkNeighbors = self.checkNeighbors
-            np.double_t[:,:]  varToChecks = self.varToChecks, checkToVars = self.checkToVars
-            np.double_t[:] varSoftBits = self.varSoftBits, bP = self.bP, fP = self.fP
-            np.double_t[:] llrs = self.llrs, solution = self.solution
-            np.double_t[:] llrFixed = self.llrs + self.fixes
+            np.int_t[:]      checkNodeSatStates = self.checkNodeSatStates
+            np.int_t[:]      varHardBits = self.varHardBits
+            np.int_t[:]      varNodeDegree = self.varNodeDegree
+            np.int_t[:]      checkNodeDegree = self.checkNodeDegree
+            np.int_t[:,:]    varNeighbors = self.varNeighbors, checkNeighbors = self.checkNeighbors
+            np.double_t[:,:] varToChecks = self.varToChecks, checkToVars = self.checkToVars
+            np.double_t[:]   varSoftBits = self.varSoftBits, bP = self.bP, fP = self.fP
+            np.double_t[:]   llrs = self.llrs, solution = self.solution
+            np.double_t[:]   llrFixed = self.llrs + self.fixes
             int i, j, deg, iteration, checkIndex, varIndex
             int numVarNodes = self.code.blocklength
             int numCheckNodes = self.code.parityCheckMatrix.shape[0]
@@ -134,6 +132,10 @@ cdef class IterativeDecoder(Decoder):
                 varSoftBits[i] = llrFixed[i]
                 for j in range(varNodeDegree[i]):
                     varSoftBits[i] += checkToVars[varNeighbors[i,j], i]
+                    if np.isnan(varSoftBits[i]):
+                        # this might happen if contradicting bits are fixed
+                        self.objectiveValue = np.inf
+                        return
                 varHardBits[i] = ( varSoftBits[i] <= 0 )
                 for j in range(varNodeDegree[i]):
                     checkIndex = varNeighbors[i,j]
@@ -181,10 +183,10 @@ cdef class IterativeDecoder(Decoder):
             solution[i] = varHardBits[i]
             if varHardBits[i]:
                 self.objectiveValue += llrs[i]
-
+        if not codeword:
+            self._stats['noncodewords'] += 1
         if not codeword or (self.excludeZero and self.objectiveValue == 0) or self.reencodeIfCodeword:
-            if not codeword:
-                self._stats['noncodewords'] += 1
+            if not codeword or (self.excludeZero and self.objectiveValue == 0):
                 self.objectiveValue = inf
             if self.reencodeOrder >= 0:
                 self.reprocess()
@@ -205,6 +207,15 @@ cdef class IterativeDecoder(Decoder):
         cdef np.double_t[:] fixes = self.fixes, solution = self.solution, llrs = self.llrs
         cdef np.int_t[:] unit = np.asarray(gaussianElimination(matrix, sorted, True))
 
+        for j in unit:
+            if fixes[j] != 0:
+                # unit column is fixed -> not enough "free" unit columns -> no reprocessing possible
+                return 0
+        # first, data structures are built up.
+        # pool: contains the variable indices that are neither part of the unit matrix nor fixed,
+        #   ie, the pool of indices that can be flipped during order-i reprocessing. poolSize
+        #   indicates what part of pool is valid.
+        # fixSyndrome: per check, stores the syndrome (mod-2 sum) of the fixed columns of H.
         for j in range(matrix.shape[0]):
             fixSyndrome[j] = 0
         for i in range(self.code.blocklength):
@@ -216,8 +227,10 @@ cdef class IterativeDecoder(Decoder):
                 elif fixes[j] == -inf:
                     for row in range(matrix.shape[0]):
                         fixSyndrome[row] ^= matrix[row, j]
-
-        maxRange = int(poolSize * self.reencodeRange)
+        # poolRange: one plus maximum pool index for flipping due to reencodeRange limitation.
+        poolRange = int(poolSize * self.reencodeRange)
+        # varDeg: record variable degrees of indices in pool (wrt Gaussed matrix)
+        # varNeigh: record neighborhood of variables in pool (wrt Gaussed matrix)
         for j in range(poolSize):
             varDeg[j] = 0
             for i in range(matrix.shape[0]):
@@ -226,8 +239,8 @@ cdef class IterativeDecoder(Decoder):
                     varDeg[j] += 1
 
         for order in range(0, self.reencodeOrder+1):
-            # need at least ``order`` flippable positions!
-            if order > poolSize:
+            # we need at least `order` flippable positions in the allowed pool range!
+            if order > poolRange:
                 break
             # reset candidate and syndrome
             for j in range(self.code.blocklength):
@@ -238,8 +251,11 @@ cdef class IterativeDecoder(Decoder):
                 if candidate[pool[j]]:
                     for i in range(varDeg[j]):
                         syndrome[varNeigh[j, i]] ^= 1
+            # now, syndrome reflects the syndrome of the matrix except for the unit part
+
             # this is inspired by the example implementation of itertools.combinations in the
             # python docs
+            # First, flip bits 0, ..., order-1, and reencode this configuration.
             for i in range(order):
                 indices[i] = i
                 candidate[pool[indices[i]]] ^= 1
@@ -256,9 +272,10 @@ cdef class IterativeDecoder(Decoder):
                 self.foundCodeword = True
                 for j in range(self.code.blocklength):
                     solution[j] = candidate[j]
+            # now, move the `order` positions through all configurations among the feasible pool.
             while True:
                 for i in range(order - 1, -1, -1):
-                    if indices[i] != i + maxRange - order:
+                    if indices[i] != i + poolRange - order:
                         break
                 else:
                     break
@@ -302,7 +319,5 @@ cdef class IterativeDecoder(Decoder):
             parms['reencodeRange'] = self.reencodeRange
         if self.reencodeIfCodeword:
             parms['reencodeIfCodeword'] = True
-        if self.excludeZero:
-            parms['excludeZero'] = True
         parms['name'] = self.name
         return parms

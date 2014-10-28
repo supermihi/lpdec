@@ -26,3 +26,10 @@ Branch-and-Cut Decoder
 ======================
 
 .. automodule:: lpdec.decoders.branchcut
+
+
+Erasure Decoder
+===============
+
+.. automodule:: lpdec.decoders.erasure
+
