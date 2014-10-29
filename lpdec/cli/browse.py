@@ -81,7 +81,8 @@ def browse(args):
                   .format(i, run.code.name, run.decoder.name, run.identifier,
                           '{}–{}'.format(run.minSNR(), run.maxSNR()),
                           run.wordSeed,
-                          '{:%c} – {:%c}'.format(run.date_start.astimezone(tz.tzlocal()),
+                          '{:%d.%m.%y %H:%M}/{:%d.%m.%y %H:%M}'.format(run.date_start.astimezone(
+                              tz.tzlocal()),
                                                  run.date_end.astimezone(tz.tzlocal()))))
         print('{0:>3s}: *select all*'.format('A'))
         ans = raw_input('Select number(s): ')
