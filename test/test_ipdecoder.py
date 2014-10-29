@@ -6,21 +6,100 @@
 # published by the Free Software Foundation
 
 import unittest
-
 import numpy as np
 
 from lpdec.codes import BinaryLinearBlockCode
 from lpdec.channels import *
 from lpdec.codes.classic import HammingCode
-from lpdec.decoders.ip import CplexIPDecoder
+from lpdec.decoders.ip import CplexIPDecoder, GurobiIPDecoder
+from lpdec.decoders.branchcut import BranchAndCutDecoder
 from lpdec.persistence import JSONDecodable
 from . import testData
 from test import requireCPLEX
 
 
+class TestMLDecoders:
+
+    """Compare all available ML decoders and check that they yield the same results."""
+
+    def createDecoders(self, code):
+        decoders = []
+        try:
+            import cplex
+            decoders.append(CplexIPDecoder(code))
+        except:
+            pass
+        try:
+            import gurobipy
+            decoders.append(GurobiIPDecoder(code))
+        except:
+            pass
+        decoders.append(BranchAndCutDecoder(code, name='BC1', selectionMethod='mixed-/30/100/5/2',
+                        childOrder='llr',
+                        lpParams=dict(removeInactive=100, insertActive=1, keepCuts=True,
+                                      maxRPCrounds=100, minCutoff=.2),
+                        iterParams=dict(iterations=100, reencodeOrder=2, reencodeIfCodeword=False)))
+        decoders.append(BranchAndCutDecoder(code, name='BC2'))
+        return decoders
+
+    def codes(self):
+        yield BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N23_M11.txt')), 7
+        yield BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N155_M93.txt')), 20
+        yield HammingCode(4), 3
+
+    def computeDmin(self, decoder, asserted):
+        baseMsg = 'Error calculating minimum distance of code {} using {}: '.format(
+                decoder.code.name, decoder.name)
+        dmin = decoder.minimumDistance()
+        assert dmin == asserted, baseMsg + '{} (calc) != {} (corr)'.format(dmin, asserted)
+        assert decoder.solution in decoder.code
+        assert np.sum(decoder.solution) == asserted
+
+    def test_minDistance(self):
+        for code, dmin in self.codes():
+            if dmin > 10:
+                continue # skip dmin for too large codes
+            for decoder in self.createDecoders(code):
+                yield self.computeDmin, decoder, dmin
+
+    def compareDecoders(self, decoders, snr):
+        seed = 340987
+        code = decoders[0].code
+        channel = AWGNC(snr, code.rate, seed=seed)
+        sig = channel.signalGenerator(code, wordSeed=seed)
+        for i in range(25):
+            llr = next(sig)
+            refOutput = None
+            refObjVal = None
+            refError = None
+            for useHint in False, True:
+                hint = sig.encoderOutput if useHint else None
+                for decoder in decoders:
+                    solution = decoder.decode(llr, sent=hint)
+                    error = not np.allclose(solution, sig.encoderOutput)
+                    if refOutput is None:
+                        refOutput = solution.copy()
+                        refObjVal = decoder.objectiveValue
+                        refError = error
+                    else:
+                        assert np.allclose(refOutput, solution)
+                        assert np.allclose(refObjVal, decoder.objectiveValue)
+                        assert refError == error
+
+
+    def test_decoding(self):
+        for code, _ in self.codes():
+            decoders = self.createDecoders(code)
+            if code.blocklength == 155:
+                decoders = decoders[:-1]
+            snrs = [2, 4, 6]
+            for snr in snrs:
+                yield self.compareDecoders, decoders, snr
+
+
 class TestCplexIPDecoder(unittest.TestCase):
     """Run various test with the (23, 12) Golay code."""
-    
+
     def setUp(self):
         self.code = BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N23_M11.txt'))
 
@@ -28,7 +107,8 @@ class TestCplexIPDecoder(unittest.TestCase):
     def test_minDistance(self):
         """Test if the minimum distance computation works."""
         self.decoder = CplexIPDecoder(self.code)
-        distance, codeword = self.decoder.minimumDistance()
+        distance = self.decoder.minimumDistance()
+        codeword = self.decoder.solution
         self.assertEqual(distance, 7)
         self.assertEqual(codeword.sum(), 7)
         self.assertIsInstance(codeword, np.ndarray)

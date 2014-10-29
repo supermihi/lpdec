@@ -6,6 +6,7 @@
 # published by the Free Software Foundation
 
 from os.path import dirname, join
+from functools import wraps
 
 here = dirname(__file__)
 
@@ -19,10 +20,11 @@ def requireCPLEX(func):
 
     Will skip the test if CPLEX is not installed.
     """
-    def newFunc(self, *args, **kwargs):
+    @wraps(func)
+    def test_func(self, *args, **kwargs):
         try:
             import cplex
         except ImportError:
             self.skipTest('CPLEX is not installed')
         return func(self, *args, **kwargs)
-    return newFunc
+    return test_func

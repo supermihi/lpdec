@@ -6,7 +6,6 @@
 # published by the Free Software Foundation
 
 import unittest
-import itertools
 import numpy as np
 from lpdec.codes import BinaryLinearBlockCode
 from lpdec.channels import *

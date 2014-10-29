@@ -578,7 +578,3 @@ cdef class BranchAndCutDecoder(Decoder):
             parms['highSNR'] = True
         parms['name'] = self.name
         return parms
-
-
-
-

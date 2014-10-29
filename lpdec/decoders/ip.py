@@ -15,7 +15,7 @@ pp. 4753-4769.
 from __future__ import division, print_function
 from collections import OrderedDict
 import numpy as np
-from lpdec.decoders import cplexhelpers
+from lpdec.decoders import Decoder, cplexhelpers
 
 
 class CplexIPDecoder(cplexhelpers.CplexDecoder):
@@ -55,7 +55,7 @@ class CplexIPDecoder(cplexhelpers.CplexDecoder):
         self.setLLRs(np.ones(self.code.blocklength))
         self.solve(hint)
         self.cplex.linear_constraints.delete('nonzero')
-        return int(round(self.objectiveValue)), np.array(self.solution)
+        return int(round(self.objectiveValue))
 
     def fix(self, index, value):
         if value == 0:
@@ -73,3 +73,71 @@ class CplexIPDecoder(cplexhelpers.CplexDecoder):
         return params
 
 
+class GurobiIPDecoder(Decoder):
+
+    def __init__(self, code, gurobiParams=dict(), name=None):
+
+        if name is None:
+            name = 'GurobiIPDecoder'
+        Decoder.__init__(self, code, name)
+        from gurobipy import Model, GRB, quicksum
+        matrix = code.parityCheckMatrix
+        self.model = Model('ML Decoder')
+        self.model.setParam('OutputFlag', 0)
+        for param, value in gurobiParams.items():
+            self.model.setParam(param, value)
+        self.grbParams = gurobiParams
+        self.x = [self.model.addVar(vtype=GRB.BINARY, name="x{}".format(i))
+                  for i in range(code.blocklength)]
+        self.z = [self.model.addVar(vtype=GRB.INTEGER, name="z{}".format(i))
+                  for i in range(matrix.shape[0])]
+        self.model.update()
+        for z, row in zip(self.z, matrix):
+            self.model.addConstr(quicksum(self.x[i] for i in np.flatnonzero(row)) - 2 * z, GRB.EQUAL, 0)
+        self.model.update()
+        self.mlCertificate = self.foundCodeword = True
+        self.solution = np.empty(code.blocklength, dtype=np.double)
+
+    def setStats(self, stats):
+        if 'nodes' not in stats:
+            stats['nodes'] = 0
+        Decoder.setStats(self, stats)
+
+    def setLLRs(self, llrs, sent=None):
+        from gurobipy import GRB, LinExpr
+        self.model.setObjective(LinExpr(llrs, self.x), GRB.MINIMIZE)
+        Decoder.setLLRs(self, llrs, sent)
+
+    def solve(self, lb=-np.inf, ub=np.inf):
+        from gurobipy import GRB
+        self.model.optimize()
+        if self.model.getAttr('Status') == GRB.INTERRUPTED:
+            raise KeyboardInterrupt()
+        self._stats["nodes"] += self.model.getAttr("NodeCount")
+        self.objectiveValue = self.model.objVal
+        for i, x in enumerate(self.x):
+            self.solution[i] = x.x
+
+    def minimumDistance(self, hint=None):
+        """Calculate the minimum distance of :attr:`code` via integer programming.
+
+        Compared to the decoding formulation, this adds the constraint :math:`|x| \\geq 1` and
+        minimizes :math:`\\sum_{i=1}^n x`.
+        """
+        from gurobipy import quicksum, GRB
+        self.hint = hint
+        self.model.addConstr(quicksum(self.x), GRB.GREATER_EQUAL, 1, name='excludeZero')
+        self.model.update()
+        self.model.setParam('MIPGapAbs', 1-1e-5)
+        self.setLLRs(np.ones(self.code.blocklength))
+        self.solve(hint)
+        self.model.remove(self.model.getConstrByName('excludeZero'))
+        self.model.update()
+        return int(round(self.objectiveValue))
+
+    def params(self):
+        ret = OrderedDict()
+        if len(self.grbParams):
+            ret['gurobiParams'] = self.grbParams
+        ret['name'] = self.name
+        return ret

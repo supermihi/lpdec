@@ -14,7 +14,7 @@ from __future__ import division, print_function
 from collections import OrderedDict
 cimport numpy as np
 import numpy as np
-from libc.math cimport tanh, atanh, fmin, fmax, fabs
+from libc.math cimport tanh, atanh, fmin, fmax, fabs, isnan
 from lpdec.decoders cimport Decoder
 from lpdec.mod2la cimport gaussianElimination
 
@@ -132,7 +132,7 @@ cdef class IterativeDecoder(Decoder):
                 varSoftBits[i] = llrFixed[i]
                 for j in range(varNodeDegree[i]):
                     varSoftBits[i] += checkToVars[varNeighbors[i,j], i]
-                    if np.isnan(varSoftBits[i]):
+                    if isnan(varSoftBits[i]):
                         # this might happen if contradicting bits are fixed
                         self.objectiveValue = np.inf
                         return
@@ -195,7 +195,7 @@ cdef class IterativeDecoder(Decoder):
     cdef int reprocess(self) except 1:
         """Perform order-i reprocessing, where i is given by :attr:`self.reencodeOrder`.
         """
-        cdef int mod2sum, i, j, index, order, poolSize = 0
+        cdef int mod2sum, i, j, index, order, poolSize = 0, poolRange
         cdef double objVal
         cdef np.int_t[:] sorted = np.argsort(np.abs(self.varSoftBits))
         cdef np.int_t[:] indices = self.indices, pool = self.pool
