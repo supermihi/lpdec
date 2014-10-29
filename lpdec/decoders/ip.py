@@ -74,19 +74,22 @@ class CplexIPDecoder(cplexhelpers.CplexDecoder):
 
 
 class GurobiIPDecoder(Decoder):
-
-    def __init__(self, code, gurobiParams=dict(), name=None):
+    """Gurobi implementation of the IPD maximum-likelihood decoder.
+    """
+    def __init__(self, code, gurobiParams=dict(), gurobiVersion=None, name=None):
 
         if name is None:
             name = 'GurobiIPDecoder'
         Decoder.__init__(self, code, name)
-        from gurobipy import Model, GRB, quicksum
+        from gurobipy import Model, GRB, quicksum, gurobi
         matrix = code.parityCheckMatrix
         self.model = Model('ML Decoder')
         self.model.setParam('OutputFlag', 0)
         for param, value in gurobiParams.items():
             self.model.setParam(param, value)
         self.grbParams = gurobiParams
+        if gurobiVersion:
+            assert gurobiVersion == gurobi.version()
         self.x = [self.model.addVar(vtype=GRB.BINARY, name="x{}".format(i))
                   for i in range(code.blocklength)]
         self.z = [self.model.addVar(vtype=GRB.INTEGER, name="z{}".format(i))
@@ -108,11 +111,39 @@ class GurobiIPDecoder(Decoder):
         self.model.setObjective(LinExpr(llrs, self.x), GRB.MINIMIZE)
         Decoder.setLLRs(self, llrs, sent)
 
+    @staticmethod
+    def callback(model, where):
+        """ A callback function for Gurobi that is able to terminate the MIP solver if a solution
+        which is better than the sent codeword has been found.
+        """
+        from gurobipy import GRB
+        if where == GRB.Callback.MIPNODE:
+            if model.cbGet(GRB.Callback.MIPNODE_OBJBST) < model._realObjective - 1e-6:
+                model._incObj = model.cbGet(GRB.Callback.MIPNODE_OBJBST)
+                model.terminate()
+
     def solve(self, lb=-np.inf, ub=np.inf):
         from gurobipy import GRB
-        self.model.optimize()
+        self.mlCertificate = True
+        if self.sent is not None:
+            sent = np.asarray(self.sent)
+            for val, var in zip(sent, self.x):
+                var.Start = val
+            zValues = np.dot(self.code.parityCheckMatrix, sent / 2).tolist()
+            for val, var in zip(zValues, self.z):
+                var.Start = val
+
+            self.model._realObjective = np.dot(self.sent, self.llrs)
+            self.model._incObj = None
+            self.model.optimize(GurobiIPDecoder.callback)
+        else:
+            self.model.optimize()
         if self.model.getAttr('Status') == GRB.INTERRUPTED:
-            raise KeyboardInterrupt()
+            if self.sent is None or self.model._incObj is None:
+                raise KeyboardInterrupt()
+            else:
+                self.objectiveValue = self.model._incObj
+                self.mlCertificate = False
         self._stats["nodes"] += self.model.getAttr("NodeCount")
         self.objectiveValue = self.model.objVal
         for i, x in enumerate(self.x):
@@ -125,12 +156,11 @@ class GurobiIPDecoder(Decoder):
         minimizes :math:`\\sum_{i=1}^n x`.
         """
         from gurobipy import quicksum, GRB
-        self.hint = hint
         self.model.addConstr(quicksum(self.x), GRB.GREATER_EQUAL, 1, name='excludeZero')
         self.model.update()
         self.model.setParam('MIPGapAbs', 1-1e-5)
         self.setLLRs(np.ones(self.code.blocklength))
-        self.solve(hint)
+        self.solve()
         self.model.remove(self.model.getConstrByName('excludeZero'))
         self.model.update()
         return int(round(self.objectiveValue))
@@ -139,5 +169,7 @@ class GurobiIPDecoder(Decoder):
         ret = OrderedDict()
         if len(self.grbParams):
             ret['gurobiParams'] = self.grbParams
+        import gurobipy
+        ret['gurobiVersion'] = '.'.join(str(v) for v in gurobipy.gurobi.version())
         ret['name'] = self.name
         return ret

@@ -15,7 +15,7 @@ code = HammingCode(4)
 # simple IP decoder
 decoder1 = CplexIPDecoder(code, name='CPLEX IP Decoder')
 # IP decoder with more options
-decoder2 = CplexIPDecoder(code, cplexParams={'threads': 1}, name = 'Cplex SingleThreaded')
+decoder2 = CplexIPDecoder(code, cplexParams={'threads': 1}, name='Cplex SingleThreaded')
 # advanced configuration of B&C decoder:
 decoder3 = BranchAndCutDecoder(code, name='B&C Decoder',
                                selectionMethod='mixed-/30/100/5/2',
