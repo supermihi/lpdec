@@ -105,6 +105,10 @@ class Simulation(list):
         return type(self[0].channel)
 
     @property
+    def wordSeed(self):
+        return self[0].wordSeed
+
+    @property
     def date_start(self):
         """Return the earliest computation start of the run."""
         return min(point.date_start for point in self)

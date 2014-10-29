@@ -74,12 +74,13 @@ def browse(args):
     runs = dbsim.simulations(code=selectedCodes, identifier=identifiers)
     if not args.all:
         print('These simulation runs match your selection:')
-        print('{:>3s}  {:30s} {:40s} {:16s} {:10s} {}\n'
-              .format("i", "code", "decoder", "identifier", "snr-range", "date"))
+        print('{:>3s}  {:30s} {:40s} {:16s} {:9s} {:8s} {}\n'
+              .format("i", "code", "decoder", "identifier", "snr range", 'wordseed', "date"))
         for i, run in enumerate(runs):
-            print('{:>3d}: {:30s} {:40s} {:16s} {:10s} {}'
+            print('{:>3d}: {:30s} {:40s} {:16s} {:9s} {:<8d} {}'
                   .format(i, run.code.name, run.decoder.name, run.identifier,
                           '{}–{}'.format(run.minSNR(), run.maxSNR()),
+                          run.wordSeed,
                           '{:%c} – {:%c}'.format(run.date_start.astimezone(tz.tzlocal()),
                                                  run.date_end.astimezone(tz.tzlocal()))))
         print('{0:>3s}: *select all*'.format('A'))
@@ -132,9 +133,9 @@ point.samples, point.errors, point.frameErrorRate, point.cputime/point.samples)}
 
 TEMPLATES['verb'] = \
 """{{sim.identifier}}: {{sim.code.name}} // {{sim.decoder.name}}:
-  channel          samples    errors     FER      av.cpu
-{% for point in sim %}  {{"{:16s}  {:<10d} {:<10d} {:<8.2e} {:<.6f}".format(point.channel,
-point.samples, point.errors, point.frameErrorRate, point.cputime/point.samples)}}\
+  samples    errors     FER      av.cpu   wordseed channel
+{% for point in sim %}  {{"{:<10d} {:<10d} {:<8.2e} {:<.6f} {:8d} {:10s}".format(point.samples,
+point.errors, point.frameErrorRate, point.cputime/point.samples, point.wordSeed, point.channel)}}\
 {% if verbose %}
   {{point|formatStats}}
 {% endif %}
