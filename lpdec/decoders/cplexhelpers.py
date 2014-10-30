@@ -10,7 +10,6 @@
 from __future__ import print_function
 from collections import OrderedDict
 import sys
-import cplex
 import numpy as np
 from lpdec.decoders import Decoder
 
@@ -19,6 +18,7 @@ def getInstance(**params):
     """Create and return a :class:`cplex.Cplex` instance with disabled debugging output. Keyword
     args are passed to :func:`setCplexParams`.
     """
+    import cplex
     cpx = cplex.Cplex()
     cpx.set_results_stream(None)
     cpx.set_warning_stream(None)
@@ -113,48 +113,52 @@ class CplexDecoder(Decoder):
     def cpxSolve(self):
         self.cplex.solve()
 
+try:
+    import cplex
+    class ShortcutCallback(cplex.callbacks.MIPInfoCallback):
+        """A MIP callback that aborts computation codeword with an objective value below that of
+        the sent codeword is found. In that event, it is sure that the ML decoder would fail,
+        even though the exact ML solution might still be a different (better-valued) codeword. If
+        only the ML performance is of interest, however, this difference does not matter.
 
-class ShortcutCallback(cplex.callbacks.MIPInfoCallback):
-    """A MIP callback that aborts computation codeword with an objective value below that of
-    the sent codeword is found. In that event, it is sure that the ML decoder would fail,
-    even though the exact ML solution might still be a different (better-valued) codeword. If
-    only the ML performance is of interest, however, this difference does not matter.
+        To use the callback, install it using ::func:`cplex.Cplex.register_callback`,
+        set :attr:`codewordVars` to the names of the codeword variables (for example, `['x1',
+        'x2', 'x3']`. and reset :attr:`occured` to False before any call to :func:`Decoder.solve`.
 
-    To use the callback, install it using ::func:`cplex.Cplex.register_callback`,
-    set :attr:`codewordVars` to the names of the codeword variables (for example, `['x1',
-    'x2', 'x3']`. and reset :attr:`occured` to False before any call to :func:`Decoder.solve`.
+        After solving, :attr:`occured` will tell if the short callback has come to effect. In that
+        case, the incumbent solution and its objective value are acessible via :attr:`solution` and
+        :attr:`objectiveValue`, respectively.
 
-    After solving, :attr:`occured` will tell if the short callback has come to effect. In that
-    case, the incumbent solution and its objective value are acessible via :attr:`solution` and
-    :attr:`objectiveValue`, respectively.
+        The callback can also be used with random (in contrast to all-zero) codewords. In that case,
+        set :attr:`realObjective` to the objective value of the correct codeword before solving.
+        """
 
-    The callback can also be used with random (in contrast to all-zero) codewords. In that case,
-    set :attr:`realObjective` to the objective value of the correct codeword before solving.
-    """
+        def __init__(self, *args, **kwargs):
+            import cplex
+            cplex.callbacks.MIPInfoCallback.__init__(self, *args, **kwargs)
+            self.active = False
+            self.occured = False
+            self.realObjective = 0
+            self.decoder = None
 
-    def __init__(self, *args, **kwargs):
-        cplex.callbacks.MIPInfoCallback.__init__(self, *args, **kwargs)
-        self.active = False
-        self.occured = False
-        self.realObjective = 0
-        self.decoder = None
+        def activate(self, objective):
+            self.realObjective = objective
+            self.active = True
+            self.occured = False
 
-    def activate(self, objective):
-        self.realObjective = objective
-        self.active = True
-        self.occured = False
+        def __call__(self):
+            if self.active and self.has_incumbent():
+                incObj = self.get_incumbent_objective_value()
+                if incObj < self.realObjective - 1e-6:
+                    self.occured = True
+                    self.objectiveValue = incObj
+                    self.solution = np.rint(self.get_incumbent_values(self.decoder.x))
+                    self.abort()
 
-    def __call__(self):
-        if self.active and self.has_incumbent():
-            incObj = self.get_incumbent_objective_value()
-            if incObj < self.realObjective - 1e-6:
-                self.occured = True
-                self.objectiveValue = incObj
-                self.solution = np.rint(self.get_incumbent_values(self.decoder.x))
-                self.abort()
-
-    def deactivate(self):
-        self.active = False
+        def deactivate(self):
+            self.active = False
+except ImportError:
+    pass  # CPLEX not available
 
 
 # noinspection PyProtectedMember
@@ -162,6 +166,7 @@ def checkKeyboardInterrupt(cpx):
     """Checks the solution status of the given :class:`cplex.Cplex` instance for keyboard
     interrupts, and raises a :class:`KeyboardInterrupt` exception in that case.
     """
+    import cplex
     if cpx.solution.get_status() in (cplex._internal._constants.CPX_STAT_ABORT_USER,
                                      cplex._internal._constants.CPXMIP_ABORT_FEAS,
                                      cplex._internal._constants.CPXMIP_ABORT_INFEAS):

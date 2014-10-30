@@ -89,7 +89,7 @@ class GurobiIPDecoder(Decoder):
             self.model.setParam(param, value)
         self.grbParams = gurobiParams
         if gurobiVersion:
-            assert gurobiVersion == gurobi.version()
+            assert gurobiVersion == '.'.join(str(v) for v in gurobi.version())
         self.x = [self.model.addVar(vtype=GRB.BINARY, name="x{}".format(i))
                   for i in range(code.blocklength)]
         self.z = [self.model.addVar(vtype=GRB.INTEGER, name="z{}".format(i))

@@ -44,19 +44,24 @@ def formatStats(point):
 
 
 def browse(args):
-    import lpdec.imports
+    """Interactive command-line browsing through simulation results."""
+    import lpdec.imports  # ensure all decoder and code classes are loaded
     lpdec.database.init(args.database)
     dbsim.init()
-    identifiers = dbsim.existingIdentifiers()
+
+    # query simulation identifier, if not provided as CLI option
     if args.identifier:
-        identifiers = [ args.identifier ]
+        identifiers = [args.identifier]
     else:
+        identifiers = dbsim.existingIdentifiers()
         print('Available identifiers:')
         for i, ident in enumerate(identifiers):
             print('{0:2d}: {1}'.format(i, ident))
         ans = raw_input('Select number(s): ')
-        nums = [ int(s) for s in ans.split() ]
+        nums = [int(s) for s in ans.split()]
         identifiers = [identifiers[num] for num in nums]
+
+    # query code, if not provided as CLI option
     if args.code:
         selectedCodes = [args.code]
     else:
@@ -71,7 +76,10 @@ def browse(args):
         else:
             nums = [int(n) for n in ans.split()]
         selectedCodes = [codes[num] for num in nums]
+
+    # query simulation run
     runs = dbsim.simulations(code=selectedCodes, identifier=identifiers)
+    runs.sort(key=lambda run: run.date_start)
     if not args.all:
         print('These simulation runs match your selection:')
         print('{:>3s}  {:30s} {:40s} {:16s} {:9s} {:8s} {}\n'

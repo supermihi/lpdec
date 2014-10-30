@@ -15,11 +15,9 @@ from lpdec.codes.ldpc import *
 
 from lpdec.decoders import *
 from lpdec.decoders.iterative import *
-try:
-    from lpdec.decoders.ip import *
-except ImportError:
-    logging.warning('Skipping import of IP solvers because CPLEX is not installed')
+from lpdec.decoders.ip import *
 from lpdec.decoders.branchcut import *
+from lpdec.decoders.erasure import *
 
 from lpdec.utils import *
 

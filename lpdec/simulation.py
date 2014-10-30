@@ -4,12 +4,18 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
+
 from __future__ import division, print_function
+
 from collections import OrderedDict
 import datetime
 import math
+from multiprocessing import Process, Value
+from multiprocessing.queues import JoinableQueue
+
 import numpy as np
 import lpdec
+
 from lpdec import database as db, utils
 from lpdec.utils import TERM_BOLD_RED, TERM_BOLD, TERM_NORMAL, TERM_RED, Timer, utcnow
 
@@ -147,6 +153,7 @@ class Simulator(object):
         self.dbStoreTimeInterval = 60*5  # 5 minutes
         self.outputInterval = 30 # number of seconds between status output
         self.verbose = True # print information for every frame
+        self.concurrent = True
         #  check if the code exists in the database but has different parameters. This avoids
         #  a later error which would imply a waste of time.
         from lpdec.database import simulation as dbsim
@@ -157,7 +164,7 @@ class Simulator(object):
         db.checkCode(code, insert=False)
 
     def run(self):
-        def prv(*args, **kwargs):
+        def prv(*args, **kwargs):  # print function conditioned on self.verbose
             if self.verbose:
                 print(*args, **kwargs)
         from lpdec.database import simulation as dbsim
@@ -211,14 +218,35 @@ class Simulator(object):
                         string = '{:.4g} sec'.format(point.cputime)
                     print(outputFormat[decoder].format(string), end='')
                 print('')
+        if self.concurrent:
+            processes = {decoder: DecoderProcess(decoder, self.revealSent)
+                         for decoder in self.decoders}
+
         for i in xrange(startSample, self.maxSamples+1):
-            channelOutput = next(signaller)
             sampleOffset = max(5, int(math.ceil(math.log10(i)))) + len(': ')
             if i == startSample or (utcnow() - lastOutput).total_seconds() > self.outputInterval:
                 printStatus()
                 lastOutput = utcnow()
             prv(('{:' + str(sampleOffset-2) + 'd}: ').format(i), end='')
             unfinishedDecoders = len(self.dataPoints)
+            channelOutput = next(signaller)
+            # go through decoders. For those not yet finished, start decoding or, in concurrent
+            # mode, place item in the queue
+            for decoder, point in self.dataPoints.items():
+                if point.errors >= self.maxErrors or point.samples >= self.maxSamples or \
+                        point.samples > i:
+                    continue
+                if self.concurrent:
+                    processes[decoder].jobQueue.put((channelOutput, signaller.encoderOutput))
+                else:
+                    with Timer() as timer:
+                        if self.revealSent:
+                            decoder.decode(channelOutput, sent=signaller.encoderOutput)
+                        else:
+                            decoder.decode(channelOutput)
+                    point.cputime += timer.duration
+            # go through decoders again. Print output for each decoder. In concurrent mode,
+            # join all the job queues.
             for decoder, point in self.dataPoints.items():
                 if point.errors >= self.maxErrors or point.samples >= self.maxSamples:
                     prv(outputFormat[decoder].format('finished'), end='')
@@ -227,18 +255,23 @@ class Simulator(object):
                 if point.samples > i:
                     prv(outputFormat[decoder].format('skip'), end='')
                     continue
-                with Timer() as timer:
-                    if self.revealSent:
-                        decoder.decode(channelOutput, sent=signaller.encoderOutput)
-                    else:
-                        decoder.decode(channelOutput)
-                point.cputime += timer.duration
-                point.samples += 1
-                if not np.allclose(decoder.solution, signaller.encoderOutput, 1e-7):
-                    point.errors += 1
-                    prv(TERM_BOLD_RED if decoder.mlCertificate else TERM_RED, end='')
+                if self.concurrent:
+                    proc = processes[decoder]
+                    proc.jobQueue.join()
+                    point.cputime += proc.time.value
+                    error = proc.error.value
+                    obj = proc.objVal.value
+                    ml = proc.mlCertificate.value
                 else:
-                    prv(TERM_BOLD if decoder.mlCertificate else TERM_NORMAL, end='')
+                    error = not np.allclose(decoder.solution, signaller.encoderOutput, 1e-7)
+                    obj = decoder.objectiveValue
+                    ml = decoder.mlCertificate
+                point.samples += 1
+                if error:
+                    point.errors += 1
+                    prv(TERM_BOLD_RED if ml else TERM_RED, end='')
+                else:
+                    prv(TERM_BOLD if ml else TERM_NORMAL, end='')
                 store = False
                 if point.samples == self.maxSamples or point.errors == self.maxErrors:
                     store = True
@@ -250,10 +283,53 @@ class Simulator(object):
                 if store:
                     point.store()
                 #  avoid "-0" in the output
-                val = 0 if abs(decoder.objectiveValue) < 1e-8 else decoder.objectiveValue
+                val = 0 if abs(obj) < 1e-8 else obj
                 outputString = '{:<.7f}'.format(val) + ('*' if store else '')
                 prv(outputFormat[decoder].format(outputString) + TERM_NORMAL, end='')
             prv(' {}'.format(signaller.correctObjectiveValue()))
             if unfinishedDecoders == 0:
                 printStatus()
                 break
+
+
+class DecoderProcess(Process):
+    """:class:`multiprocessing.Process` subclass for concurrent simulation.
+
+    A :class:`DecoderProcess` is responsible for one specific decoder. As soon as an item is
+    placed on the :attr:`jobQueue`, decoding starts. After finishing, the attributes
+    :attr:`time`, :attr:`error`, :attr:`objVal` and :attr:`mlCertificate` contain information
+    about the solution.
+
+    :param decoder: The :class:`.Decoder` used for this process.
+    :param revealSent: If decoding should reveal the sent codeword.
+
+    .. attribute:: jobQueue
+
+      On this queue, pairs (llr, sentCodeword) are put. The process will start decoding
+      immediately, and signal :func:`JoinableQueue.task_done` when finished."""
+
+    def __init__(self, decoder, revealSent):
+        Process.__init__(self)
+        self.decoder = decoder
+        self.jobQueue = JoinableQueue()
+        self.daemon = True
+        self.revealSent = revealSent
+        self.time = Value('d', 0.0)
+        self.error = Value('i', False)
+        self.objVal = Value('d', 0.0)
+        self.mlCertificate = Value('i', False)
+        self.start()
+
+    def run(self):
+        while True:
+            llr, sent = self.jobQueue.get()
+            with Timer() as timer:
+                if self.revealSent:
+                    self.decoder.decode(llr, sent=sent)
+                else:
+                    self.decoder.decode(llr)
+            self.error.value = not np.allclose(self.decoder.solution, sent, 1e-7)
+            self.time.value = timer.duration
+            self.objVal.value = self.decoder.objectiveValue
+            self.mlCertificate.value = self.decoder.mlCertificate
+            self.jobQueue.task_done()
