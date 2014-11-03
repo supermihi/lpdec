@@ -25,7 +25,7 @@ ALLOW_DIRTY_VERSION = False
 
 class DataPoint:
     """Data class storing information about a single point of measurement, i.e. a certain
-    combination of code, decoder, channel, and identifier.
+    combination of code, channel, word seed, decoder and identifier.
     """
     def __init__(self, code, channel, wordSeed, decoder, identifier):
         self.code = code
@@ -40,6 +40,8 @@ class DataPoint:
         self.program = 'lpdec'
         self.version = lpdec.exactVersion()
         self.machine = utils.machineString()
+        # CPU time and number of samples in database. This is used to calculate when DB should be
+        #  updated after a specific time / number of samples have been computed.
         self._dbCputime = self._dbSamples = 0
 
     @property
@@ -59,6 +61,7 @@ class DataPoint:
         return self.samples - self._dbSamples
 
     def store(self):
+        """Store the current data of this point in the database."""
         from lpdec.database import simulation as dbsim
         self.date_end = utcnow()
         self.stats = self.decoder.stats()
@@ -67,7 +70,8 @@ class DataPoint:
         self._dbCputime = self.cputime
 
     def checkResume(self):
-        """Check if computation for this code can be resumed."""
+        """Check if computation for this code can be resumed. For this to be true, the program
+        name and versions have to match."""
         # version check
         if self.program != 'lpdec':
             raise RuntimeError('Program name mismatch: "{}" != "lpdec"'.format(self.program))
@@ -81,7 +85,11 @@ class DataPoint:
 
 class Simulation(list):
     """Data class to encapsulate the information about one "Simulation", i.e., frame-error rates
-    for a specific tuple of (code, decoder, channel type, identifier) run for different SNR values.
+    for a specific tuple of (code, decoder, channel type, word seed, identifier) run for different
+    SNR values.
+
+    The class subclasses :class:`list`, the entries are :class:`.DataPoint` instances ordered by
+    SNR value.
     """
     def __init__(self, points=None):
         list.__init__(self)
@@ -89,9 +97,11 @@ class Simulation(list):
             self.extend(sorted(points, key=lambda point: point.channel.snr))
 
     def minSNR(self):
+        """Minimum SNR among all points in this run."""
         return self[0].channel.snr
 
     def maxSNR(self):
+        """Maximum SNR among all points in this run."""
         return self[-1].channel.snr
 
     @property
@@ -125,6 +135,8 @@ class Simulation(list):
         return max(point.date_end for point in self)
 
     def add(self, newPoint):
+        """Add *newPoint* to the simulation run. The point is inserted in such a way that sorted
+        SNR values are maintained."""
         for i, point in enumerate(self):
             if point.snr >= newPoint.snr:
                 assert newPoint.snr != point.snr
@@ -137,6 +149,47 @@ class Simulation(list):
 class Simulator(object):
     """A Simulator computes frame error rates for a code / channel combination with different
     decoders by monte-carlo simulations.
+
+    :param code: The code for which to run simulations.
+    :type code: :class:`.BinaryLinearBlockCode`
+    :param channel: The channel to use.
+    :type channel: :class:`.Channel`
+    :param decoders: A list of decoders with which to decode.
+    :param identifier: An identifier string for this simulation.
+
+    Simulation is started by calling the :meth:`.run` method.
+
+    The behavior of the :class:`.Simulator` can be configured by setting the following attributes
+    after creating the object.
+
+    Attributes:
+
+      maxSamples (int): Maximum number of samples to simulate. (default: 100000)
+    .. attribute:: maxErrors (default: 100)
+
+      Maximum number of decoding errors. After that number is reached, simulation is stopped (
+      independently of the :attr:`maxSamples` value)
+    .. attribute:: revealSent (default: False)
+
+      Whether to reveal the sent codeword to the decoder. Might be used to speed up decoding for
+      simulation purposes.
+    .. attribute:: dbStoreSampleInterval (default: maxSamples)
+
+      Number of decoded frames after which the current results are stored to the database.
+    .. attribute:: dbStoreTimeInterval (default: 300 (5 minutes))
+
+      Interval (in seconds) for storing results to database.
+    .. attribute:: outputInterval (default: 30)
+
+      Interval (in seconds) for statistics output (number of errors, decoding time, ...) for each
+      decoder.
+
+    .. attribute:: verbose (default: True)
+
+      Whether to output objective value for each decoded frame.
+    .. attribute:: concurrent (default: True)
+
+      Allow concurrent decoding in case of more than one decoder.
     """
     def __init__(self, code, channel, decoders, identifier):
         self.code = code
@@ -164,6 +217,7 @@ class Simulator(object):
         db.checkCode(code, insert=False)
 
     def run(self):
+        """Starts the simulation with configured parameters."""
         def prv(*args, **kwargs):  # print function conditioned on self.verbose
             if self.verbose:
                 print(*args, **kwargs)
