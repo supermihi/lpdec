@@ -289,7 +289,7 @@ class Simulator(object):
             # mode, place item in the queue
             for decoder, point in self.dataPoints.items():
                 if point.errors >= self.maxErrors or point.samples >= self.maxSamples or \
-                        point.samples > i:
+                        point.samples >= i:
                     continue
                 if self.concurrent:
                     processes[decoder].jobQueue.put((channelOutput, signaller.encoderOutput))
@@ -307,7 +307,7 @@ class Simulator(object):
                     prv(outputFormat[decoder].format('finished'), end='')
                     unfinishedDecoders -= 1
                     continue
-                if point.samples > i:
+                if point.samples >= i:
                     prv(outputFormat[decoder].format('skip {}'.format(point.samples)), end='')
                     continue
                 if self.concurrent:
