@@ -21,6 +21,7 @@ from lpdec.utils import TERM_BOLD_RED, TERM_BOLD, TERM_NORMAL, TERM_RED, Timer, 
 
 DEBUG_SAMPLE = -1
 ALLOW_DIRTY_VERSION = False
+ALLOW_VERSION_MISMATCH = False
 
 
 class DataPoint:
@@ -75,7 +76,7 @@ class DataPoint:
         # version check
         if self.program != 'lpdec':
             raise RuntimeError('Program name mismatch: "{}" != "lpdec"'.format(self.program))
-        if self.version != lpdec.exactVersion():
+        if not ALLOW_VERSION_MISMATCH and self.version != lpdec.exactVersion():
             raise RuntimeError('Version mismatch: "{}" != "{}"'.format(self.version,
                                                                        lpdec.exactVersion()))
 
