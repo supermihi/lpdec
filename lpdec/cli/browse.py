@@ -11,6 +11,9 @@ import jinja2
 from dateutil import tz
 from lpdec.database import simulation as dbsim
 
+if sys.version_info.major == 2:
+    input = raw_input
+
 
 def initParser(parser):
     """Populate parser options for the "browse" action."""
@@ -57,7 +60,7 @@ def browse(args):
         print('Available identifiers:')
         for i, ident in enumerate(identifiers):
             print('{0:2d}: {1}'.format(i, ident))
-        ans = raw_input('Select number(s): ')
+        ans = input('Select number(s): ')
         nums = [int(s) for s in ans.split()]
         identifiers = [identifiers[num] for num in nums]
 
@@ -70,7 +73,7 @@ def browse(args):
         for i, code in enumerate(codes):
             print('{:>3d}: {}'.format(i, code))
         print('{:>3s}: select all'.format('A'))
-        ans = raw_input('Select number(s): ')
+        ans = input('Select number(s): ')
         if ans in 'aA':
             nums = list(range(len(codes)))
         else:
@@ -86,14 +89,14 @@ def browse(args):
               .format("i", "code", "decoder", "identifier", "snr range", 'wordseed', "date"))
         for i, run in enumerate(runs):
             print('{:>3d}: {:30s} {:40s} {:16s} {:9s} {:<8d} {}'
-                  .format(i, run.code.name, run.decoder.name, run.identifier,
+                  .format(i, str(run.code), str(run.decoder), run.identifier,
                           '{}–{}'.format(run.minSNR(), run.maxSNR()),
                           run.wordSeed,
                           '{:%d.%m.%y %H:%M}/{:%d.%m.%y %H:%M}'.format(run.date_start.astimezone(
                               tz.tzlocal()),
                                                  run.date_end.astimezone(tz.tzlocal()))))
         print('{0:>3s}: *select all*'.format('A'))
-        ans = raw_input('Select number(s): ')
+        ans = input('Select number(s): ')
         if ans in 'aA':
             nums = list(range(len(runs)))
         else:
@@ -114,7 +117,7 @@ def browse(args):
 
 TEMPLATES = dict()
 TEMPLATES['hp'] = \
-"""{{sim.code.name}} ({{sim.code.blocklength}},{{sim.code.infolength}}) Code: ML Simulation Results
+"""{{sim.code}} ({{sim.code.blocklength}},{{sim.code.infolength}}) Code: ML Simulation Results
 Channel: {{sim.channelClass.__name__}}
 Modulation: BPSK
 
@@ -144,7 +147,8 @@ TEMPLATES['verb'] = \
 """{{sim.identifier}}: {{sim.code.name}} // {{sim.decoder.name}}:
   samples    errors     FER      av.cpu   wordseed channel
 {% for point in sim %}  {{"{:<10d} {:<10d} {:<8.2e} {:<.6f} {:8d} {:10s}".format(point.samples,
-point.errors, point.frameErrorRate, point.cputime/point.samples, point.wordSeed, point.channel)}}\
+point.errors, point.frameErrorRate, point.cputime/point.samples, point.wordSeed,
+point.channel.__repr__())}}\
 {% if verbose %}
   {{point|formatStats}}
 {% endif %}

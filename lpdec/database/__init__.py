@@ -13,8 +13,7 @@ the database connection."""
 from __future__ import division, unicode_literals
 
 from os.path import exists, join, expanduser
-import os
-import platform
+import os, sys
 import numbers
 import atexit
 import sqlalchemy.types as types
@@ -27,6 +26,8 @@ from lpdec.decoders import Decoder
 CONF_DIR = expanduser(join('~', '.config', 'lpdec'))
 DB_LIST_FILE = join(CONF_DIR, 'databases')
 _knownDBs = None
+if sys.version_info.major == 2:
+    input = raw_input
 
 
 class UTCDateTime(types.TypeDecorator):
@@ -106,13 +107,13 @@ def init(database=None, testMode=False):
                 print('\nThese databases have been used before:')
                 for i, db in enumerate(known):
                     print('{0:>3d} {1}'.format(i, db))
-                ans = raw_input('Enter a number or a new database connection string: ')
+                ans = input('Enter a number or a new database connection string: ')
                 try:
                     database = known[int(ans)]
                 except (KeyError, ValueError):
                     database = ans
             else:
-                database = raw_input('Please enter a database connection string: ')
+                database = input('Please enter a database connection string: ')
         elif database.isdigit():
             database = known[int(database)]
     engine = sqla.create_engine(database, pool_recycle=3600)
@@ -193,6 +194,16 @@ def _checkCodeOrDecoder(which, obj, insert=True):
         return result.inserted_primary_key[0]
 
 
+class DummyDecoder(Decoder):
+
+    def __init__(self, code, name):
+        print('Warning: creating dummy decoder "{}"'.format(name))
+        Decoder.__init__(self, code, name)
+
+    def solve(self, *args, **kwargs):
+        raise RuntimeError('cannot solve using DummyDecoder')
+
+
 def get(what, identifier, code=None):
     """Retrieve a code or decoder from the database. `what` is one of ("code", "decoder") and
     specifies what to retrieve. The `identifier` can be either the primary key or the name or
@@ -210,12 +221,10 @@ def get(what, identifier, code=None):
         raise ValueError('"what" has to be one of ("code", "decoder")')
     if isinstance(identifier, numbers.Integral):
         condition = table.c.id == identifier
-    elif isinstance(identifier, basestring):
-        condition = table.c.name == identifier
     elif isinstance(identifier, cls):
         condition = table.c.name == identifier.name
     else:
-        raise ValueError('"{}" is not a valid {} identifier'.format(identifier, what))
+        condition = table.c.name == identifier
     s = sqla.select([table], condition)
     row = engine.execute(s).fetchone()
     if row is None:
@@ -224,8 +233,13 @@ def get(what, identifier, code=None):
         return identifier
     elif what == 'code':
         return cls.fromJSON(row[table.c.json])
+
     else:
-        return cls.fromJSON(row[table.c.json], code=code)
+        try:
+            return cls.fromJSON(row[table.c.json], code=code)
+        except ImportError:
+            # CPLEX, Gurobi etc. might not be available
+            return DummyDecoder(code=code, name=row[table.c.name])
 
 
 def names(what='codes'):

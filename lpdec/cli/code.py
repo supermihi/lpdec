@@ -5,9 +5,13 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 from __future__ import division, unicode_literals, print_function
+import sys
 import numpy as np
 from lpdec.codes import BinaryLinearBlockCode
 from lpdec import database as db, matrices
+
+if sys.version_info.major == 2:
+    input = raw_input
 
 
 def initParser(parser):
@@ -57,7 +61,7 @@ def codeCommand(args):
         print('Available codes:')
         for i, code in enumerate(codes):
             print('{:>3d}: {}'.format(i, code))
-        ans = raw_input('Select number: ')
+        ans = input('Select number: ')
         import lpdec.imports  # ensures that all classes are loaded for JSON decoding
         args.code = db.get('code', codes[int(ans.strip())])
     if args.action == 'print':

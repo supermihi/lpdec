@@ -93,6 +93,9 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
         """
         return np.all(self.parityCheckMatrix.dot(item) % 2 == 0)
 
+    def __str__(self):
+        return self.name
+
     def params(self):
         matrix = self.parityCheckMatrix
         if np.sum(matrix) / ( matrix.shape[0] * matrix.shape[1]) < .1:

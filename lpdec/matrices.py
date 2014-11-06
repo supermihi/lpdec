@@ -20,7 +20,11 @@ def getBinaryMatrix(source):
     :rtype: :class:`np.ndarray` with dtype `np.int`.
     :returns: A numpy ndarray representation of the matrix.
     """
-    if isinstance(source, basestring):
+    try:
+        isString = isinstance(source, basestring)
+    except NameError:
+        isString = isinstance(source, str)
+    if isString:
         with open(source, 'rt') as f:
             lines = [[int(x) for x in l.strip().split()]
                      for l in f.readlines()
@@ -78,7 +82,7 @@ def formatMatrix(matrix, format='plain', width=2, filename=None):
         if matrix.ndim == 2:
             mstring = '\n'.join(formatMatrix(row, width=width) for row in matrix)
         else:
-            mstring = ''.join(('{:' + unicode(width) + 'd}').format(k) for k in matrix)
+            mstring = ''.join(('{:' + str(width) + 'd}').format(k) for k in matrix)
     else:
         assert format == 'alist'
         import cStringIO
