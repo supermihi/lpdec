@@ -308,7 +308,7 @@ class Simulator(object):
                     unfinishedDecoders -= 1
                     continue
                 if point.samples > i:
-                    prv(outputFormat[decoder].format('skip'), end='')
+                    prv(outputFormat[decoder].format('skip {}'.format(point.samples)), end='')
                     continue
                 if self.concurrent:
                     proc = processes[decoder]
