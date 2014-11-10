@@ -19,7 +19,6 @@ def script():
     subparsers = parser.add_subparsers(title='Commands')
     parserBrowse = subparsers.add_parser('browse', help='browse and plot results')
     browse.initParser(parserBrowse)
-    parserBrowse.set_defaults(func=browse.browse)
     parserCodes = subparsers.add_parser('code', help='code toolkit')
     code.initParser(parserCodes)
 

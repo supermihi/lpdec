@@ -38,7 +38,8 @@ cdef class AdaptiveLPDecoder(Decoder):
     :param int maxRPCrounds: Maximum number of iterations of RPC cuts generation. The value
       ``-1`` means no limit (as in the paper). If set to ``0``, no RPC cuts are generated,
       and the decoder behaves as a normal LP decoder.
-    :param float minCutoff: Minimum cutoff for a generated cut to be inserted into the LP model.
+    :param float minCutoff: Minimum violation of an inequality to be inserted as a cut into the
+      LP model.
       Defaults to ``1e-5``. A smaller value might lead to numerical problems, i.e,, an inequality
       being inserted that is not really a cut and hence the danger of infinite loops. On the
       other hand, a larger value can make sense, in order to only use "strong" cuts.
@@ -179,19 +180,21 @@ cdef class AdaptiveLPDecoder(Decoder):
                     elif minDistIndex == -1:
                         minDistIndex = Njsize
                     Njsize += 1
-            if Njsize == 0: # all-zero row
+            if Njsize == 0:
+                # skip all-zero rows (might occur due to Gaussian elimination)
                 continue
-            #  V size must be odd, so add entry with minimum distance from .5
             if setVsize % 2 == 0:
+                #  V size must be odd, so add entry with minimum distance from .5
                 setV[1 + minDistIndex] *= -1
                 setVsize += <int>setV[1 + minDistIndex]
-            vSum = 0
+            vSum = 0 # left hand side of the induced Feldman inequality
             for ind in range(Njsize):
                 if setV[1 + ind] == 1:
                     vSum += 1 - solution[Nj[1 + ind]]
                 elif setV[1 + ind] == -1:
                     vSum += solution[Nj[1 + ind]]
             if vSum < 1 - self.minCutoff:
+                # inequality violated -> insert
                 inserted += 1
                 ind = glpk.glp_add_rows(self.prob, 1)
                 for j in range(Njsize):
@@ -264,7 +267,7 @@ cdef class AdaptiveLPDecoder(Decoder):
 
 
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
-        cdef int i, removed, error, rpcrounds = 0, iteration = 0
+        cdef int i, removed, error, numCuts, rpcrounds = 0, iteration = 0
         cdef np.double_t[:] diffFromHalf = self.diffFromHalf
         cdef np.ndarray[dtype=double, ndim=1] solution = self.solution
         if not self.keepCuts:
@@ -274,6 +277,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         self.foundCodeword = self.mlCertificate = False
         self.objectiveValue = -np.inf
         if self.sent is not None and ub == np.inf:
+            # calculate known upper bound on the objective from sent codeword
             ub = np.dot(self.sent, self.llrs) + 2e-6
         while True:
             iteration += 1
@@ -288,18 +292,28 @@ cdef class AdaptiveLPDecoder(Decoder):
             self._stats["totalConstraints"] += self.numConstrs
             i = glpk.glp_get_status(self.prob)
             if i == glpk.GLP_NOFEAS or i == glpk.GLP_UNBND:
+                # during branch-and-bound the problem might become infeasible
                 self.objectiveValue = np.inf
                 self.foundCodeword = self.mlCertificate = False
                 break
             elif i != glpk.GLP_OPT:
                 raise RuntimeError("GLPK error {}".format(i))
+            newObjectiveValue = glpk.glp_get_obj_val(self.prob)
+            if newObjectiveValue <= self.objectiveValue:
+                # prevent infinite loops in some rare cases where numerical issues cause
+                # non-increasing objective value after cut generation
+                print('cga: no improvement')
+                break
+            self.objectiveValue = newObjectiveValue
             self.objectiveValue = glpk.glp_get_obj_val(self.prob)
             if self.objectiveValue >= ub - 1e-6:
+                # lower bound from the LP is above known upper bound -> no need to proceed
                 self.objectiveValue = np.inf
                 self._stats["ubReached"] += 1
                 self.foundCodeword = self.mlCertificate = False
                 break
             integral = True
+            # read solution from GLPK. Round values to {0,1} that are very close
             for i in range(self.code.blocklength):
                 solution[i] = glpk.glp_get_col_prim(self.prob, 1+i)
             for i in range(self.code.blocklength):
@@ -316,6 +330,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             self.foundCodeword = self.mlCertificate = True
             numCuts = self.cutSearchAlgorithm(True)
             if numCuts > 0:
+                # found cuts from original H matrix
                 continue
             elif integral:
                 break
@@ -323,6 +338,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                 self.foundCodeword = self.mlCertificate = False
                 break
             else:
+                # search for RPC cuts
                 xindices = np.argsort(diffFromHalf)
                 gaussianElimination(self.htilde, xindices, True)
                 if not self.cutSearchAlgorithm(False):

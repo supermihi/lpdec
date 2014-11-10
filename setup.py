@@ -40,6 +40,9 @@ with io.open(os.path.join(here, 'lpdec', '__init__.py'), 'r', encoding='UTF-8') 
     version_match = re.search(r'^__version__ = [\'"]([^\'"]*)[\'"]', version_file, re.M)
     version = version_match.group(1)
 
+
+scriptName = 'lpdec3' if sys.version_info.major == 3 else 'lpdec'
+
 setup(
     name='lpdec',
     version=version,
@@ -48,6 +51,6 @@ setup(
     install_requires=['numpy', 'sqlalchemy', 'cython', 'python-dateutil', 'jinja2'],
     ext_modules=makeExtensions(),
     packages=[p for p in find_packages() if p != b'test'],
-    entry_points={'console_scripts': ['lpdec = lpdec.cli:script',]},
+    entry_points={'console_scripts': ['{} = lpdec.cli:script'.format(scriptName),]},
     test_suite='test',
 )
