@@ -6,7 +6,7 @@
 # published by the Free Software Foundation
 from __future__ import division, unicode_literals
 
-__version__ = '2014.2'
+__version__ = '2014.3'
 _exactVersion = None
 
 
