@@ -7,23 +7,34 @@ decoding based on methods of mathematical optimization, such as linear programmi
 
 Requirements
 ------------
-The library is written in [Python](www.python.org), version 2.7. It requires
-[Cython](www.cython.org). Optionally, also 
-[GLPK](http://www.gnu.org/software/glpk/) (with C headers) and
-[IBM CPLEX](http://www.ibm.com/software/commerce/optimization/cplex-optimizer/) are necessary. 
+The library is written in [Python](www.python.org). It was mainly developed using Python version 
+2.7, but was recently ported to Python3, although that port is not stable yet. Note that there is
+ no CPLEX interface for Python3, so you can not use the CPLEX solvers with that version of Python.
+ 
+To compile the library, you need [Cython](www.cython.org). Runtime requirements are the 
+Python packages [numpy](www.numpy.org), [dateutil](https://labix.org/python-dateutil), 
+[sqlalchemy](www.sqlalchemy.org), and [jinja2](http://jinja.pocoo.org) (only for displaying 
+simulation 
+results).
+
+Some of the decoder implementations require additional software, namely 
+[GLPK](http://www.gnu.org/software/glpk/) (with C headers),
+[IBM CPLEX](http://www.ibm.com/software/commerce/optimization/cplex-optimizer/), and
+ [Gurobi](http://gurobi.com).
 
 Installation
 ------------
 
 Download the package and type:
 
-    python2 setup.py install --user
+    python setup.py install --user
     
 If you do not have GLPK installed, use:
 
-    python2 setup.py install --no-glpk --user
+    python setup.py install --no-glpk --user
 
-In both commands, replace ``python2`` by an appropriate call to a Python 2.7 interpreter.
+In both commands, replace ``python`` by an appropriate call to your Python interpreter. You will 
+probably run into less problems when using ``python2``.
 
 Documentation
 -------------
