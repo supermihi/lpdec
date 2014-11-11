@@ -376,7 +376,7 @@ cdef class BranchAndCutDecoder(Decoder):
                     ub = self.lbProvider.objectiveValue
                     logger.debug("ub improved to {}".format(ub))
                     self._stats['prOpt'] += 1
-                    if ub < self.sentObjective:
+                    if ub < self.sentObjective - 1e-5:
                         self.mlCertificate = False
                         break
             elif node.lb < ub-1e-6:
