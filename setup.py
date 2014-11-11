@@ -60,8 +60,9 @@ setup(
     ],
     license='GPL3',
     install_requires=['numpy', 'sqlalchemy', 'cython', 'python-dateutil', 'jinja2'],
+    include_package_data=True,
     ext_modules=makeExtensions(),
-    packages=[p for p in find_packages() if p != b'test'],
+    packages=find_packages(exclude=['test']),
     entry_points={'console_scripts': ['{} = lpdec.cli:script'.format(scriptName),]},
     test_suite='test',
 )
