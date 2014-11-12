@@ -426,8 +426,12 @@ cdef class BranchAndCutDecoder(Decoder):
             llrs += epsilon*np.random.random_sample(self.code.blocklength)
         else:
             delta = 1e-5
-        if cyclic:
+        if isinstance(cyclic, int):
+            for i in range(cyclic):
+                self.fix(i, 1)
+        elif cyclic:
             self.fix(0, 1)
+
         self.setLLRs(llrs)
         self.selectCnt = 1
         self.root = node = Node()
