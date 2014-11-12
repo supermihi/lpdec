@@ -188,7 +188,7 @@ class Simulator(object):
     .. attribute:: verbose (default: True)
 
       Whether to output objective value for each decoded frame.
-    .. attribute:: concurrent (default: True)
+    .. attribute:: concurrent (default: False)
 
       Allow concurrent decoding in case of more than one decoder.
     """
@@ -207,7 +207,7 @@ class Simulator(object):
         self.dbStoreTimeInterval = 60*5  # 5 minutes
         self.outputInterval = 30 # number of seconds between status output
         self.verbose = True # print information for every frame
-        self.concurrent = True
+        self.concurrent = False
         #  check if the code exists in the database but has different parameters. This avoids
         #  a later error which would imply a waste of time.
         from lpdec.database import simulation as dbsim
@@ -273,6 +273,8 @@ class Simulator(object):
                         string = '{:.4g} sec'.format(point.cputime)
                     print(outputFormat[decoder].format(string), end='')
                 print('')
+        if len(self.decoders) == 1:
+            self.concurrent = False
         if self.concurrent:
             processes = {decoder: DecoderProcess(decoder, self.revealSent)
                          for decoder in self.decoders}
@@ -292,7 +294,8 @@ class Simulator(object):
                         point.samples >= i:
                     continue
                 if self.concurrent:
-                    processes[decoder].jobQueue.put((channelOutput, signaller.encoderOutput))
+                    processes[decoder].jobQueue.put((channelOutput.copy(),
+                                                     signaller.encoderOutput.copy()))
                 else:
                     with Timer() as timer:
                         if self.revealSent:
