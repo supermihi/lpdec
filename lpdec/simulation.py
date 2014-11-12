@@ -279,7 +279,7 @@ class Simulator(object):
             processes = {decoder: DecoderProcess(decoder, self.revealSent)
                          for decoder in self.decoders}
 
-        for i in xrange(startSample, self.maxSamples+1):
+        for i in range(startSample, self.maxSamples+1):
             sampleOffset = max(5, int(math.ceil(math.log10(i)))) + len(': ')
             if i == startSample or (utcnow() - lastOutput).total_seconds() > self.outputInterval:
                 printStatus()

@@ -97,7 +97,7 @@ def orthogonalComplement(matrix, columns=None):
     matrix = np.asarray(matrix.copy())
     m, n = matrix.shape
     unitCols = gaussianElimination(matrix, columns, diagonalize=True)
-    nonunitCols = np.array([x for x in xrange(n) if x not in unitCols])
+    nonunitCols = np.array([x for x in range(n) if x not in unitCols])
     rank = unitCols.size
     nonunitPart = matrix[:rank, nonunitCols].transpose()
     k = n - rank

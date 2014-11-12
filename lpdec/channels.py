@@ -156,7 +156,7 @@ class SignalGenerator(object):
         efficient than calling :func:`next` `num` times.
         """
         zero = np.zeros(self.code.blocklength, dtype=np.int)
-        for _ in xrange(num):
+        for _ in range(num):
             if not self.allZero:
                 self.wordRandom.randint(0, 2, self.code.infolength)
             self.channel(zero)

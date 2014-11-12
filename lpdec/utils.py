@@ -53,7 +53,7 @@ def utcnow():
 
 
 def frange(start, end, step=1):
-    """Generalization of the built-in :func:`xrange` function that supports fractional step
+    """Generalization of the built-in :func:`range` function that supports fractional step
     sizes.
     """
     current = start
