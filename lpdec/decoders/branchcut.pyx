@@ -348,7 +348,7 @@ cdef class BranchAndCutDecoder(Decoder):
             if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
                 candidate = self.ubProvider.solution.copy()
                 ub = self.ubProvider.objectiveValue
-                if ub < self.sentObjective:
+                if ub < self.sentObjective  - 1e-5:
                     self.mlCertificate = False
                     break
 
