@@ -25,8 +25,9 @@ def makeExtensions():
     """Returns an Extension object for the given submodule of lpdecoding."""
 
     sources = []
-    for root, dirnames, filenames in os.walk(join(here, 'lpdec')):
+    for root, dirnames, filenames in os.walk(join(dirname(__file__), 'lpdec')):
         for filename in fnmatch.filter(filenames, '*.pyx'):
+            print(str(join(root, filename)))
             sources.append(str(join(root, filename)))
     extensions = cythonize(sources, include_path=[np.get_include()])
     if '--no-glpk' in sys.argv:
