@@ -85,16 +85,19 @@ def browse(args):
     runs.sort(key=lambda run: run.date_start)
     if not args.all:
         print('These simulation runs match your selection:')
-        print('{:>3s}  {:30s} {:40s} {:16s} {:9s} {:8s} {}\n'
-              .format("i", "code", "decoder", "identifier", "snr range", 'wordseed', "date"))
+        print('{:>3s}  {:30s} {:40s} {:16s} {:9s} {:8s} {} {}\n'
+              .format("i", "code", "decoder", "identifier", "snr range", 'wordseed', "date",
+                      "version"))
         for i, run in enumerate(runs):
-            print('{:>3d}: {:30s} {:40s} {:16s} {:9s} {:<8d} {}'
+            print('{:>3d}: {:30s} {:40s} {:16s} {:9s} {:<8d} {} {}'
                   .format(i, str(run.code), str(run.decoder), run.identifier,
                           '{}–{}'.format(run.minSNR(), run.maxSNR()),
                           run.wordSeed,
-                          '{:%d.%m.%y %H:%M}/{:%d.%m.%y %H:%M}'.format(run.date_start.astimezone(
-                              tz.tzlocal()),
-                                                 run.date_end.astimezone(tz.tzlocal()))))
+                          '{:%d.%m.%y %H:%M}/{:%d.%m.%y %H:%M}'
+                          .format(run.date_start.astimezone(tz.tzlocal()),
+                                  run.date_end.astimezone(tz.tzlocal())),
+                          run.version))
+
         print('{0:>3s}: *select all*'.format('A'))
         ans = input('Select number(s): ')
         if ans in 'aA':

@@ -135,6 +135,14 @@ class Simulation(list):
         """Return the latest computation end of the run."""
         return max(point.date_end for point in self)
 
+    @property
+    def version(self):
+        return self[0].version
+
+    @property
+    def program(self):
+        return self[0].program
+
     def add(self, newPoint):
         """Add *newPoint* to the simulation run. The point is inserted in such a way that sorted
         SNR values are maintained."""

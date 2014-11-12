@@ -15,7 +15,9 @@ cdef extern from 'glpk.h':
         int msg_lev
         int meth
         int presolve
-    
+    ctypedef struct glp_cpxcp:
+        pass
+
     const int GLP_MIN, GLP_MAX
     const int GLP_UP, GLP_LO, GLP_DB, GLP_FX
     const int GLP_MSG_OFF, GLP_MSG_ERR
@@ -47,3 +49,4 @@ cdef extern from 'glpk.h':
     int glp_get_row_stat(glp_prob *P, int i)
     int glp_get_mat_row(glp_prob *P, int i, int ind[], double val[])
     double glp_get_row_ub(glp_prob *P, int i)
+    int glp_write_lp(glp_prob *P, const glp_cpxcp *parm, const char *fname)
