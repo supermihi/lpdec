@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-# cython: embedsignature=True
-# cython: boundscheck=False
-# cython: nonecheck=False
-# cython: cdivision=True
-# cython: wraparound=False
+# cython: boundscheck=False, nonecheck=False, cdivision=True, wraparound=False
 # Copyright 2014 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify

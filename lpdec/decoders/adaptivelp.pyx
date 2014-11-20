@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # distutils: libraries = ["glpk", "m"]
-# cython: embedsignature=True
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: cdivision=True
@@ -117,6 +116,8 @@ cdef class AdaptiveLPDecoder(Decoder):
         glpk.glp_init_smcp(&self.parm)
         self.parm.msg_lev = glpk.GLP_MSG_OFF
         self.parm.meth = glpk.GLP_DUAL # use dual simplex method
+        self.parm.tol_bnd = 1e-9
+        self.parm.tol_dj = 1e-9
         glpk.glp_add_cols(self.prob, code.blocklength)
         for j in range(code.blocklength):
             glpk.glp_set_col_bnds(self.prob, 1+j, glpk.GLP_DB, 0.0, 1.0)
@@ -151,11 +152,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             np.int_t[:,:] matrix
             int inserted = 0, row, j, ind, setVsize, minDistIndex, Njsize
             double minDistFromHalf, dist, vSum
-        if originalHmat:
-            matrix = self.hmat
-        else:
-            matrix = self.htilde
-
+        matrix = self.hmat if originalHmat else self.htilde
         for row in range(matrix.shape[0]):
             #  for each row, we build the set Nj = { j: matrix[row,j] == 1}
             #  and V = {j ∈ Nj: solution[j] > .5}. The variable setV will be of size Njsize and
@@ -257,9 +254,12 @@ cdef class AdaptiveLPDecoder(Decoder):
         Decoder.setLLRs(self, llrs, sent)
 
         if self.insertActive & 1:
-            hint = self.hint if self.hint is not None else np.asarray(sent)
-            if hint is None:
+            if self.hint is None and sent is None:
                 return
+            elif self.hint is not None:
+                hint = self.hint
+            else:
+                hint = np.asarray(sent)
             self.removeNonfixedConstraints()
             if self.allZero and np.all(hint) == 0:
                 return #  zero-active constraints are already in the model
@@ -267,7 +267,7 @@ cdef class AdaptiveLPDecoder(Decoder):
 
 
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
-        cdef int i, removed, error, numCuts, rpcrounds = 0, iteration = 0
+        cdef int removed, error, numCuts, rpcrounds = 0, iteration = 0
         cdef np.double_t[:] diffFromHalf = self.diffFromHalf
         cdef np.ndarray[dtype=double, ndim=1] solution = self.solution
         if not self.keepCuts:
@@ -281,12 +281,19 @@ cdef class AdaptiveLPDecoder(Decoder):
             ub = np.dot(self.sent, self.llrs) + 2e-6
         while True:
             iteration += 1
+            if iteration > 1000:
+                print('ALP {} iterations'.print(iteration))
+            # self.solveCalls += 1
+            # if self.solveCalls >= 100000:
+            #     #print('SOLVED {}'.format(self.solveCalls))
+            #     #glpk.glp_adv_basis(self.prob, 0)
+            #     self.solveCalls = 0
             with self.timer:
                 error = glpk.glp_simplex(self.prob, &self.parm)
             self._stats['lpTime'] += self.timer.duration
             if error != 0:
                 raise RuntimeError("GLPK Simplex Error ({}) {}"
-                                   .format(i, glpk.glp_get_num_rows(self.prob)))
+                                   .format(error, glpk.glp_get_num_rows(self.prob)))
             self._stats["totalLPs"] += 1
             self.numConstrs = glpk.glp_get_num_rows(self.prob)
             self._stats["totalConstraints"] += self.numConstrs
@@ -297,7 +304,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                 self.foundCodeword = self.mlCertificate = False
                 break
             elif i != glpk.GLP_OPT:
-                raise RuntimeError("GLPK error {}".format(i))
+                raise RuntimeError("GLPK unknown status {}".format(i))
             newObjectiveValue = glpk.glp_get_obj_val(self.prob)
             if newObjectiveValue <= self.objectiveValue:
                 # prevent infinite loops in some rare cases where numerical issues cause
@@ -341,7 +348,8 @@ cdef class AdaptiveLPDecoder(Decoder):
                 # search for RPC cuts
                 xindices = np.argsort(diffFromHalf)
                 gaussianElimination(self.htilde, xindices, True)
-                if not self.cutSearchAlgorithm(False):
+                numCuts = self.cutSearchAlgorithm(False)
+                if numCuts == 0:
                     self.mlCertificate = self.foundCodeword = False
                     break
                 rpcrounds += 1

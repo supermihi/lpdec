@@ -6,12 +6,14 @@
 # published by the Free Software Foundation
 
 
-""" This module contains integer programming (IP) decoders for binary linear block codes,
+"""
+This module contains integer programming (IP) decoders for binary linear block codes,
 based on the formulation called 'IPD' in:
 Helmling, M., Ruzika, S. and Tanatmis, A.: "Mathematical Programming Decoding of Binary Linear
 Codes: Theory and Algorithms", IEEE Transactions on Information Theory, Vol. 58 (7), 2012,
 pp. 4753-4769.
-."""
+
+"""
 from __future__ import division, print_function
 from collections import OrderedDict
 import numpy as np
@@ -75,6 +77,37 @@ class CplexIPDecoder(cplexhelpers.CplexDecoder):
 
 class GurobiIPDecoder(Decoder):
     """Gurobi implementation of the IPD maximum-likelihood decoder.
+
+    :param BinaryLinearBlockCode code: The code to decoder.
+    :param dict gurobiParams: Optional dictionary of parameters; these are passed to the Gurobi
+        model via :func:`gurobipy.Model.setParam`. The attributes :attr:`tuningSet1`,
+        :attr:`tuningSet2` and :attr:`tuningSet3` contain three sets of parameters that were
+        obtained from the Gurobi tuning tool.
+    :param str gurobiVersion: Version of the Gurobi package; if supplied, an error is raised if
+        the current version does not match.
+    :param str name: Name of the decoder. Defaults to "GurobiIPDecoder".
+
+    The number of nodes in Gurobi's branch-and-bound procedure is collected in the statistics.
+
+    Example usage:
+        >>> from lpdec.imports import *
+        >>> code = HammingCode(3)
+        >>> decoder = GurobiIPDecoder(code, gurobiParams=GurobiIPDecoder.tuningSet1, name='GurobiTuned')
+        >>> result = decoder.decode([1, -1, 0, -1.5, 2, 3, 0])
+        >>> print(result)
+
+    .. attribute:: tuningSet1
+
+    Dictionary to be passed to the constructor as *gurobiParams*; this set of parameters was
+    obtained from the Gurobi tuning tool on a hard instance for the (155,93) Tanner LDPC code.
+
+    .. attribute:: tuningSet2
+
+    As above; second-best parameter set.
+
+    .. attribute:: tuningSet3
+
+    As above; third-best parameter set.
     """
     def __init__(self, code, gurobiParams=dict(), gurobiVersion=None, name=None):
 
@@ -96,10 +129,15 @@ class GurobiIPDecoder(Decoder):
                   for i in range(matrix.shape[0])]
         self.model.update()
         for z, row in zip(self.z, matrix):
-            self.model.addConstr(quicksum(self.x[i] for i in np.flatnonzero(row)) - 2 * z, GRB.EQUAL, 0)
+            self.model.addConstr(quicksum(self.x[i] for i in np.flatnonzero(row)) - 2 * z,
+                                 GRB.EQUAL, 0)
         self.model.update()
         self.mlCertificate = self.foundCodeword = True
         self.solution = np.empty(code.blocklength, dtype=np.double)
+
+    tuningSet1 = dict(MIPFocus=2, PrePasses=2, Presolve=2)
+    tuningSet2 = dict(MIPFocus=2, VarBranch=1)
+    tuningSet3 = dict(MIPFocus=2)
 
     def setStats(self, stats):
         if 'nodes' not in stats:

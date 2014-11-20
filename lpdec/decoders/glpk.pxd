@@ -15,12 +15,14 @@ cdef extern from 'glpk.h':
         int msg_lev
         int meth
         int presolve
+        double tol_bnd
+        double tol_dj
     ctypedef struct glp_cpxcp:
         pass
 
     const int GLP_MIN, GLP_MAX
     const int GLP_UP, GLP_LO, GLP_DB, GLP_FX
-    const int GLP_MSG_OFF, GLP_MSG_ERR
+    const int GLP_MSG_OFF, GLP_MSG_ERR, GLP_MSG_ALL
     const int GLP_DUAL, GLP_PRIMAL
     const int GLP_OPT, GLP_NOFEAS, GLP_UNBND
     const int GLP_BS, GLP_NL, GLP_NU

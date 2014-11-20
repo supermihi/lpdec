@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright 2014 Michael Helmling
-# cython: embedsignature=True
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: cdivision=True
@@ -426,12 +425,8 @@ cdef class BranchAndCutDecoder(Decoder):
             llrs += epsilon*np.random.random_sample(self.code.blocklength)
         else:
             delta = 1e-5
-        if isinstance(cyclic, int):
-            for i in range(cyclic):
-                self.fix(i, 1)
-        elif cyclic:
-            self.fix(0, 1)
-
+        for iteration in range(cyclic): # fix bits to one for cyclic codes (or other symmetries)
+            self.fix(iteration, 1)
         self.setLLRs(llrs)
         self.selectCnt = 1
         self.root = node = Node()
@@ -440,12 +435,12 @@ cdef class BranchAndCutDecoder(Decoder):
         candidate = None
         ub = np.inf
         self._stats['nodes'] += 1
-        for i in itertools.count(start=1):
+        for iteration in itertools.count(start=1):
             # statistic collection and debug output
             depthStr = str(node.depth)
-            if i % 1000 == 0:
+            if iteration % 1000 == 0:
                 logger.info('MD {}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(
-                    self.root.lb,ub, node.depth,len(activeNodes), self.lbProvider.numConstrs, i,
+                    self.root.lb,ub, node.depth,len(activeNodes), self.lbProvider.numConstrs, iteration,
                     self._stats["lpTime"], self._stats['iterTime']))
             if depthStr not in self._stats['nodesPerDepth']:
                 self._stats['nodesPerDepth'][depthStr] = 0
@@ -457,7 +452,7 @@ cdef class BranchAndCutDecoder(Decoder):
             if not pruned:
                 # upper bound calculation
 
-                if i > 1 and self.calcUb: # for first iteration this was done in setLLR
+                if iteration > 1 and self.calcUb: # for first iteration this was done in setLLR
                     self.timer.start()
                     self.ubProvider.solve()
                     self._stats['iterTime'] += self.timer.stop()
@@ -468,7 +463,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 # lower bound calculation
                 self.timer.start()
 
-                if (i == 1 or self.calcUb) and self.ubProvider.foundCodeword:
+                if (iteration == 1 or self.calcUb) and self.ubProvider.foundCodeword:
                     self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
                 else:
                     self.lbProvider.hint = None
@@ -495,7 +490,8 @@ cdef class BranchAndCutDecoder(Decoder):
                         node.lb = np.inf
                         print('********** PRUNE 000000 ***************')
                     else:
-                        newNodes = [Node(parent=node, branchIndex=branchIndex, branchValue=i) for i in (0,1) ]
+                        newNodes = [Node(parent=node, branchIndex=branchIndex, branchValue=i) for
+                                    i in (0,1) ]
                         if self.childOrder == 'random':
                             random.shuffle(newNodes)
                         elif (self.childOrder == 'llr' and self.llrs[branchIndex] < 0) or self.childOrder == '10':

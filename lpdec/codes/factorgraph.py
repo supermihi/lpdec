@@ -23,9 +23,24 @@ class FactorGraph:
 
       List of check nodes of the graph.
     """
-    def __init__(self, varNodes, checkNodes):
+    def __init__(self, varNodes, checkNodes, x=None):
         self.varNodes = varNodes
+        for i, var in enumerate(varNodes):
+            if not hasattr(var, 'index'):
+                var.index = i
+            elif var.index != i:
+                raise ValueError('{}-th var nodes has index {}!={}'.format(i, var.index, i))
         self.checkNodes = checkNodes
+        for i, check in enumerate(checkNodes):
+            if not hasattr(check, 'index'):
+                check.index = i
+            elif check.index != i:
+                raise ValueError('{}-th check nodes has index {}!={}'.format(i, check.index, i))
+        if x is not None:
+            assert set(x) <= set(varNodes)
+            self.x = x
+        else:
+            self.x = varNodes
 
     @classmethod
     def fromLinearCode(cls, code):
@@ -38,6 +53,14 @@ class FactorGraph:
             for i in np.flatnonzero(row):
                 check.connect(varNodes[i])
         return cls(varNodes, checkNodes)
+
+    def parityCheckMatrix(self):
+        H = np.zeros((len(self.checkNodes), len(self.varNodes)), dtype=np.int)
+        for check in self.checkNodes:
+            for var in check.neighbors:
+                H[check.index, var.index] = 1
+        return H
+
 
 
 class FactorNode:
@@ -61,6 +84,11 @@ class FactorNode:
         self.neighbors.append(other)
         other.neighbors.append(self)
 
+    def isolate(self):
+        for neigh in self.neighbors[:]:
+            neigh.neighbors.remove(self)
+            self.neighbors.remove(neigh)
+
     @property
     def degree(self):
         """The degree of this node, i.e. number of connected nodes."""
@@ -76,12 +104,12 @@ class FactorNode:
 class VariableNode(FactorNode):
     """:class:`FactorNode` subclass for variables."""
     def connect(self, other):
-        assert isinstance(other, CheckNode)
+        assert isinstance(other, CheckNode), 'No check node: {}'.format(other)
         FactorNode.connect(self, other)
 
 
 class CheckNode(FactorNode):
     """:class:`FactorNode` subclass for checks."""
     def connect(self, other):
-        assert isinstance(other, VariableNode)
+        assert isinstance(other, VariableNode), 'No var node: {} ({})'.format(other, type(other))
         FactorNode.connect(self, other)

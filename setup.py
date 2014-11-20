@@ -27,9 +27,13 @@ def makeExtensions():
     sources = []
     for root, dirnames, filenames in os.walk(join(dirname(__file__), 'lpdec')):
         for filename in fnmatch.filter(filenames, '*.pyx'):
-            print(str(join(root, filename)))
             sources.append(str(join(root, filename)))
-    extensions = cythonize(sources, include_path=[np.get_include()])
+    directives = {'embedsignature' : True}
+    if '--profile' in sys.argv:
+        directives['profile'] = True
+        sys.argv.remove('--profile')
+    extensions = cythonize(sources, include_path=[np.get_include()],
+                           compiler_directives=directives)
     if '--no-glpk' in sys.argv:
         extensions = [e for e in extensions if 'glpk' not in e.libraries]
         sys.argv.remove('--no-glpk')
