@@ -7,8 +7,7 @@
 from __future__ import print_function, unicode_literals
 from contextlib import contextmanager
 import datetime
-import os
-import platform
+import os, sys, platform
 from dateutil import tz
 
 
@@ -67,6 +66,13 @@ def machineString():
     :rtype: unicode
     """
     return '{0} ({1})'.format(platform.node(), platform.platform())
+
+def isStr(arg):
+    """Python version-agnostic test if *arg* is a string."""
+    if sys.version_info == 3:
+        return isinstance(arg, str)
+    else:
+        return isinstance(arg, basestring)
 
 
 # terminal color codes

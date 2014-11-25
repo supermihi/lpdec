@@ -62,7 +62,6 @@ class FactorGraph:
         return H
 
 
-
 class FactorNode:
     """Base class for nodes of a factor graph.
 
@@ -84,10 +83,14 @@ class FactorNode:
         self.neighbors.append(other)
         other.neighbors.append(self)
 
+    def disconnect(self, other):
+        assert other in self.neighbors
+        self.neighbors.remove(other)
+        other.neighbors.remove(self)
+
     def isolate(self):
         for neigh in self.neighbors[:]:
-            neigh.neighbors.remove(self)
-            self.neighbors.remove(neigh)
+            self.disconnect(neigh)
 
     @property
     def degree(self):
@@ -106,6 +109,21 @@ class VariableNode(FactorNode):
     def connect(self, other):
         assert isinstance(other, CheckNode), 'No check node: {}'.format(other)
         FactorNode.connect(self, other)
+
+    def merge(self, other):
+        """Merge *other* into this node. Afterwards, *other* will be isolated and all of its
+        neighbors connected to *self*.
+        """
+        for check in other.neighbors[:]:
+            if self in check.neighbors:
+                # merging two variable nodes connected to the same check: in that case, the new
+                # super-variable node is completely irrelevant for the check, so both edges are
+                # removed
+                self.disconnect(check)
+                other.disconnect(check)
+            else:
+                other.disconnect(check)
+                self.connect(check)
 
 
 class CheckNode(FactorNode):

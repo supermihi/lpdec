@@ -12,7 +12,6 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
 
     cdef:
         public int blocklength, infolength
-        public object filename
         cdef public object name
         public np.ndarray _generatorMatrix, _parityCheckMatrix
 

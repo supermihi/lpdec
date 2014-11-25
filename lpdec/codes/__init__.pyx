@@ -11,7 +11,7 @@ from collections import OrderedDict
 cimport numpy as np
 import numpy as np
 from lpdec.persistence cimport JSONDecodable
-from lpdec import matrices, mod2la
+from lpdec import matrices, mod2la, utils
 
 
 cdef class BinaryLinearBlockCode(JSONDecodable):
@@ -30,12 +30,13 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
 
     def __init__(self, name=None, parityCheckMatrix=None):
         JSONDecodable.__init__(self)
+        self._parityCheckMatrix = self._generatorMatrix = None
         if parityCheckMatrix is not None:
-            if isinstance(parityCheckMatrix, basestring):
-                self.filename = os.path.expanduser(parityCheckMatrix)
-                hmatrix = matrices.getBinaryMatrix(self.filename)
+            if utils.isStr(parityCheckMatrix):
+                filename = os.path.expanduser(parityCheckMatrix)
+                hmatrix = matrices.getBinaryMatrix(filename)
                 if name is None:
-                    name = os.path.basename(self.filename)
+                    name = os.path.basename(filename)
             elif not isinstance(parityCheckMatrix, np.ndarray):
                 hmatrix = matrices.getBinaryMatrix(parityCheckMatrix)
             else:
