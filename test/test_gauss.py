@@ -35,16 +35,16 @@ class SmallGaussTest(unittest.TestCase):
         self.assert_((self.matrix == self.diagAuto).all())
 
     def test_diag456(self):
-        gaussianElimination(self.matrix, np.array([3, 4, 5]))
+        gaussianElimination(self.matrix, np.array([3, 4, 5], dtype=np.intp))
         self.assert_((self.matrix == self.diag456).all())
 
     def test_tridiag456(self):
-        gaussianElimination(self.matrix, np.array([3, 4, 5]), diagonalize=False)
+        gaussianElimination(self.matrix, np.array([3, 4, 5], dtype=np.intp), diagonalize=False)
         self.assert_((self.matrix == self.tridiag456).all())
 
     def test_tridiag345(self):
         # involves pivoting
-        gaussianElimination(self.matrix, np.array([2, 3, 4]), diagonalize=False)
+        gaussianElimination(self.matrix, np.array([2, 3, 4], dtype=np.intp), diagonalize=False)
         self.assert_((self.matrix == self.tridiag345).all())
 
 

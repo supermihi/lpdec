@@ -69,7 +69,7 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
                     self._generatorMatrix[i, :] = self.encode(infoWord)
             else:
                 cols = np.hstack((np.arange(self.infolength, self.blocklength),
-                                  np.arange(self.infolength)))
+                                  np.arange(self.infolength))).astype(np.intp)
                 self._generatorMatrix = mod2la.orthogonalComplement(self._parityCheckMatrix, cols)
         return self._generatorMatrix
 

@@ -32,11 +32,11 @@ cpdef gaussianElimination(np.int_t[:,:] matrix, np.intp_t[:] columns=None, bint 
             int ncols = matrix.shape[1]
             int curRow = 0, row, curCol, colIndex = 0
             int pivotRow, val, i
-            np.intp_t[:] successfulCols = np.empty(nrows, dtype=np.int)
+            np.intp_t[:] successfulCols = np.empty(nrows, dtype=np.intp)
             int numSuccessfulCols = 0
 
         if columns is None:
-            columns = np.arange(ncols)
+            columns = np.arange(ncols, dtype=np.intp)
         while True:
             if colIndex >= columns.shape[0]:
                 break
