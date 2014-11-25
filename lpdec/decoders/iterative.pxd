@@ -33,7 +33,7 @@ cdef class IterativeDecoder(Decoder):
         np.intp_t[:,:] varNeigh2
         int            maxRange
         double         reencodeRange
-        np.intp  [:,:] matrix
+        np.int_t  [:,:] matrix
 
     cpdef solve(self, double lb=?, double ub=?)
     cpdef params(self)
