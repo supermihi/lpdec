@@ -13,7 +13,7 @@ cimport numpy as np
 import numpy as np
 
 
-cpdef gaussianElimination(np.int_t[:,:] matrix, np.int_t[:] columns=None, bint diagonalize=True):
+cpdef gaussianElimination(np.intp_t[:,:] matrix, np.intp_t[:] columns=None, bint diagonalize=True):
         """The Gaussian elimination algorithm in GF(2) arithmetics.
 
         When called on a `(k × n)` matrix, the algorithm performs Gaussian elimination,
@@ -32,7 +32,7 @@ cpdef gaussianElimination(np.int_t[:,:] matrix, np.int_t[:] columns=None, bint d
             int ncols = matrix.shape[1]
             int curRow = 0, row, curCol, colIndex = 0
             int pivotRow, val, i
-            np.int_t[:] successfulCols = np.empty(nrows, dtype=np.int)
+            np.intp_t[:] successfulCols = np.empty(nrows, dtype=np.int)
             int numSuccessfulCols = 0
 
         if columns is None:

@@ -275,7 +275,7 @@ cdef class BranchAndCutDecoder(Decoder):
             raise NotImplementedError('Eiriks method not implemented')
 
 
-    cpdef setLLRs(self, np.double_t[:] llrs, np.int_t[:] sent=None):
+    cpdef setLLRs(self, np.double_t[:] llrs, np.intp_t[:] sent=None):
         self.ubProvider.setLLRs(llrs, sent)
         if sent is not None:
             self.sentObjective = np.dot(sent, llrs)

@@ -6,4 +6,4 @@
 # published by the Free Software Foundation
 cimport numpy as np
 
-cpdef gaussianElimination(np.int_t[:,:] matrix, np.int_t[:] columns=?, bint diagonalize=?)
+cpdef gaussianElimination(np.intp_t[:,:] matrix, np.intp_t[:] columns=?, bint diagonalize=?)

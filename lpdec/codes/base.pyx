@@ -80,12 +80,12 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
             self._parityCheckMatrix = mod2la.orthogonalComplement(self.generatorMatrix)
         return self._parityCheckMatrix
 
-    cpdef np.ndarray[ndim=1, dtype=np.int_t] encode(self, np.ndarray[ndim=1, dtype=np.int_t] infoword):
+    cpdef np.ndarray[ndim=1, dtype=np.intp_t] encode(self, np.ndarray[ndim=1, dtype=np.intp_t] infoword):
         """Encode an information word.
 
         :param infoword: The information word. Must be a numpy array with integer type.
         :returns: The resulting codeword.
-        :rtype: numpy.ndarray of dimension one and type numpy.int_t.
+        :rtype: numpy.ndarray of dimension one and type numpy.intp_t.
         """
         return infoword.dot(self.generatorMatrix) % 2
 
