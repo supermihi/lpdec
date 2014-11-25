@@ -10,7 +10,7 @@ from collections import OrderedDict
 import numpy as np
 cimport numpy as np
 from lpdec.persistence cimport JSONDecodable
-from lpdec.codes import BinaryLinearBlockCode
+from lpdec.codes.base import BinaryLinearBlockCode
 
 
 cdef class Decoder(JSONDecodable):

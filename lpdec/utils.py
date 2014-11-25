@@ -69,7 +69,7 @@ def machineString():
 
 def isStr(arg):
     """Python version-agnostic test if *arg* is a string."""
-    if sys.version_info == 3:
+    if sys.version_info.major == 3:
         return isinstance(arg, str)
     else:
         return isinstance(arg, basestring)

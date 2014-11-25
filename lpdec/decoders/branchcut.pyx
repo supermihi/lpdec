@@ -20,8 +20,8 @@ from libc.math cimport fabs, fmin
 import numpy as np
 cimport numpy as np
 
-from lpdec.decoders import Decoder
-from lpdec.decoders cimport Decoder
+from lpdec.decoders.base import Decoder
+from lpdec.decoders.base cimport Decoder
 from lpdec.decoders.adaptivelp import AdaptiveLPDecoder
 from lpdec.decoders.iterative import IterativeDecoder
 from lpdec.utils import Timer

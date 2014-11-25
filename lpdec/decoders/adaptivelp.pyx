@@ -21,8 +21,8 @@ from libc.math cimport fabs, sqrt
 from lpdec.decoders cimport glpk
 
 from lpdec.mod2la cimport gaussianElimination
-from lpdec.codes cimport BinaryLinearBlockCode
-from lpdec.decoders cimport Decoder
+from lpdec.codes.base cimport BinaryLinearBlockCode
+from lpdec.decoders.base cimport Decoder
 from lpdec.utils import Timer
 
 logger = logging.getLogger('alp')

@@ -11,7 +11,7 @@ from collections import OrderedDict
 cimport numpy as np
 import numpy as np
 from libc.math cimport tanh, atanh, fmin, fmax, fabs, isnan
-from lpdec.decoders cimport Decoder
+from lpdec.decoders.base cimport Decoder
 from lpdec.mod2la cimport gaussianElimination
 
 

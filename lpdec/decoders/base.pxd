@@ -6,7 +6,7 @@
 # published by the Free Software Foundation
 
 from lpdec.persistence cimport JSONDecodable
-from lpdec.codes cimport BinaryLinearBlockCode
+from lpdec.codes.base cimport BinaryLinearBlockCode
 cimport numpy as np
 
 cdef class Decoder(JSONDecodable):

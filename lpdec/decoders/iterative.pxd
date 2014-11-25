@@ -5,7 +5,7 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
-from lpdec.decoders cimport Decoder
+from lpdec.decoders.base cimport Decoder
 cimport numpy as np
 
 
