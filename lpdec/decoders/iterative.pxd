@@ -12,11 +12,11 @@ cimport numpy as np
 cdef class IterativeDecoder(Decoder):
 
     cdef:
-        np.intp_t[:]    checkNodeSatStates
+        np.int_t[:]    checkNodeSatStates
         np.double_t[:] varSoftBits
-        np.intp_t[:]    varHardBits
-        np.intp_t[:]    varNodeDegree
-        np.intp_t[:]    checkNodeDegree
+        np.int_t[:]    varHardBits
+        np.int_t[:]    varNodeDegree
+        np.int_t[:]    checkNodeDegree
         np.intp_t[:,:]  varNeighbors
         np.intp_t[:,:]  checkNeighbors
         np.double_t[:,:]  varToChecks
@@ -28,11 +28,12 @@ cdef class IterativeDecoder(Decoder):
         bint           minSum, reencodeIfCodeword
         public bint    excludeZero
         # helpers for the order-i reprocessing
-        np.intp_t[:]    syndrome, candidate, indices, pool, varDeg2, fixSyndrome
-        np.intp_t[:,:]  varNeigh2
+        np.int_t[:]    syndrome, candidate, varDeg2, fixSyndrome
+        np.intp_t[:]   indices, pool
+        np.intp_t[:,:] varNeigh2
         int            maxRange
         double         reencodeRange
-        np.intp_t[:,:]  matrix
+        np.intp  [:,:] matrix
 
     cpdef solve(self, double lb=?, double ub=?)
     cpdef params(self)

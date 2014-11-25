@@ -15,4 +15,4 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
         cdef public object name
         public np.ndarray _generatorMatrix, _parityCheckMatrix
 
-    cpdef np.ndarray[ndim=1, dtype=np.intp_t] encode(self, np.ndarray[ndim=1, dtype=np.intp_t] infoword)
+    cpdef np.ndarray[ndim=1, dtype=np.int_t] encode(self, np.ndarray[ndim=1, dtype=np.int_t] infoword)

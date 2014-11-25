@@ -49,7 +49,7 @@ cdef class Decoder(JSONDecodable):
         self.setStats(OrderedDict())
 
 
-    cpdef setLLRs(self, np.double_t[:] llrs, np.intp_t[:] sent=None):
+    cpdef setLLRs(self, np.double_t[:] llrs, np.int_t[:] sent=None):
         """Set the LLR vector for decoding. Optionally, the codeword that was actually sent might be
         given as well, which might speed up simulations if the decoder can exploit this knowledge.
         Of course that is only relevant for performance curve generation, since in real scenarios
@@ -73,7 +73,7 @@ cdef class Decoder(JSONDecodable):
 
     def decode(self,
                np.double_t[:] llrs,
-               np.intp_t[:] sent=None,
+               np.int_t[:] sent=None,
                double lb=-np.inf,
                double ub=np.inf):
         """Decode the given LLR vector and return the solution.

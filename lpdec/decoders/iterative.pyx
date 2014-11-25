@@ -94,10 +94,10 @@ cdef class IterativeDecoder(Decoder):
 
     cpdef solve(self, double lb=-inf, double ub=inf):
         cdef:
-            np.intp_t[:]      checkNodeSatStates = self.checkNodeSatStates
-            np.intp_t[:]      varHardBits = self.varHardBits
-            np.intp_t[:]      varNodeDegree = self.varNodeDegree
-            np.intp_t[:]      checkNodeDegree = self.checkNodeDegree
+            np.int_t[:]      checkNodeSatStates = self.checkNodeSatStates
+            np.int_t[:]      varHardBits = self.varHardBits
+            np.int_t[:]      varNodeDegree = self.varNodeDegree
+            np.int_t[:]      checkNodeDegree = self.checkNodeDegree
             np.intp_t[:,:]    varNeighbors = self.varNeighbors, checkNeighbors = self.checkNeighbors
             np.double_t[:,:] varToChecks = self.varToChecks, checkToVars = self.checkToVars
             np.double_t[:]   varSoftBits = self.varSoftBits, bP = self.bP, fP = self.fP
@@ -195,10 +195,10 @@ cdef class IterativeDecoder(Decoder):
         cdef double objVal
         cdef np.intp_t[:] sorted = np.argsort(np.abs(self.varSoftBits))
         cdef np.intp_t[:] indices = self.indices, pool = self.pool
-        cdef np.intp_t[:] candidate = self.candidate, syndrome = self.syndrome, fixSyndrome = \
+        cdef np.int_t[:] candidate = self.candidate, syndrome = self.syndrome, fixSyndrome = \
             self.fixSyndrome
-        cdef np.intp_t[:] varHardBits = self.varHardBits, varDeg = self.varDeg2
-        cdef np.intp_t[:,:] matrix = self.matrix
+        cdef np.int_t[:] varHardBits = self.varHardBits, varDeg = self.varDeg2
+        cdef np.int_t[:,:] matrix = self.matrix
         cdef np.intp_t[:,:] varNeigh = self.varNeigh2
         cdef np.double_t[:] fixes = self.fixes, solution = self.solution, llrs = self.llrs
         cdef np.intp_t[:] unit = np.asarray(gaussianElimination(matrix, sorted, True))

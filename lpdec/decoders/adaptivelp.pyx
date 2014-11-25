@@ -76,13 +76,13 @@ cdef class AdaptiveLPDecoder(Decoder):
     cdef int nrFixedConstraints, insertActive
     cdef public double maxActiveAngle, minCutoff
     cdef public int removeInactive, numConstrs, maxRPCrounds
-    cdef np.intp_t[:,:] hmat, htilde
+    cdef np.int_t[:,:] hmat, htilde
     cdef glpk.glp_prob *prob
     cdef glpk.glp_smcp parm
     cdef np.double_t[:] diffFromHalf
     cdef np.ndarray setV, Nj
     cdef public np.ndarray hint
-    cdef np.intp_t[:] fixes
+    cdef np.int_t[:] fixes
     cdef public object timer, erasureDecoder
 
     def __init__(self, BinaryLinearBlockCode code,
@@ -149,7 +149,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             np.ndarray[dtype=int, ndim=1] Nj = self.Nj
             np.double_t[:] solution = self.solution
             np.double_t[:] diffFromHalf = self.diffFromHalf
-            np.intp_t[:,:] matrix
+            np.int_t[:,:] matrix
             int inserted = 0, row, j, ind, setVsize, minDistIndex, Njsize
             double minDistFromHalf, dist, vSum
         matrix = self.hmat if originalHmat else self.htilde
@@ -246,9 +246,9 @@ cdef class AdaptiveLPDecoder(Decoder):
         """Returns True if and only if the given index is fixed."""
         return self.fixes[i] != -1
 
-    cpdef setLLRs(self, np.double_t[:] llrs, np.intp_t[:] sent=None):
+    cpdef setLLRs(self, np.double_t[:] llrs, np.int_t[:] sent=None):
         cdef int j
-        cdef np.ndarray[dtype=np.intp_t, ndim=1] hint
+        cdef np.ndarray[dtype=np.int_t, ndim=1] hint
         for j in range(self.code.blocklength):
             glpk.glp_set_obj_coef(self.prob, 1+j, llrs[j])
         Decoder.setLLRs(self, llrs, sent)
@@ -389,12 +389,12 @@ cdef class AdaptiveLPDecoder(Decoder):
             self.numConstrs -= removed
             assert self.numConstrs == glpk.glp_get_num_rows(self.prob)
 
-    cdef void insertActiveConstraints(self, np.intp_t[:] codeword):
+    cdef void insertActiveConstraints(self, np.int_t[:] codeword):
         """Inserts constraints that are active at the given codeword."""
         cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV, llrs = self.llrs
         cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
         cdef int ind, i, j, absG, Njsize, rowIndex
-        cdef np.intp_t[:,:] hmat = self.hmat
+        cdef np.int_t[:,:] hmat = self.hmat
         cdef double lambdaSum, normDenom, absLambda = np.linalg.norm(llrs)
         for i in range(hmat.shape[0]):
             Njsize = 0
@@ -441,7 +441,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV
         cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
         cdef int ind, i, j, Njsize, rowIndex
-        cdef np.intp_t[:,:] hmat = self.hmat
+        cdef np.int_t[:,:] hmat = self.hmat
         for i in range(hmat.shape[0]):
             Njsize = 0
             for j in range(hmat.shape[1]):
