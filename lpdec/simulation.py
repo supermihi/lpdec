@@ -11,7 +11,11 @@ from collections import OrderedDict
 import datetime
 import math
 from multiprocessing import Process, Value
-from multiprocessing.queues import JoinableQueue
+import sys
+if sys.version_info.major >= 3:
+    from multiprocessing import JoinableQueue
+else:
+    from multiprocessing.queues import JoinableQueue
 
 import numpy as np
 import lpdec

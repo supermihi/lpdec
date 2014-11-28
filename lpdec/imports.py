@@ -12,6 +12,7 @@ from lpdec.channels import *
 from lpdec.codes import *
 from lpdec.codes.classic import *
 from lpdec.codes.ldpc import *
+from lpdec.codes.polar import *
 
 from lpdec.decoders import *
 from lpdec.decoders.iterative import *

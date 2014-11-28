@@ -96,7 +96,8 @@ cdef void update(PyObject **data, int heapSize, int index):
 
 
 cdef class BMSChannel:
-    """A binary memoryless symmetric channel. Characterized by the vector :attr:`Wgiven0`
+    """
+    A binary memoryless symmetric channel. Characterized by the vector :attr:`Wgiven0`
     containing the probabilities, for all output symbels y, that y is observed when 0 is sent.
 
     The elements are ordered in such a way that conjugate elements are adjacent, i.e.,
@@ -132,7 +133,10 @@ cdef class BMSChannel:
 
     @staticmethod
     def BSC(eps):
-        """Create the binary symmetric channel with crossover probability *eps*."""
+        """Create a binary symmetric channel.
+
+        :param float eps: crossover probability.
+        """
         chan = BMSChannel(2)
         chan[0, 0] = 1 - eps
         chan[1, 0] = eps
@@ -140,13 +144,48 @@ cdef class BMSChannel:
 
     @staticmethod
     def BEC(eps):
-        """Create the binary erasure channel with error probability *eps*. Note that we create
-        two erasure symbols in order to fulfill the assumption of no self-conjugates."""
+        """Create a binary erasure channel. Note that we create
+        two erasure symbols in order to fulfill the assumption of no self-conjugates.
+
+        :param float eps: erasure probability.
+        """
         chan = BMSChannel(4)
         # 2 and 3 are the erasure symbols
         chan[2, 0] = chan[3, 0] = eps/2
         chan[0, 0] = 1 - eps
         chan[1, 0] = 0
+        return chan
+
+    @staticmethod
+    @cython.wraparound(True)
+    def AWGNC(SNR, nu, rate):
+        """Computes a degraded version of the AWGN channel, discretized to :math:`2\cdot \\nu`
+        values, for given *SNR* and *rate*.
+        """
+        import sympy
+        from scipy.optimize import newton
+        from scipy.stats import norm
+        y = sympy.symbols('y')
+        lamb = sympy.exp(4*rate*y*SNR)  # likelihood ratio as function of y
+        C = 1 - lamb/(1+lamb)*sympy.log(1+1/lamb, 2) - 1/(lamb+1)*sympy.log(lamb+1, 2)
+        lC = sympy.lambdify(y, C, 'numpy')
+        Cprime = sympy.simplify(sympy.diff(C, y))
+        lCprime = sympy.lambdify(y, Cprime, 'numpy')
+        Cprimeprime = sympy.simplify(sympy.diff(Cprime, y))
+        lCprimeprime = sympy.lambdify(y, Cprimeprime, 'numpy')
+        Ai = np.zeros(nu+1) # breakpoints defined by Eq. (33)
+        Ai[0] = 0
+        for i in range(1, nu):
+            # we find the next breakpoint using Newton's method
+            lCi = sympy.lambdify(y, C-i/nu, 'numpy')
+            Ai[i] = newton(lCi, x0=Ai[i-1] + .1, fprime=lCprime, fprime2=lCprimeprime)
+        Ai[-1] = np.inf
+        chan = BMSChannel(2*nu)
+        rv0 = norm(loc=1, scale=np.sqrt(1 / (2 *rate * SNR))) # f(y|0)
+        rv1 = norm(loc=-1, scale=np.sqrt(1 / (2 * rate * SNR))) # f(y|1)
+        for i in range(nu):
+            chan.Wgiven0[2*i] = rv0.cdf(Ai[i+1]) - rv0.cdf(Ai[i])
+            chan.Wgiven0[2*i+1] = rv1.cdf(Ai[i+1]) - rv1.cdf(Ai[i])
         return chan
 
     def arikanTransform1(self):
@@ -202,7 +241,7 @@ cdef class BMSChannel:
     def sortAndChoose(self):
         """Performs reordering of output symbols such that
         * :math:`LR(y_i) \geq 1` for all even :math:`i`,
-        * :math:`LR(y_i) \leq LR(y_{i+2}` for all even :math:`i`.
+        * :math:`LR(y_i) \leq LR(y_{i+2})` for all even :math:`i`.
         """
         # 1. swap elements such that LR(y) ≥ 1 for representatives
         y = np.asarray(self.Wgiven0)

@@ -7,6 +7,7 @@
 
 from collections import OrderedDict
 import numpy as np
+from lpdec import utils
 from lpdec.codes import BinaryLinearBlockCode
 from lpdec.decoders import Decoder
 from lpdec.codes.factorgraph import FactorGraph, VariableNode, CheckNode
@@ -21,7 +22,7 @@ class PolarCode(BinaryLinearBlockCode):
         BinaryLinearBlockCode.__init__(self, name=name)
         self.n = n
         self.blocklength = 2 ** n
-        self.infolength - self.blocklength - len(frozen)
+        self.infolength = self.blocklength - len(frozen)
         self.frozen = list(frozen)
 
     @property
@@ -48,6 +49,12 @@ class PolarCode(BinaryLinearBlockCode):
             for index in self.frozen:
                 self._factorGraph.u[index].frozen = True
         return self._factorGraph
+
+    def params(self):
+        ret = OrderedDict(n=self.n)
+        ret['frozen'] = self.frozen
+        ret['name'] = self.name
+        return ret
 
 
 def computeFrozenIndices(BMSC, n, mu, threshold=None, rate=None):
@@ -87,7 +94,7 @@ def computeFrozenIndices(BMSC, n, mu, threshold=None, rate=None):
     else:
         sortedP = np.argsort(P)
         targetLength = (1-rate)*N
-        ind = sortedP[-targetLength:]
+        ind = sortedP[-targetLength:].tolist()
     return ind
 
 
@@ -214,18 +221,49 @@ class PolarFactorGraph(FactorGraph):
 
 class SparsePolarDecoder(Decoder):
 
-    def __init__(self, code, decoderCls, name=None, **decoderParams):
+    def __init__(self, code, decoderCls, **decoderParams):
         code.factorGraph.sparsify()
-        longCode = BinaryLinearBlockCode(parityCheckMatrix=code.factorGraph)
-        self.decoder = decoderCls(code=longCode, **decoderParams)
+        self.longCode = BinaryLinearBlockCode(
+            parityCheckMatrix=code.factorGraph.parityCheckMatrix(),
+            name=code.name+'(Sparse)')
+        if utils.isStr(decoderCls):
+            import lpdec.imports
+            decoderCls = lpdec.imports.__dict__[decoderCls]
+        self.decoder = decoderCls(code=self.longCode, **decoderParams)
         self.decoderCls = decoderCls
-        self.name = name
+        name = self.decoder.name
+        if not name.endswith('(PolarSparse)'):
+            name += '(PolarSparse)'
+        Decoder.__init__(self, code, name=name)
+        self.longLLR = np.random.normal(loc=0, scale=1e-9, size=self.longCode.blocklength)
+        self.longSent = np.zeros(self.longCode.blocklength, dtype=np.int)
+
+    def setStats(self, stats):
+        self.decoder.setStats(stats)
+
+    def stats(self):
+        return self.decoder.stats()
 
     def setLLRs(self, llrs, sent=None):
-        pass
+        self.longLLR[:llrs.size] = llrs
+        if sent is not None:
+            self.longSent[:sent.size] = sent
+            self.decoder.setLLRs(self.longLLR, sent=self.longSent)
+        else:
+            self.decoder.setLLRs(self.longLLR)
+
+    def solve(self, lb=-np.inf, ub=np.inf):
+        self.decoder.solve(lb, ub)
+        self.solution = self.decoder.solution[:self.code.blocklength]
+        self.objectiveValue = self.decoder.objectiveValue
+        self.mlCertificate = self.decoder.mlCertificate
+        self.foundCodeword = self.decoder.foundCodeword
 
     def params(self):
         ans = OrderedDict(decoderCls=self.decoderCls.__name__)
-        ans['name'] = self.name
-        ans.update(self.decoder.params())
+        for key, value in self.decoder.params().items():
+            if key == 'name':
+                ans[key] = self.name
+            else:
+                ans[key] = value
         return ans

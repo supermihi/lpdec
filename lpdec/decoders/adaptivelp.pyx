@@ -146,7 +146,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         """
         cdef:
             np.ndarray[dtype=double, ndim=1] setV = self.setV
-            np.ndarray[dtype=np.int_t, ndim=1] Nj = self.Nj
+            np.ndarray[dtype=int, ndim=1] Nj = self.Nj
             np.double_t[:] solution = self.solution
             np.double_t[:] diffFromHalf = self.diffFromHalf
             np.int_t[:,:] matrix
@@ -304,10 +304,10 @@ cdef class AdaptiveLPDecoder(Decoder):
             elif i != glpk.GLP_OPT:
                 raise RuntimeError("GLPK unknown status {}".format(i))
             newObjectiveValue = glpk.glp_get_obj_val(self.prob)
-            if newObjectiveValue <= self.objectiveValue:
+            if newObjectiveValue <= self.objectiveValue and iteration > self.code.blocklength:
                 # prevent infinite loops in some rare cases where numerical issues cause
                 # non-increasing objective value after cut generation
-                print('cga: no improvement')
+                print('cga: no improvement in iteration {}'.format(iteration))
                 break
             self.objectiveValue = newObjectiveValue
             self.objectiveValue = glpk.glp_get_obj_val(self.prob)
@@ -357,7 +357,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         """Removes constraints which are not active at the current solution."""
         cdef int i, removed = 0, ind
         cdef double avgSlack, slack
-        cdef np.ndarray[dtype=np.intp_t, ndim=1] indices
+        cdef np.ndarray[dtype=int, ndim=1] indices
         #  compute average slack of constraints all constraints, if only those above the average
         # slack should be removed
         if self.removeAboveAverageSlack:
@@ -376,7 +376,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             if slack > avgSlack:
                 removed += 1
         if removed > 0:
-            indices = np.empty(1+removed, dtype=np.int)
+            indices = np.empty(1+removed, dtype=np.intc)
             ind = 1
             for i in range(self.nrFixedConstraints, self.numConstrs):
                 if glpk.glp_get_row_ub(self.prob, 1+i) \
@@ -390,7 +390,7 @@ cdef class AdaptiveLPDecoder(Decoder):
     cdef void insertActiveConstraints(self, np.int_t[:] codeword):
         """Inserts constraints that are active at the given codeword."""
         cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV, llrs = self.llrs
-        cdef np.ndarray[ndim=1, dtype=np.int_t] Nj = self.Nj
+        cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
         cdef int ind, i, j, absG, Njsize, rowIndex
         cdef np.int_t[:,:] hmat = self.hmat
         cdef double lambdaSum, normDenom, absLambda = np.linalg.norm(llrs)
@@ -437,7 +437,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         all-zero decoding to avoid frequent adaptive insertion of the same constraints.
         """
         cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV
-        cdef np.ndarray[ndim=1, dtype=np.int_t] Nj = self.Nj
+        cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
         cdef int ind, i, j, Njsize, rowIndex
         cdef np.int_t[:,:] hmat = self.hmat
         for i in range(hmat.shape[0]):
@@ -461,10 +461,10 @@ cdef class AdaptiveLPDecoder(Decoder):
         Usually there are no fixed constraints. In case of all-zero decoding, the zero
         constraints are fixed and not removed by this function.
         """
-        cdef np.ndarray[dtype=np.intp_t, ndim=1] indices
+        cdef np.ndarray[dtype=int, ndim=1] indices
         self.numConstrs = glpk.glp_get_num_rows(self.prob)
         if self.numConstrs > self.nrFixedConstraints:
-            indices = np.arange(self.nrFixedConstraints, 1+self.numConstrs, dtype=np.int)
+            indices = np.arange(self.nrFixedConstraints, 1+self.numConstrs, dtype=np.intc)
             glpk.glp_del_rows(self.prob, self.numConstrs - self.nrFixedConstraints,
                               <int*>indices.data)
             glpk.glp_std_basis(self.prob)

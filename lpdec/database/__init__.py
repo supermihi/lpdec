@@ -183,7 +183,8 @@ def _checkCodeOrDecoder(which, obj, insert=True):
         if row[table.c.json] != obj.toJSON():
             raise DatabaseException('A {} named "{}" with different JSON representation '
                                     .format(which, obj.name) +
-                                    'already exists in the database')
+                                    'already exists in the database:\n'
+                                    '{}\n\n{}'.format(row[table.c.json], obj.toJSON()))
         return row[table.c.id]
     elif insert:
         args = dict(name=obj.name, classname=type(obj).__name__, json=obj.toJSON())

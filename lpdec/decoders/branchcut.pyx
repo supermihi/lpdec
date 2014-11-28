@@ -220,6 +220,13 @@ cdef class BranchAndCutDecoder(Decoder):
         Decoder.__init__(self, code, name=name)
 
 
+    optimizedOptions=dict(name='B&C[mixed-/30/100/5/2;llr;cut.2;M-100;iter100-o2]',
+                          selectionMethod='mixed-/30/100/5/2', childOrder='llr',
+                          lpParams=dict(removeInactive=100, insertActive=1, keepCuts=True,
+                                        maxRPCrounds=100, minCutoff=.2),
+                          iterParams=dict(iterations=100, reencodeOrder=2,
+                                          reencodeIfCodeword=False))
+
     cpdef setStats(self, stats):
         for item in "nodes", "prBd1", "prBd2", "prInf", "prOpt", "termEx", "termGap", 'lpTime', \
                     'iterTime':
@@ -381,6 +388,9 @@ cdef class BranchAndCutDecoder(Decoder):
             elif node.lb < ub-1e-6:
                 # branch
                 branchIndex = self.branchIndex()
+                if branchIndex < 0:
+                    print('BAA', branchIndex)
+                    print([i for i in range(self.code.blocklength) if self.fixed(i)])
                 newNode0 = Node(parent=node, branchIndex=branchIndex, branchValue=0)
                 newNode1 = Node(parent=node, branchIndex=branchIndex, branchValue=1)
                 if (self.childOrder == '10') or \

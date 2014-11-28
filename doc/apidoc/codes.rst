@@ -3,9 +3,8 @@ Binary Linear Codes Models
 ==========================
 
 
-.. automodule:: lpdec.codes
+.. automodule:: lpdec.codes.base
 
-.. autoclass:: lpdec.codes.BinaryLinearBlockCode
 
 Classical Codes
 ===============
@@ -20,3 +19,8 @@ LDPC Codes
 Factor Graphs
 =============
 .. automodule:: lpdec.codes.factorgraph
+
+Polar Codes
+===========
+.. automodule:: lpdec.codes.polar
+.. automodule:: lpdec.codes.polar_helpers

@@ -3,9 +3,8 @@ Decoder Implementations
 =======================
 
 
-.. automodule:: lpdec.decoders
+.. automodule:: lpdec.decoders.base
 
-.. autoclass:: lpdec.decoders.Decoder
 
 Integer Programming (IP) based decoders
 =======================================
@@ -27,9 +26,7 @@ Branch-and-Cut Decoder
 
 .. automodule:: lpdec.decoders.branchcut
 
-
 Erasure Decoder
 ===============
 
 .. automodule:: lpdec.decoders.erasure
-
