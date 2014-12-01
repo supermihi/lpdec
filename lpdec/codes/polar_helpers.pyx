@@ -166,6 +166,7 @@ cdef class BMSChannel:
         from scipy.optimize import newton
         from scipy.stats import norm
         y = sympy.symbols('y')
+        SNR = 10 ** (SNR / 10) # SNR is specified in dB
         lamb = sympy.exp(4*rate*y*SNR)  # likelihood ratio as function of y
         C = 1 - lamb/(1+lamb)*sympy.log(1+1/lamb, 2) - 1/(lamb+1)*sympy.log(lamb+1, 2)
         lC = sympy.lambdify(y, C, 'numpy')

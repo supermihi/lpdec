@@ -176,6 +176,7 @@ cdef class BranchAndCutDecoder(Decoder):
                  childOrder='01',
                  highSNR=False,
                  name='BranchAndCutDecoder',
+                 lpClass=AdaptiveLPDecoder,
                  lpParams=None,
                  iterParams=None):
         self.name = name
@@ -183,7 +184,7 @@ cdef class BranchAndCutDecoder(Decoder):
             lpParams = {}
         if iterParams is None:
             iterParams = {}
-        self.lbProvider = AdaptiveLPDecoder(code, **lpParams)
+        self.lbProvider = lpClass(code, **lpParams)
         self.ubProvider = IterativeDecoder(code, **iterParams)
         self.highSNR = highSNR
         if branchMethod == 'mostFractional':

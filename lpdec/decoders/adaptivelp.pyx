@@ -261,7 +261,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             else:
                 hint = np.asarray(sent)
             self.removeNonfixedConstraints()
-            if self.allZero and np.all(hint) == 0:
+            if self.allZero and np.all(hint == 0):
                 return #  zero-active constraints are already in the model
             self.insertActiveConstraints(hint)
 
@@ -310,7 +310,6 @@ cdef class AdaptiveLPDecoder(Decoder):
                 print('cga: no improvement in iteration {}'.format(iteration))
                 break
             self.objectiveValue = newObjectiveValue
-            self.objectiveValue = glpk.glp_get_obj_val(self.prob)
             if self.objectiveValue >= ub - 1e-6:
                 # lower bound from the LP is above known upper bound -> no need to proceed
                 self.objectiveValue = np.inf
