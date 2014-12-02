@@ -14,9 +14,6 @@ from libc.math cimport log2
 import numpy as np
 cimport numpy as np
 cimport cython
-from cpython cimport Py_INCREF, Py_DECREF, PyObject
-cimport cpython.ref
-from libc.stdlib cimport malloc, free
 
 @cython.profile(False)
 cdef double C(double x, double y) nogil:
@@ -37,6 +34,7 @@ cdef class DataElement:
     cdef public double a, b, aprime, bprime, deltaI
     cdef public DataElement left, right
     cdef public int h
+
     def __cinit__(self, a, b, ap, bp):
         self.a = a
         self.b = b
@@ -57,39 +55,34 @@ cdef class DataElement:
     __repr__ = __str__
 
 
-cdef void heapify(PyObject **data, int heapSize, int index):
+cdef void heapify(np.ndarray[object, ndim=1] data, int heapSize, int index):
     """Heapifies a C array of DataElements for given heapSize and index."""
     cdef:
         int left = 2*index+1
         int right= 2*index+2
         int smallest = index
-        PyObject *tmp
     if left < heapSize and (<DataElement>(data[left])).deltaI < (<DataElement>(data[index])).deltaI:
         smallest = left
     if right < heapSize and \
             (<DataElement>(data[right])).deltaI < (<DataElement>(data[smallest])).deltaI:
         smallest = right
     if smallest != index:
-        tmp = data[index]
-        data[index] = data[smallest]
-        data[smallest] = tmp
-        #data[index], data[smallest] = data[smallest], data[index]
+        data[index], data[smallest] = data[smallest], data[index]
         (<DataElement>(data[index])).h = index
         (<DataElement>(data[smallest])).h = smallest
         heapify(data, heapSize, smallest)
 
-cdef void update(PyObject **data, int heapSize, int index):
+cdef void update(np.ndarray[object, ndim=1] data, int heapSize, int index):
     """Restore heap property if element with index *index* has changed its value."""
     cdef int parent
-    cdef PyObject *tmp
     # first case: value decreased -> swap with parents, if necessary
     while index > 0 and \
           (<DataElement>(data[index])).deltaI < (<DataElement>(data[(index-1)//2])).deltaI:
         parent = (index-1)//2
-        tmp = data[index]
-        data[index] = data[parent]
-        data[parent] = tmp
-        #data[parent], data[index] = data[index], data[parent]
+        # tmp = data[index]
+        # data[index] = data[parent]
+        # data[parent] = tmp
+        data[parent], data[index] = data[index], data[parent]
         (<DataElement>(data[parent])).h = parent
         (<DataElement>(data[index])).h = index
     # second case: value increased -> call heapify
@@ -264,20 +257,18 @@ cdef class BMSChannel:
         cdef int i, heapSize, L, j, nu
         cdef BMSChannel chan
         #cdef list data
-        cdef PyObject **data
+        L = self.length // 2
+        cdef np.ndarray[object, ndim=1] data = np.empty(L, dtype=object)
         if self.length <= mu:
             return self
         self.sortAndChoose()
         nu = mu // 2
-        L = self.length // 2
-        data = <PyObject **>malloc((L-1)* sizeof(PyObject*))
         for j in range(L-1):
             d = DataElement(*self.Wgiven0[2*j:2*j+4])
-            cpython.ref.Py_INCREF(d)
             if j > 0:
                 (<DataElement>(data[j-1])).right = d
-                d.left = <DataElement>(data[j-1])
-            data[j] = <PyObject*>d
+                d.left = data[j-1]
+            data[j] = d
         heapSize = L-1
         for i in range(L//2-1, -1, -1):
             heapify(data, heapSize, i)
@@ -308,7 +299,6 @@ cdef class BMSChannel:
                 dRight.b = bplus
                 dRight.calcDeltaI()
                 update(data, heapSize, dRight.h)
-            Py_DECREF(d)
         chan = BMSChannel(mu)
         i = 0
         foundRightmost = False
@@ -323,7 +313,6 @@ cdef class BMSChannel:
                 i += 2
                 foundRightmost = True
         self.degraded = chan
-        free(data)
         return chan
 
     def __str__(self):
