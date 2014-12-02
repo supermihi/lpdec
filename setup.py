@@ -28,7 +28,7 @@ def makeExtensions():
     for root, dirnames, filenames in os.walk(join(dirname(__file__), 'lpdec')):
         for filename in fnmatch.filter(filenames, '*.pyx'):
             sources.append(str(join(root, filename)))
-    directives = {'embedsignature' : True}
+    directives = {'embedsignature': True}
     if '--profile' in sys.argv:
         directives['profile'] = True
         sys.argv.remove('--profile')
@@ -66,7 +66,8 @@ setup(
       'Topic :: Scientific/Engineering :: Mathematics',
     ],
     license='GPL3',
-    install_requires=['numpy', 'sqlalchemy', 'cython', 'python-dateutil', 'jinja2'],
+    install_requires=['numpy', 'sqlalchemy', 'cython', 'python-dateutil', 'jinja2', 'sympy',
+                      'scipy'],
     include_package_data=True,
     ext_modules=makeExtensions(),
     packages=find_packages(exclude=['test']),

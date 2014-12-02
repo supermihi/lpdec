@@ -109,7 +109,7 @@ class GurobiIPDecoder(Decoder):
 
     As above; third-best parameter set.
     """
-    def __init__(self, code, gurobiParams=dict(), gurobiVersion=None, name=None):
+    def __init__(self, code, gurobiParams=None, gurobiVersion=None, name=None):
 
         if name is None:
             name = 'GurobiIPDecoder'
@@ -118,6 +118,8 @@ class GurobiIPDecoder(Decoder):
         matrix = code.parityCheckMatrix
         self.model = Model('ML Decoder')
         self.model.setParam('OutputFlag', 0)
+        if gurobiParams is None:
+            gurobiParams = dict()
         for param, value in gurobiParams.items():
             self.model.setParam(param, value)
         self.grbParams = gurobiParams

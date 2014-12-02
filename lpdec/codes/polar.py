@@ -15,8 +15,23 @@ from lpdec.codes.polar_helpers import BMSChannel
 
 
 class PolarCode(BinaryLinearBlockCode):
+    """Class for representing polar codes (see :cite:`Arikan09Polarization`).
 
+    :param int n: Exponent of the block length, which will then be :math:`2^n`.
+    :param iterable frozen: Indices of the frozen input bits.
+    :param str name: Code name. Defaults to *PolarCode(n=<n>, frozen=<frozen>)*.
+
+    The code's information length computes as ```2**n-len(frozen)```.
+    The parity-check matrix is generated as described in :cite:`Goela+10LPPolar`.
+
+    .. attribute:: factorGraph
+
+      Factor graph of the polar code, containing auxiliary variables, as depicted in Fig. 1 of
+      :cite:`TaranalliSiegel14ALPPolar`. Created on-the-fly on first access. See
+      :class:`PolarFactorGraph` for details.
+    """
     def __init__(self, n, frozen, name=None):
+        frozen = tuple(sorted(frozen))
         if name is None:
             name = 'PolarCode(n={}, frozen={})'.format(n, repr(list(frozen)))
         BinaryLinearBlockCode.__init__(self, name=name)
@@ -38,7 +53,7 @@ class PolarCode(BinaryLinearBlockCode):
             G = np.empty(Fkron.shape, dtype=np.int)
             for i in range(self.blocklength):
                 G[i] = Fkron[int(np.binary_repr(i, self.n)[::-1], 2)]
-            # construct parity-check matrix (see Goela et al: On LP Decoding of Polar Codes)
+            # construct parity-check matrix
             self._parityCheckMatrix = G.T[self.frozen]
         return self._parityCheckMatrix
 
@@ -67,7 +82,7 @@ def computeFrozenIndices(BMSC, n, mu, threshold=None, rate=None):
     :param int mu: Granularity of channel degrading. A higher value means higher running time but
         closer approximation. Must be an even number.
     :param double threshold: If given, all bit-channels for which the approximate error probability
-        :math:`P`satisfies :math:`P > threshold` are frozen.
+        :math:`P` satisfies :math:`P >` *threshold* are frozen.
     :param double rate: If given, the channels with highest error probability are frozen until
         the target rate is achieved.
     """
@@ -99,10 +114,9 @@ def computeFrozenIndices(BMSC, n, mu, threshold=None, rate=None):
 
 
 class PolarFactorGraph(FactorGraph):
-    """Sparse factor graph of a polar code, as defined in e.g. "Adaptive Linear Programming Decoding
-    of Polar Codes" by Taranalli and Siegel.
+    """Sparse factor graph of a polar code, as defined in e.g. :cite:`TaranalliSiegel14ALPPolar`.
 
-    :class:`PolarFactorGraph` has additional attributes:
+    :class:`PolarFactorGraph` has additional attributes compared to :class:`.FactorGraph`:
 
     .. attribute:: polarVars
 
@@ -179,6 +193,8 @@ class PolarFactorGraph(FactorGraph):
         """Makes the graph smaller by eliminating frozen variables and removing degree-2 checks
         and degree-1 auxiliary variables. The result is still a sparse graph (each check node has
         degree at most 3), but usually much smaller than the original one.
+
+        See :cite:`TaranalliSiegel14ALPPolar` for details on the construction.
         """
         # 1. sparsify z-structures
         for structure in reversed(self.zStructures):
@@ -220,12 +236,15 @@ class PolarFactorGraph(FactorGraph):
 
 
 class SparsePolarDecoder(Decoder):
-
+    """Decoder wrapper class for decoding a polar code based on the sparsified
+    :class:`PolarFactorGraph`. It acts as a decoder of the (smaller) original polar codes,
+    filling LLR values etc. with zeros.
+    """
     def __init__(self, code, decoderCls, **decoderParams):
         code.factorGraph.sparsify()
         self.longCode = BinaryLinearBlockCode(
             parityCheckMatrix=code.factorGraph.parityCheckMatrix(),
-            name=code.name+'(Sparse)')
+            name=code.name + '(Sparse)')
         if utils.isStr(decoderCls):
             import lpdec.imports
             decoderCls = lpdec.imports.__dict__[decoderCls]

@@ -9,6 +9,7 @@
 """This module contains helpers for the (approximate) construction of polar codes due to Tal and
 Vardy. Because the construction is time-consuming, it is a compiled Cython module."""
 
+from __future__ import division
 from libc.math cimport log2
 import numpy as np
 cimport numpy as np
@@ -156,8 +157,8 @@ cdef class BMSChannel:
         chan[1, 0] = 0
         return chan
 
-    @staticmethod
     @cython.wraparound(True)
+    @staticmethod
     def AWGNC(SNR, nu, rate):
         """Computes a degraded version of the AWGN channel, discretized to :math:`2\cdot \\nu`
         values, for given *SNR* and *rate*.
@@ -182,7 +183,7 @@ cdef class BMSChannel:
             Ai[i] = newton(lCi, x0=Ai[i-1] + .1, fprime=lCprime, fprime2=lCprimeprime)
         Ai[-1] = np.inf
         chan = BMSChannel(2*nu)
-        rv0 = norm(loc=1, scale=np.sqrt(1 / (2 *rate * SNR))) # f(y|0)
+        rv0 = norm(loc=1, scale=np.sqrt(1 / (2 * rate * SNR))) # f(y|0)
         rv1 = norm(loc=-1, scale=np.sqrt(1 / (2 * rate * SNR))) # f(y|1)
         for i in range(nu):
             chan.Wgiven0[2*i] = rv0.cdf(Ai[i+1]) - rv0.cdf(Ai[i])

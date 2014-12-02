@@ -38,7 +38,10 @@ probably run into less problems when using ``python2``.
 
 Documentation
 -------------
-API documentation can be generated with [Sphinx](www.sphinx-doc.org). To build the documentation,
+API documentation is provided [online](https://pythonhosted.org/lpdec).
+
+You can also try to generate the API doc with [Sphinx](www.sphinx-doc.org). To build the 
+documentation,
 run the following command from within *lpdec*'s main directory:
 
     sphinx-build2 doc doc-html

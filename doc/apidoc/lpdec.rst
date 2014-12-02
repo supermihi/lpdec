@@ -13,7 +13,7 @@ Matrix Input and Output
 .. automodule:: lpdec.matrices
 
 Handing of Binary (GF(2)) Matrices
------------------------------------
+----------------------------------
 .. automodule:: lpdec.mod2la
    :members:
 

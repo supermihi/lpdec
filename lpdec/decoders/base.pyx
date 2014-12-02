@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# cython: embedsignature=True
 # Copyright 2014 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -36,6 +35,9 @@ cdef class Decoder(JSONDecodable):
     .. attribute:: llrs
 
         Vector of log-likelihood ratios as :class:`np.ndarray`.
+    .. attribute:: name
+
+        Name of the code. If used in a database, the name must uniquely map to this code.
     """
 
     def __init__(self, code, name):
@@ -64,9 +66,10 @@ cdef class Decoder(JSONDecodable):
         This is the main method to run the decoding algorithm; the LLR vector must be set
         in advance via the :attr:`llrs` attribute.
 
-        ``lb`` (optional) - lower bound on the optimal objective value
+        :param double lb: (optional) lower bound on the optimal objective value
 
-        `` ub`` (optional) - upper bound on the optimal objective value. Allows the decoder to
+        :param double ub: (optional) upper bound on the optimal objective value. Allows the
+        decoder to
         terminate if the optimal value is proven to be greater than the bound.
         """
         raise NotImplementedError()

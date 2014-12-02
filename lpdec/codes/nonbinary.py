@@ -9,7 +9,7 @@
 the contents are not well integrated with the rest of the lpdec package.
 """
 
-from __future__ import division, unicode_literals
+from __future__ import division, unicode_literals, print_function
 import os.path
 from collections import OrderedDict
 import itertools

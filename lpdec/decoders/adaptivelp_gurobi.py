@@ -203,7 +203,7 @@ class GurobiALPDecoder(Decoder):
                 self.foundCodeword = self.mlCertificate = False
                 break
             elif self.model.Status != g.GRB.OPTIMAL:
-                raise RuntimeError("Gurobi unknown status {}".format(i))
+                raise RuntimeError("Gurobi unknown status {}".format(self.model.Status))
             newObjectiveValue = self.model.ObjVal
             if newObjectiveValue <= self.objectiveValue and iteration > self.code.blocklength:
                 # prevent infinite loops in some rare cases where numerical issues cause

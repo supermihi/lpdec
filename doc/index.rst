@@ -12,8 +12,7 @@ Contents:
    :maxdepth: 4
 
    apidoc/index
-
-
+   zreferences
 
 Indices and tables
 ==================
