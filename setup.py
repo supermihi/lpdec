@@ -38,7 +38,16 @@ def makeExtensions():
         e.include_dirs += [np.get_include()] # the above does not work on windows
     if '--no-glpk' in sys.argv:
         extensions = [e for e in extensions if 'glpk' not in e.libraries]
-        sys.argv.remove('--no-glpk')
+        sys.argv.remove('--no-gurobi')
+    if '--no-gurobi' in sys.argv:
+        extensions = [e for e in extensions if 'gurobi' not in e.libraries]
+    else:
+        for e in extensions:
+            if 'gurobi60' in e.libraries:
+                try:
+                    e.library_dirs = [join(os.environ['GUROBI_HOME'], 'lib')]
+                except KeyError:
+                    pass
     return extensions
 
 

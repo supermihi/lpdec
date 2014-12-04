@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# distutils: libraries = ["glpk", "m"]
+# distutils: libraries = ["gurobi60"]
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: cdivision=True
@@ -11,28 +11,28 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
-from __future__ import division, print_function
+from __future__ import division, print_function, unicode_literals
 from collections import OrderedDict
 import logging
 import numpy as np
 cimport numpy as np
 from libc.math cimport fabs, sqrt
 
-from lpdec.decoders cimport glpk
+from lpdec.decoders cimport gurobi as grb
 
 from lpdec.mod2la cimport gaussianElimination
 from lpdec.codes.base cimport BinaryLinearBlockCode
 from lpdec.decoders.base cimport Decoder
 from lpdec.utils import Timer
 
-logger = logging.getLogger('alp')
+logger = logging.getLogger('alp_cGurobi')
 
-cdef class AdaptiveLPDecoder(Decoder):
+cdef class CGurobiALPDecoder(Decoder):
     """
     Implements the adaptive linear programming decoder with optional generation of redundant
     parity-check (RPC) cuts.
 
-    Uses the GLPK C-interface for solving the LP subproblems.
+    Uses the Gurobi C-interface for solving the LP subproblems.
 
     :param int maxRPCrounds: Maximum number of iterations of RPC cuts generation. The value
       ``-1`` means no limit (as in the paper). If set to ``0``, no RPC cuts are generated,
@@ -77,8 +77,8 @@ cdef class AdaptiveLPDecoder(Decoder):
     cdef public double maxActiveAngle, minCutoff
     cdef public int removeInactive, numConstrs, maxRPCrounds
     cdef np.int_t[:,:] hmat, htilde
-    cdef glpk.glp_prob *prob
-    cdef glpk.glp_smcp parm
+    cdef grb.GRBmodel *model
+    cdef grb.GRBenv *env
     cdef np.double_t[:] diffFromHalf
     cdef np.ndarray setV, Nj
     cdef public np.ndarray hint
@@ -94,10 +94,9 @@ cdef class AdaptiveLPDecoder(Decoder):
                  insertActive=0,
                  maxActiveAngle=1,
                  allZero=False,
-                 variableFixing=False,
                  name=None):
         if name is None:
-            name = 'AdaptiveLPDecoder'
+            name = 'CGurobiALPDecoder'
         Decoder.__init__(self, code=code, name=name)
         self.maxRPCrounds = maxRPCrounds
         self.minCutoff = minCutoff
@@ -107,35 +106,35 @@ cdef class AdaptiveLPDecoder(Decoder):
         self.insertActive = insertActive
         self.maxActiveAngle=maxActiveAngle
         self.allZero = allZero
-        self.variableFixing = variableFixing
-        if variableFixing:
-            from lpdec.decoders.erasure import ErasureDecoder
-            self.erasureDecoder = ErasureDecoder(self.code)
-        # initialize GLPK
-        self.prob = glpk.glp_create_prob()
-        glpk.glp_init_smcp(&self.parm)
-        self.parm.msg_lev = glpk.GLP_MSG_OFF
-        self.parm.meth = glpk.GLP_DUAL # use dual simplex method
-        self.parm.tol_bnd = 1e-9
-        self.parm.tol_dj = 1e-9
-        glpk.glp_add_cols(self.prob, code.blocklength)
-        for j in range(code.blocklength):
-            glpk.glp_set_col_bnds(self.prob, 1+j, glpk.GLP_DB, 0.0, 1.0)
-        glpk.glp_set_obj_dir(self.prob, glpk.GLP_MIN)
-
+        # initialize Gurobi
+        grb.GRBloadenv((&self.env), NULL)
+        grb.GRBsetintparam(self.env, grb.GRB_INT_PAR_OUTPUTFLAG, 0)
+        grb.GRBsetintparam(self.env, grb.GRB_INT_PAR_METHOD, 1)
+        self.model = NULL
         # initialize various structures
         self.hmat = code.parityCheckMatrix
         self.htilde = self.hmat.copy() # the copy is used for gaussian elimination
         self.solution = np.empty(code.blocklength)
         self.diffFromHalf = np.empty(code.blocklength)
-        self.setV = np.empty(1+code.blocklength, dtype=np.double)
-        self.Nj = np.empty(1+code.blocklength, dtype=np.intc)
+        self.setV = np.empty(code.blocklength, dtype=np.double)
+        self.Nj = np.empty(code.blocklength, dtype=np.intc)
         self.fixes = -np.ones(code.blocklength, dtype=np.int)
         self.numConstrs = 0
         self.timer = Timer()
-        if allZero:
+        self.reset()
+
+    def reset(self):
+        if self.model != NULL:
+            grb.GRBfreemodel(self.model)
+        grb.GRBnewmodel(self.env, &self.model, "ALP-CGUROBI", 0, NULL, NULL, NULL, NULL, NULL)
+        for i in range(self.code.blocklength):
+            grb.GRBaddvar(self.model, 0, NULL, NULL, 0, 0, 1, grb.GRB_CONTINUOUS, NULL)
+        grb.GRBsetintattr(self.model, grb.GRB_INT_ATTR_MODELSENSE, grb.GRB_MINIMIZE)
+        grb.GRBupdatemodel(self.model)
+        if self.allZero:
             self.insertZeroConstraints()
-        self.nrFixedConstraints = glpk.glp_get_num_rows(self.prob)
+        grb.GRBgetintattr(self.model, grb.GRB_INT_ATTR_NUMCONSTRS, &self.nrFixedConstraints)
+
 
     cdef int cutSearchAlgorithm(self, bint originalHmat):
         """Runs the cut search algorithm and inserts found cuts. If ``originalHmat`` is True,
@@ -158,19 +157,18 @@ cdef class AdaptiveLPDecoder(Decoder):
             #  and V = {j ∈ Nj: solution[j] > .5}. The variable setV will be of size Njsize and
             #  have 1 and -1 entries, depending on whether the corresponding index belongs to V or
             #  not.
-            #  Indices are shifted by 1 to match GLPK's indexing.
             Njsize = 0
             setVsize = 0
             minDistFromHalf = 1
             minDistIndex = -1
             for j in range(matrix.shape[1]):
                 if matrix[row, j] == 1:
-                    Nj[1 + Njsize] = j
+                    Nj[Njsize] = j
                     if solution[j] > .5:
-                        setV[1 + Njsize] = 1
+                        setV[Njsize] = 1
                         setVsize += 1
                     else:
-                        setV[1 + Njsize] = -1
+                        setV[Njsize] = -1
                     if diffFromHalf[j] < minDistFromHalf:
                         minDistFromHalf = diffFromHalf[j]
                         minDistIndex = Njsize
@@ -182,22 +180,19 @@ cdef class AdaptiveLPDecoder(Decoder):
                 continue
             if setVsize % 2 == 0:
                 #  V size must be odd, so add entry with minimum distance from .5
-                setV[1 + minDistIndex] *= -1
-                setVsize += <int>setV[1 + minDistIndex]
+                setV[minDistIndex] *= -1
+                setVsize += <int>setV[minDistIndex]
             vSum = 0 # left hand side of the induced Feldman inequality
             for ind in range(Njsize):
-                if setV[1 + ind] == 1:
-                    vSum += 1 - solution[Nj[1 + ind]]
-                elif setV[1 + ind] == -1:
-                    vSum += solution[Nj[1 + ind]]
+                if setV[ind] == 1:
+                    vSum += 1 - solution[Nj[ind]]
+                elif setV[ind] == -1:
+                    vSum += solution[Nj[ind]]
             if vSum < 1 - self.minCutoff:
                 # inequality violated -> insert
                 inserted += 1
-                ind = glpk.glp_add_rows(self.prob, 1)
-                for j in range(Njsize):
-                    Nj[1 + j] += 1 # GLPK indexing: shift indexes by one
-                glpk.glp_set_row_bnds(self.prob, ind, glpk.GLP_UP, 0.0, setVsize-1)
-                glpk.glp_set_mat_row(self.prob, ind, Njsize, <int*>Nj.data, <double*>setV.data)
+                grb.GRBaddconstr(self.model,  Njsize,  <int*>Nj.data,  <double*>setV.data,
+                                 grb.GRB_LESS_EQUAL, setVsize-1, NULL)
             if originalHmat and vSum < 1-1e-5:
                 #  in this case, we are in the "original matrix" phase and would have a cut for
                 #  insertion which is declined because of minCutoff. This implies that we don't
@@ -205,6 +200,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                 self.foundCodeword = self.mlCertificate = False
         if inserted > 0:
             self._stats['cuts'] += inserted
+            grb.GRBupdatemodel(self.model)
         return inserted
 
     cpdef setStats(self, object stats):
@@ -217,43 +213,26 @@ cdef class AdaptiveLPDecoder(Decoder):
         Decoder.setStats(self, stats)
 
     cpdef fix(self, int i, int val):
-        glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_FX, val, val)
+        if val == 1:
+            grb.GRBsetdblattrelement(self.model, grb.GRB_DBL_ATTR_LB, i, 1)
+        else:
+            grb.GRBsetdblattrelement(self.model, grb.GRB_DBL_ATTR_UB, i, 0)
         self.fixes[i] = val
-        if self.variableFixing:
-            self.doVariableFixing()
-
-    def doVariableFixing(self):
-        for i in range(self.code.blocklength):
-            if self.fixes[i] == -1:
-                self.erasureDecoder.llrs[i] = 0
-            else:
-                self.erasureDecoder.llrs[i] = 1 - 2*self.fixes[i]
-        self.erasureDecoder.solve()
-        for i in range(self.code.blocklength):
-            val = self.erasureDecoder.solution[i]
-            if val == -1:
-                glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_DB, 0.0, 1.0)
-            else:
-                glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_FX, val, val)
 
     cpdef release(self, int i):
-        glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_DB, 0.0, 1.0)
+        grb.GRBsetdblattrelement(self.model, grb.GRB_DBL_ATTR_LB, i, 0)
+        grb.GRBsetdblattrelement(self.model, grb.GRB_DBL_ATTR_UB, i, 1)
         self.fixes[i] = -1
-        if self.variableFixing:
-            self.doVariableFixing()
 
     def fixed(self, int i):
         """Returns True if and only if the given index is fixed."""
         return self.fixes[i] != -1
 
     cpdef setLLRs(self, np.double_t[:] llrs, np.int_t[:] sent=None):
-        cdef int j
+        cdef np.ndarray[ndim=1, dtype=double] cllr = np.asarray(llrs)
         cdef np.ndarray[dtype=np.int_t, ndim=1] hint
-        self.solveCalls = 0
-        for j in range(self.code.blocklength):
-            glpk.glp_set_obj_coef(self.prob, 1+j, llrs[j])
+        grb.GRBsetdblattrarray(self.model, grb.GRB_DBL_ATTR_OBJ, 0, cllr.size, <double*>cllr.data)
         Decoder.setLLRs(self, llrs, sent)
-
         if self.insertActive & 1:
             if self.hint is None and sent is None:
                 return
@@ -263,14 +242,16 @@ cdef class AdaptiveLPDecoder(Decoder):
                 hint = np.asarray(sent)
             self.removeNonfixedConstraints()
             if self.allZero and np.all(hint == 0):
-                return #  zero-active constraints are already in the model
+                return  # zero-active constraints are already in the model
             self.insertActiveConstraints(hint)
 
 
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
-        cdef int removed, error, numCuts, rpcrounds = 0, iteration = 0
         cdef np.double_t[:] diffFromHalf = self.diffFromHalf
         cdef np.ndarray[dtype=double, ndim=1] solution = self.solution
+        cdef double newObjectiveValue
+        rpcrounds = 0
+        iteration = 0
         if not self.keepCuts:
             self.removeNonfixedConstraints()
         if self.insertActive & 2 and self.hint is not None:
@@ -282,29 +263,22 @@ cdef class AdaptiveLPDecoder(Decoder):
             ub = np.dot(self.sent, self.llrs) + 2e-6
         while True:
             iteration += 1
-            self.solveCalls += 1
-            if self.solveCalls >= 100000:
-                print('SOLVED {}'.format(self.solveCalls))
-                glpk.glp_adv_basis(self.prob, 0)
-                self.solveCalls = 0
             with self.timer:
-                error = glpk.glp_simplex(self.prob, &self.parm)
+                error = grb.GRBoptimize(self.model)
             self._stats['lpTime'] += self.timer.duration
-            if error != 0:
-                raise RuntimeError("GLPK Simplex Error ({}) {}"
-                                   .format(error, glpk.glp_get_num_rows(self.prob)))
+            if error:
+                raise RuntimeError("Gurobi solve error: {}".format(error))
             self._stats["totalLPs"] += 1
-            self.numConstrs = glpk.glp_get_num_rows(self.prob)
+            grb.GRBgetintattr(self.model, grb.GRB_INT_ATTR_NUMCONSTRS, &self.numConstrs)
             self._stats["totalConstraints"] += self.numConstrs
-            i = glpk.glp_get_status(self.prob)
-            if i == glpk.GLP_NOFEAS or i == glpk.GLP_UNBND:
-                # during branch-and-bound the problem might become infeasible
+            grb.GRBgetintattr(self.model, grb.GRB_INT_ATTR_STATUS, &i)
+            if i == grb.GRB_INFEASIBLE or i == grb.GRB_INF_OR_UNBD:
                 self.objectiveValue = np.inf
                 self.foundCodeword = self.mlCertificate = False
                 break
-            elif i != glpk.GLP_OPT:
-                raise RuntimeError("GLPK unknown status {}".format(i))
-            newObjectiveValue = glpk.glp_get_obj_val(self.prob)
+            elif i != grb.GRB_OPTIMAL:
+                raise RuntimeError("Unknown Gurobi status {}".format(i))
+            grb.GRBgetdblattr(self.model, grb.GRB_DBL_ATTR_OBJVAL, &newObjectiveValue)
             if newObjectiveValue <= self.objectiveValue and iteration > self.code.blocklength:
                 # prevent infinite loops in some rare cases where numerical issues cause
                 # non-increasing objective value after cut generation
@@ -319,8 +293,8 @@ cdef class AdaptiveLPDecoder(Decoder):
                 break
             integral = True
             # read solution from GLPK. Round values to {0,1} that are very close
-            for i in range(self.code.blocklength):
-                solution[i] = glpk.glp_get_col_prim(self.prob, 1+i)
+            grb.GRBgetdblattrarray(self.model, grb.GRB_DBL_ATTR_X, 0, self.code.blocklength,
+                                   <double*> solution.data)
             for i in range(self.code.blocklength):
                 if solution[i] < 1e-6:
                     solution[i] = 0
@@ -355,15 +329,15 @@ cdef class AdaptiveLPDecoder(Decoder):
 
     cdef void removeInactiveConstraints(self):
         """Removes constraints which are not active at the current solution."""
-        cdef int i, removed = 0, ind
+        cdef int i
         cdef double avgSlack, slack
-        cdef np.ndarray[dtype=int, ndim=1] indices
+        removed = 0
         #  compute average slack of constraints all constraints, if only those above the average
         # slack should be removed
         if self.removeAboveAverageSlack:
             avgSlack = 0
             for i in range(self.nrFixedConstraints, self.numConstrs):
-                slack = glpk.glp_get_row_ub(self.prob, 1+i) - glpk.glp_get_row_prim(self.prob, 1+i)
+                grb.GRBgetdblattrelement(self.model, grb.GRB_DBL_ATTR_SLACK, i, &slack)
                 avgSlack += slack
             if self.numConstrs == self.nrFixedConstraints:
                 avgSlack = 1e-5
@@ -372,20 +346,13 @@ cdef class AdaptiveLPDecoder(Decoder):
         else:
             avgSlack = 1e-5 # some tolerance to avoid removing active constraints
         for i in range(self.nrFixedConstraints, self.numConstrs):
-            slack = glpk.glp_get_row_ub(self.prob, 1+i) - glpk.glp_get_row_prim(self.prob, 1+i)
+            grb.GRBgetdblattrelement(self.model, grb.GRB_DBL_ATTR_SLACK, i, &slack)
             if slack > avgSlack:
+                grb.GRBdelconstrs(self.model, 1, &i)
                 removed += 1
         if removed > 0:
-            indices = np.empty(1+removed, dtype=np.intc)
-            ind = 1
-            for i in range(self.nrFixedConstraints, self.numConstrs):
-                if glpk.glp_get_row_ub(self.prob, 1+i) \
-                        - glpk.glp_get_row_prim(self.prob, 1+i) > avgSlack:
-                    indices[ind] = 1+i
-                    ind += 1
-            glpk.glp_del_rows(self.prob, removed, <int*>indices.data)
+            grb.GRBupdatemodel(self.model)
             self.numConstrs -= removed
-            assert self.numConstrs == glpk.glp_get_num_rows(self.prob)
 
     cdef void insertActiveConstraints(self, np.int_t[:] codeword):
         """Inserts constraints that are active at the given codeword."""
@@ -400,35 +367,29 @@ cdef class AdaptiveLPDecoder(Decoder):
             lambdaSum = 0
             for j in range(hmat.shape[1]):
                 if hmat[i,j] == 1:
-                    Nj[1+Njsize] = 1+j
+                    Nj[Njsize] = j
                     if codeword[j] == 1:
-                        coeff[1+Njsize] = 1
+                        coeff[Njsize] = 1
                         absG += 1
                         lambdaSum += llrs[Njsize]
                     else:
-                        coeff[1+Njsize] = -1
+                        coeff[Njsize] = -1
                         lambdaSum -= llrs[Njsize]
                     Njsize += 1
             normDenom = absLambda * Njsize
             for ind in range(Njsize):
-                if coeff[1+ind] == 1:
-                    if (lambdaSum-2*llrs[Nj[ind+1]-1]) / normDenom  < self.maxActiveAngle:
-                        coeff[1+ind] = -1
-                        rowIndex = glpk.glp_add_rows(self.prob, 1)
-                        glpk.glp_set_row_bnds(self.prob, rowIndex, glpk.GLP_UP, 0.0, absG-2)
-                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize,
-                                             <int*>Nj.data, <double*>coeff.data)
-                        coeff[1+ind] = 1
+                if coeff[ind] == 1:
+                    if (lambdaSum-2*llrs[Nj[ind]]) / normDenom  < self.maxActiveAngle:
+                        coeff[ind] = -1
+                        grb.GRBaddconstr(self.model, Njsize, <int*>Nj.data, <double*>coeff.data, grb.GRB_LESS_EQUAL, absG-2, NULL)
+                        coeff[ind] = 1
                         self._stats["activeCuts"] += 1
                         self.numConstrs += 1
                 else:
-                    if (lambdaSum+2*llrs[Nj[ind+1]-1]) / normDenom < self.maxActiveAngle:
-                        coeff[1+ind] = 1
-                        rowIndex = glpk.glp_add_rows(self.prob, 1)
-                        glpk.glp_set_row_bnds(self.prob, rowIndex, glpk.GLP_UP, 0.0, absG)
-                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize,
-                                             <int*>Nj.data, <double*>coeff.data)
-                        coeff[1+ind] = -1
+                    if (lambdaSum+2*llrs[Nj[ind]]) / normDenom < self.maxActiveAngle:
+                        coeff[ind] = 1
+                        grb.GRBaddconstr(self.model, Njsize, <int*>Nj.data, <double*>coeff.data, grb.GRB_LESS_EQUAL, absG, NULL)
+                        coeff[ind] = -1
                         self._stats["activeCuts"] += 1
                         self.numConstrs += 1
 
@@ -444,15 +405,14 @@ cdef class AdaptiveLPDecoder(Decoder):
             Njsize = 0
             for j in range(hmat.shape[1]):
                 if hmat[i,j] == 1:
-                    Nj[1+Njsize] = 1+j
-                    coeff[1+Njsize] = -1
+                    Nj[Njsize] = j
+                    coeff[Njsize] = -1
                     Njsize += 1            
             for ind in range(Njsize):
-                coeff[1+ind] = 1
-                rowIndex = glpk.glp_add_rows(self.prob, 1)
-                glpk.glp_set_row_bnds(self.prob, rowIndex, glpk.GLP_UP, 0.0, 0.0)
-                glpk.glp_set_mat_row(self.prob, rowIndex, Njsize, <int*>Nj.data, <double*>coeff.data)
-                coeff[1+ind] = -1
+                coeff[ind] = 1
+                grb.GRBaddconstr(self.model, Njsize, <int*>Nj.data, <double*>coeff.data,
+                                 grb.GRB_LESS_EQUAL, 0.0, NULL)
+                coeff[ind] = -1
                 self.numConstrs += 1
     
     cdef void removeNonfixedConstraints(self):
@@ -461,14 +421,14 @@ cdef class AdaptiveLPDecoder(Decoder):
         Usually there are no fixed constraints. In case of all-zero decoding, the zero
         constraints are fixed and not removed by this function.
         """
-        cdef np.ndarray[dtype=int, ndim=1] indices
-        self.numConstrs = glpk.glp_get_num_rows(self.prob)
+        cdef int i
+        grb.GRBgetintattr(self.model, grb.GRB_INT_ATTR_NUMCONSTRS, &self.numConstrs)
         if self.numConstrs > self.nrFixedConstraints:
-            indices = np.arange(self.nrFixedConstraints, 1+self.numConstrs, dtype=np.intc)
-            glpk.glp_del_rows(self.prob, self.numConstrs - self.nrFixedConstraints,
-                              <int*>indices.data)
-            glpk.glp_std_basis(self.prob)
-            self.numConstrs = self.nrFixedConstraints
+            for i in range(self.nrFixedConstraints, self.numConstrs):
+                grb.GRBdelconstrs(self.model, 1, &i)
+            grb.GRBupdatemodel(self.model)
+        grb.GRBgetintattr(self.model, grb.GRB_INT_ATTR_NUMCONSTRS, &self.numConstrs)
+        assert self.numConstrs == self.nrFixedConstraints
                    
     cpdef params(self):
         params = OrderedDict(name=self.name)

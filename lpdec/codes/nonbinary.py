@@ -15,7 +15,7 @@ from collections import OrderedDict
 import itertools
 import numpy as np
 from lpdec.persistence import JSONDecodable
-from lpdec import matrices
+from lpdec import matrices, utils
 
 
 def getNonbinaryMatrix(source):
@@ -28,7 +28,7 @@ def getNonbinaryMatrix(source):
     :rtype: :class:`np.ndarray` with dtype `np.int`.
     :returns: A numpy ndarray representation of the matrix.
     """
-    if isinstance(source, basestring):
+    if utils.isStr(source):
         with open(source, 'rt') as f:
             return [[int(x) for x in line.strip().split()]
                     for line in f.readlines()
@@ -56,7 +56,7 @@ class NonbinaryLinearBlockCode(JSONDecodable):
     def __init__(self, name=None, parityCheckMatrix=None, q=None):
         JSONDecodable.__init__(self)
         if parityCheckMatrix is not None:
-            if isinstance(parityCheckMatrix, basestring):
+            if utils.isStr(parityCheckMatrix):
                 self.filename = os.path.expanduser(parityCheckMatrix)
                 self.parityCheckMatrix = getNonbinaryMatrix(self.filename)
                 if name is None:
@@ -202,6 +202,7 @@ def binaryEmbedding(vector, q):
       ..
       q-1 -> 1 0.. 0
     """
+    vector = np.asarray(vector)
     out = np.zeros((q-1) * vector.size, dtype=np.int)
     for i, val in enumerate(vector):
         if val != 0:
@@ -209,7 +210,7 @@ def binaryEmbedding(vector, q):
     return out
 
 if __name__ == '__main__':
-    H = [[1,1,1,1,1]]
+    H = [[1,1,1]]
     code = NonbinaryLinearBlockCode(parityCheckMatrix=H, q=3, name='NBtestCode')
     codewords = [binaryEmbedding(cw, code.q) for cw in code.allCodewords()]
     from lpdec.polytopes import convexHull

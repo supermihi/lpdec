@@ -14,6 +14,35 @@ import subprocess
 import numpy as np
 
 
+class Polytope:
+    def __init__(self, vertices):
+        self.vertices = vertices
+        self._facets = None
+
+    @property
+    def facets(self):
+        if not self._facets:
+            A, b = convexHull(self.vertices)
+            self._facets = list(zip(A, b))
+        return self._facets
+
+    def adjacentVertices(self, a, b):
+        for v in self.vertices:
+            if np.allclose(np.dot(a, v), b):
+                yield v
+
+    def adjacentFacets(self, v):
+        for a, b in self.facets:
+            if np.allclose(np.dot(a, v), b):
+                yield (a, b)
+
+    def __contains__(self, item):
+        for a, b in self.facets:
+            if np.dot(a, item) > b:
+                return False
+        return True
+
+
 def convexHull(points):
     """Use lrs to compute the convex hull (by means of facet-defining inequalities) of the given
     set of points.
