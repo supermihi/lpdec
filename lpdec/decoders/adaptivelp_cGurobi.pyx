@@ -292,7 +292,6 @@ cdef class CGurobiALPDecoder(Decoder):
                 self.foundCodeword = self.mlCertificate = False
                 break
             integral = True
-            # read solution from GLPK. Round values to {0,1} that are very close
             grb.GRBgetdblattrarray(self.model, grb.GRB_DBL_ATTR_X, 0, self.code.blocklength,
                                    <double*> solution.data)
             for i in range(self.code.blocklength):
