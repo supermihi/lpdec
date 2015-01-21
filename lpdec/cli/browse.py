@@ -6,10 +6,12 @@
 # published by the Free Software Foundation
 from __future__ import division, unicode_literals
 import sys
+import itertools
 from collections import OrderedDict
 import jinja2
 from dateutil import tz
 from lpdec.database import simulation as dbsim
+from lpdec import utils
 
 if sys.version_info.major == 2:
     input = raw_input
@@ -19,11 +21,16 @@ def initParser(parser):
     """Populate parser options for the "browse" action."""
     parser.add_argument('-i', '--identifier')
     parser.add_argument('-c', '--code')
-    parser.add_argument('-a', '--all', action = 'store_true',
+    parser.add_argument('-a', '--all', action='store_true',
                         help='select all simulations for given identifier/code')
     parser.add_argument('-t', '--template', choices=tuple(TEMPLATES.keys()), default='cli',
                         help='template for the output format of simulation results')
+    parser.add_argument('-p', '--plot', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose output')
+    parser.add_argument('--min-errors', type=int, default=0,
+                        help='minimum number of errors for plotting a value')
+    parser.add_argument('--min-points', type=int, default=0,
+                        help='minimum number of SNR values in a range for plotting')
     parser.set_defaults(func=browse)
 
 
@@ -60,8 +67,7 @@ def browse(args):
         print('Available identifiers:')
         for i, ident in enumerate(identifiers):
             print('{0:2d}: {1}'.format(i, ident))
-        ans = input('Select number(s): ')
-        nums = [int(s) for s in ans.split()]
+        nums = utils.splitRanges(input('Select number(s): '))
         identifiers = [identifiers[num] for num in nums]
 
     # query code, if not provided as CLI option
@@ -77,7 +83,7 @@ def browse(args):
         if ans in 'aA':
             nums = list(range(len(codes)))
         else:
-            nums = [int(n) for n in ans.split()]
+            nums = utils.splitRanges(ans)
         selectedCodes = [codes[num] for num in nums]
 
     # query simulation run
@@ -103,7 +109,7 @@ def browse(args):
         if ans in 'aA':
             nums = list(range(len(runs)))
         else:
-            nums = [int(n) for n in ans.split()]
+            nums = utils.splitRanges(ans)
         runs = [ runs[i] for i in range(len(runs)) if i in nums ]
     env = jinja2.Environment(autoescape=False)
     env.filters['formatStats'] = formatStats
@@ -116,6 +122,34 @@ def browse(args):
         out.write(template.render(sim=run, verbose=args.verbose) + '\n')
         if args.outfile:
             out.close()
+    if args.plot:
+        plotSimulation(args, runs)
+
+
+def plotSimulation(args, runs):
+    import matplotlib.pyplot as plt
+    plt.yscale('log')
+    codes = set(run.code.name for run in runs)
+    decoders = set(run.decoder.name for run in runs)
+    markers = itertools.cycle('os^p8>D+|')
+    for run in runs:
+        if len(run) < args.min_points:
+            continue
+        vals = [(point.snr, point.frameErrorRate)
+                 for point in run if point.errors > args.min_errors]
+        if len(vals) == 0:
+            continue
+        x, y = zip(*vals)
+        label = str(run.decoder) if len(decoders) >= len(codes) else str(run.code)
+        plt.plot(x, y, marker=next(markers), label=label)
+    plt.legend(loc='upper right')
+    plt.grid(True, which='minor')
+    plt.grid(True, which='major')
+    plt.xlabel("SNR$_b$ [dB]")
+    plt.ylabel("FER")
+    plt.title("Decoding results")
+    plt.show()
+
 
 
 TEMPLATES = dict()
