@@ -29,6 +29,7 @@ cdef extern from 'glpk.h':
     const int GLP_ON, GLP_OFF
     
     glp_prob *glp_create_prob()
+    void glp_erase_prob(glp_prob *P)
     void glp_set_obj_dir(glp_prob *P, int dir)
     int glp_add_rows(glp_prob *P, int nrs)
     int glp_add_cols(glp_prob *P, int ncs)

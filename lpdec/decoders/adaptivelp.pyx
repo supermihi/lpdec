@@ -111,18 +111,6 @@ cdef class AdaptiveLPDecoder(Decoder):
         if variableFixing:
             from lpdec.decoders.erasure import ErasureDecoder
             self.erasureDecoder = ErasureDecoder(self.code)
-        # initialize GLPK
-        self.prob = glpk.glp_create_prob()
-        glpk.glp_init_smcp(&self.parm)
-        self.parm.msg_lev = glpk.GLP_MSG_OFF
-        self.parm.meth = glpk.GLP_DUAL # use dual simplex method
-        self.parm.tol_bnd = 1e-9
-        self.parm.tol_dj = 1e-9
-        glpk.glp_add_cols(self.prob, code.blocklength)
-        for j in range(code.blocklength):
-            glpk.glp_set_col_bnds(self.prob, 1+j, glpk.GLP_DB, 0.0, 1.0)
-        glpk.glp_set_obj_dir(self.prob, glpk.GLP_MIN)
-
         # initialize various structures
         self.hmat = code.parityCheckMatrix
         self.htilde = self.hmat.copy() # the copy is used for gaussian elimination
@@ -133,7 +121,25 @@ cdef class AdaptiveLPDecoder(Decoder):
         self.fixes = -np.ones(code.blocklength, dtype=np.int)
         self.numConstrs = 0
         self.timer = Timer()
-        if allZero:
+        # initialize GLPK
+        self.prob = NULL
+        self.initGLPK()
+
+    def initGLPK(self):
+        if self.prob != NULL:
+            glpk.glp_erase_prob(self.prob)
+        else:
+            self.prob = glpk.glp_create_prob()
+        glpk.glp_init_smcp(&self.parm)
+        self.parm.msg_lev = glpk.GLP_MSG_OFF
+        self.parm.meth = glpk.GLP_DUAL # use dual simplex method
+        # self.parm.tol_bnd = 1e-9 never change tolerances! :)
+        # self.parm.tol_dj = 1e-9
+        glpk.glp_add_cols(self.prob, self.code.blocklength)
+        for j in range(self.code.blocklength):
+            glpk.glp_set_col_bnds(self.prob, 1+j, glpk.GLP_DB, 0.0, 1.0)
+        glpk.glp_set_obj_dir(self.prob, glpk.GLP_MIN)
+        if self.allZero:
             self.insertZeroConstraints()
         self.nrFixedConstraints = glpk.glp_get_num_rows(self.prob)
 
@@ -282,11 +288,6 @@ cdef class AdaptiveLPDecoder(Decoder):
             ub = np.dot(self.sent, self.llrs) + 2e-6
         while True:
             iteration += 1
-            self.solveCalls += 1
-            if self.solveCalls >= 100000:
-                print('SOLVED {}'.format(self.solveCalls))
-                glpk.glp_adv_basis(self.prob, 0)
-                self.solveCalls = 0
             with self.timer:
                 error = glpk.glp_simplex(self.prob, &self.parm)
             self._stats['lpTime'] += self.timer.duration
@@ -316,6 +317,15 @@ cdef class AdaptiveLPDecoder(Decoder):
                 self.objectiveValue = np.inf
                 self._stats["ubReached"] += 1
                 self.foundCodeword = self.mlCertificate = False
+                break
+            self.solveCalls += 1
+            if self.solveCalls >= 100000:
+                print('SOLVED {}'.format(self.solveCalls))
+                self.foundCodeword = self.mlCertificate = False
+                self.initGLPK()
+                self.setLLRs(self.llrs, self.sent)
+                for i, val in enumerate(self.fixes):
+                    self.fix(i, val)
                 break
             integral = True
             # read solution from GLPK. Round values to {0,1} that are very close
