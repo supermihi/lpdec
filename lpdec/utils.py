@@ -60,6 +60,19 @@ def frange(start, end, step=1):
         current += step
 
 
+def splitRanges(string):
+    """Split a string of type '1-3 9 12' into a list of ints [1,2,3,9,12]."""
+    nums = []
+    rngs = string.split()
+    for r in rngs:
+        try:
+            a, b = r.split('-')
+            nums.extend(range(int(a),int(b)+1))
+        except ValueError:
+            nums.append(int(r))
+    return nums
+
+
 def machineString():
     """A string identifying the current machine, composed of the host name and platform
     information.
