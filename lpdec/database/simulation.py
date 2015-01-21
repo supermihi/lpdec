@@ -185,7 +185,7 @@ def simulations(**conditions):
     for point in points:
         identifier = (point.code.name, point.decoder.name, point.channel.__class__,
                       point.identifier,
-                      point.wordSeed, point.program, point.version)
+                      point.wordSeed, point.program)
         if identifier not in sims:
             sims[identifier] = simulation.Simulation()
         sims[identifier].add(point)
