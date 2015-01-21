@@ -108,7 +108,7 @@ def inv(a, p):
         t, newt = newt, t - quotient * newt
         r, newr = newr, r - quotient * newr
     if r > 1:
-        raise ValueError('{} not invertible'.format(a))
+        raise ValueError('{} not invertible modulo {}'.format(a, p))
     return t if t >= 0 else t + p
 
 
@@ -197,21 +197,29 @@ def binaryEmbedding(vector, q):
     """Return the binary embedding of a q-ary vector :math:`\in GF(q)^n` into :math:`GF(2)^{(
     q-1)\times n}` using the map
       0   -> 0 ... 0
-      1   -> 0 ... 1
-      2   -> 0 ..1 0
+      1   -> 1 ... 0
+      2   -> 0 1...0
       ..
-      q-1 -> 1 0.. 0
+      q-1 -> 0 0.. 1
     """
     vector = np.asarray(vector)
     out = np.zeros((q-1) * vector.size, dtype=np.int)
     for i, val in enumerate(vector):
         if val != 0:
-            out[i*(q-1)+(q-val-1)] = 1
+            out[i*(q-1)+val-1] = 1
     return out
 
+
+def reverseEmbedding(vector, q):
+    ret = np.zeros(vector.size//(q-1), np.int)
+    for i in np.flatnonzero(vector):
+        ret[i//2] = 1 + i % 2
+    return ret
+
+
 if __name__ == '__main__':
-    H = [[1,1,1]]
-    code = NonbinaryLinearBlockCode(parityCheckMatrix=H, q=3, name='NBtestCode')
+    H = [[1,1,1,1]]
+    code = NonbinaryLinearBlockCode(parityCheckMatrix=H, q=4, name='NBtestCode')
     codewords = [binaryEmbedding(cw, code.q) for cw in code.allCodewords()]
     from lpdec.polytopes import convexHull
     print(codewords)

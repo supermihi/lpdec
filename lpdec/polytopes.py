@@ -36,6 +36,11 @@ class Polytope:
             if np.allclose(np.dot(a, v), b):
                 yield (a, b)
 
+    def violatedFacets(self, v):
+        for a, b in self.facets:
+            if np.dot(a, v) > b:
+                yield a, b
+
     def __contains__(self, item):
         for a, b in self.facets:
             if np.dot(a, item) > b:
