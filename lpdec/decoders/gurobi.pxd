@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2014 Michael Helmling
+# Copyright 2014-2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
@@ -49,3 +49,4 @@ cdef extern from "gurobi_c.h":
     int GRBaddconstr (GRBmodel *model, int numnz, int *cind, double *cval, char sense, double rhs, const char *constrname)
     int GRBdelconstrs (GRBmodel *model, int numdel, int *ind)
     int GRBoptimize (GRBmodel *model)
+    int GRBwrite(GRBmodel *model, const char *filename)

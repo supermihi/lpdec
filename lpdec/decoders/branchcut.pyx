@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2014 Michael Helmling
+# Copyright 2014-2015 Michael Helmling
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: cdivision=True
