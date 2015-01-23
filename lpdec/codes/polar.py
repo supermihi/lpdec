@@ -31,14 +31,14 @@ class PolarCode(BinaryLinearBlockCode):
       :class:`PolarFactorGraph` for details.
     """
     def __init__(self, n, frozen, name=None):
-        frozen = tuple(sorted(frozen))
+        frozen = sorted(frozen)
         if name is None:
-            name = 'PolarCode(n={}, frozen={})'.format(n, repr(list(frozen)))
+            name = 'PolarCode(n={}, frozen={})'.format(n, repr(frozen))
         BinaryLinearBlockCode.__init__(self, name=name)
         self.n = n
         self.blocklength = 2 ** n
         self.infolength = self.blocklength - len(frozen)
-        self.frozen = list(frozen)
+        self.frozen = frozen
 
     @property
     def parityCheckMatrix(self):

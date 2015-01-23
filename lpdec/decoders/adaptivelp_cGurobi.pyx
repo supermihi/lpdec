@@ -5,7 +5,7 @@
 # cython: cdivision=True
 # cython: wraparound=False
 #
-# Copyright 2014 Michael Helmling
+# Copyright 2014-2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
@@ -83,7 +83,7 @@ cdef class CGurobiALPDecoder(Decoder):
     cdef np.ndarray setV, Nj
     cdef public np.ndarray hint
     cdef np.int_t[:] fixes
-    cdef public object timer, erasureDecoder
+    cdef public object timer, erasureDecoder, statusFile
 
     def __init__(self, BinaryLinearBlockCode code,
                  maxRPCrounds=-1,
@@ -122,6 +122,7 @@ cdef class CGurobiALPDecoder(Decoder):
         self.numConstrs = 0
         self.timer = Timer()
         self.reset()
+        self.statusFile = open('dmin_progress.txt', 'wt')
 
     def reset(self):
         if self.model != NULL:
@@ -193,6 +194,13 @@ cdef class CGurobiALPDecoder(Decoder):
                 inserted += 1
                 grb.GRBaddconstr(self.model,  Njsize,  <int*>Nj.data,  <double*>setV.data,
                                  grb.GRB_LESS_EQUAL, setVsize-1, NULL)
+                self.statusFile.write('I {} '.format(setVsize-1))
+                for j in range(Njsize):
+                    if setV[j] == -1:
+                        self.statusFile.write('-{} '.format(Nj[j]))
+                    else:
+                        self.statusFile.write('{} '.format(Nj[j]))
+                self.statusFile.write('\n')
             if originalHmat and vSum < 1-1e-5:
                 #  in this case, we are in the "original matrix" phase and would have a cut for
                 #  insertion which is declined because of minCutoff. This implies that we don't
@@ -213,6 +221,7 @@ cdef class CGurobiALPDecoder(Decoder):
         Decoder.setStats(self, stats)
 
     cpdef fix(self, int i, int val):
+        self.statusFile.write('F {} {}\n'.format(i, val))
         if val == 1:
             grb.GRBsetdblattrelement(self.model, grb.GRB_DBL_ATTR_LB, i, 1)
         else:
@@ -220,6 +229,7 @@ cdef class CGurobiALPDecoder(Decoder):
         self.fixes[i] = val
 
     cpdef release(self, int i):
+        self.statusFile.write('R {}\n'.format(i))
         grb.GRBsetdblattrelement(self.model, grb.GRB_DBL_ATTR_LB, i, 0)
         grb.GRBsetdblattrelement(self.model, grb.GRB_DBL_ATTR_UB, i, 1)
         self.fixes[i] = -1
@@ -244,6 +254,8 @@ cdef class CGurobiALPDecoder(Decoder):
             if self.allZero and np.all(hint == 0):
                 return  # zero-active constraints are already in the model
             self.insertActiveConstraints(hint)
+        grb.GRBupdatemodel(self.model)
+        grb.GRBwrite(self.model, 'dmin_init.mps') # TODO DEBUG
 
 
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
@@ -265,6 +277,7 @@ cdef class CGurobiALPDecoder(Decoder):
             iteration += 1
             with self.timer:
                 error = grb.GRBoptimize(self.model)
+            self.statusFile.write('O\n')
             self._stats['lpTime'] += self.timer.duration
             if error:
                 raise RuntimeError("Gurobi solve error: {}".format(error))
@@ -344,11 +357,14 @@ cdef class CGurobiALPDecoder(Decoder):
                 avgSlack /= (self.numConstrs - self.nrFixedConstraints)
         else:
             avgSlack = 1e-5 # some tolerance to avoid removing active constraints
+        self.statusFile.write('D ')
         for i in range(self.nrFixedConstraints, self.numConstrs):
             grb.GRBgetdblattrelement(self.model, grb.GRB_DBL_ATTR_SLACK, i, &slack)
             if slack > avgSlack:
                 grb.GRBdelconstrs(self.model, 1, &i)
                 removed += 1
+                self.statusFile.write('{} '.format(i))
+        self.statusFile.write('\n')
         if removed > 0:
             grb.GRBupdatemodel(self.model)
             self.numConstrs -= removed

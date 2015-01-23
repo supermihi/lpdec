@@ -22,7 +22,6 @@ cdef double inf = np.inf
 cdef class IterativeDecoder(Decoder):
     """Class for iterative decoders, i.e., min-sum or sum-product.
     """
-
     def __init__(self, code, minSum=False, iterations=20,
                  reencodeOrder=-1,
                  reencodeRange=1,
@@ -39,6 +38,7 @@ cdef class IterativeDecoder(Decoder):
         self.iterations = iterations
         self.reencodeOrder = reencodeOrder
         self.reencodeIfCodeword = reencodeIfCodeword
+        self.excludeZero = False
         mat = self.code.parityCheckMatrix
         k, n = code.parityCheckMatrix.shape
         if reencodeOrder >= 0:
@@ -165,11 +165,12 @@ cdef class IterativeDecoder(Decoder):
                     fP[0] = bP[deg] = 1
                     for j in range(deg):
                         varIndex = checkNeighbors[i,j]
-                        fP[j+1] = fP[j]*tanh(varToChecks[varIndex, i]/2.0)
+                        fP[j+1] = fP[j]*tanh(varToChecks[varIndex, i]/2)
                         varIndex = checkNeighbors[i, deg-j-1]
-                        bP[deg-1-j] = bP[deg-j]*tanh(varToChecks[varIndex, i]/2.0)
+                        bP[deg-1-j] = bP[deg-j]*tanh(varToChecks[varIndex, i]/2)
                     for j in range(deg):
-                        checkToVars[i, checkNeighbors[i,j]] = 2*atanh(fP[j]*bP[j+1])
+                        checkToVars[i, checkNeighbors[i,j]] = fmax(-1e9, fmin(2*atanh(fP[j]*bP[
+                                j+1]), 1e9)) # avoid infinity values
             if codeword:
                 self.foundCodeword = True
                 break
