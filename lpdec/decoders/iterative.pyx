@@ -30,7 +30,7 @@ cdef class IterativeDecoder(Decoder):
         if name is None:
             name = ('MinSum' if minSum else 'SumProduct') + '({})'.format(iterations)
             if reencodeOrder >= 0:
-                name += '[order-{}]'.format(reencodeOrder)
+                name += '[order-{}{}]'.format(reencodeOrder, '!' if reencodeIfCodeword else '')
         Decoder.__init__(self, code, name)
         self.name = name
         self.minSum = minSum

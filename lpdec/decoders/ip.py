@@ -124,7 +124,10 @@ class GurobiIPDecoder(Decoder):
             self.model.setParam(param, value)
         self.grbParams = gurobiParams
         if gurobiVersion:
-            assert gurobiVersion == '.'.join(str(v) for v in gurobi.version())
+            installedVersion = '.'.join(str(v) for v in gurobi.version())
+            if gurobiVersion != installedVersion:
+                raise RuntimeError('Installed Gurobi version {} does not match requested {}'
+                                   .format(installedVersion, gurobiVersion))
         self.x = [self.model.addVar(vtype=GRB.BINARY, name="x{}".format(i))
                   for i in range(code.blocklength)]
         self.z = [self.model.addVar(vtype=GRB.INTEGER, name="z{}".format(i))

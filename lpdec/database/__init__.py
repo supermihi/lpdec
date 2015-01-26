@@ -198,7 +198,6 @@ def _checkCodeOrDecoder(which, obj, insert=True):
 class DummyDecoder(Decoder):
 
     def __init__(self, code, name):
-        print('Warning: creating dummy decoder "{}"'.format(name))
         Decoder.__init__(self, code, name)
 
     def solve(self, *args, **kwargs):
@@ -238,8 +237,9 @@ def get(what, identifier, code=None):
     else:
         try:
             return cls.fromJSON(row[table.c.json], code=code)
-        except (ImportError, RuntimeError):
+        except (ImportError, RuntimeError) as e:
             # CPLEX, Gurobi etc. might not be available
+            print('Warning: creating dummy decoder "{}":\n{}'.format(row[table.c.name], e))
             return DummyDecoder(code=code, name=row[table.c.name])
 
 
