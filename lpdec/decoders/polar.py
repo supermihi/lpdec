@@ -121,13 +121,14 @@ class PolarSCListDecoder(Decoder):
         def clonePath(l):
             assert self.activePath[l]
             lprime = inactivePathIndices.pop()
+            assert not self.activePath[lprime]
             self.activePath[lprime] = True
             for lam in range(m+1):
                 s = self.pathIndexToArrayIndex[lam, l]
                 assert s != -1
                 self.pathIndexToArrayIndex[lam, lprime] = s
                 self.arrayReferenceCount[lam, s] += 1
-            return l
+            return lprime
 
         def killPath(l):
             assert self.activePath[l]
@@ -149,8 +150,10 @@ class PolarSCListDecoder(Decoder):
                 return s
             # else copy data
             sprime = inactiveArrayIndices[lam].pop()
-            self.P[lam, sprime, :2**(m-lam), :] = self.P[lam, s, :2**(m-lam), :]
-            self.C[lam, sprime, :2**(m-lam), :] = self.C[lam, s, :2**(m-lam), :]
+            #self.P[lam, sprime, :2**(m-lam), :] = self.P[lam, s, :2**(m-lam), :]
+            #self.C[lam, sprime, :2**(m-lam), :] = self.C[lam, s, :2**(m-lam), :]
+            self.C[lam, sprime, :, :] = self.C[lam, s, :, :]
+            self.P[lam, sprime, :, :] = self.P[lam, s, :, :]
             self.arrayReferenceCount[lam, s] -= 1
             assert self.arrayReferenceCount[lam, sprime] == 0
             self.arrayReferenceCount[lam, sprime] = 1
@@ -240,17 +243,20 @@ class PolarSCListDecoder(Decoder):
             for l in range(L):
                 if not self.activePath[l]:
                     continue
-                if (not contForks[l, 0]) and (not contForks[l, 1]):
+                if  contForks[l, 0] == 0 and contForks[l, 1] == 0:
                     continue
                 Cm = getArrayPointer(m, l)
-                if contForks[l, 0] and contForks[l, 1]:
+                if contForks[l, 0] == 1 and contForks[l, 1] == 1:
+                    assert probForks[l, 0] != -1
+                    assert probForks[l, 1] != -1
                     C[m, Cm, 0, phi % 2] = 0
                     lp = clonePath(l)
-                    Cm = getArrayPointer(m, lp)
-                    C[m, Cm, 0, phi % 2] = 1
-                elif contForks[l, 0]:
+                    Cmp = getArrayPointer(m, lp)
+                    C[m, Cmp, 0, phi % 2] = 1
+                elif contForks[l, 0] == 1:
                     C[m, Cm, phi % 2] = 0
                 else:
+                    assert contForks[l, 1] == 1
                     C[m, Cm, phi % 2] = 1
 
         def findMostProbablePath():
@@ -275,7 +281,7 @@ class PolarSCListDecoder(Decoder):
         for phi in range(n):
             recursivelyCalcP(m, phi)
             if phi in self.code.frozen:
-                for l in range(self.L):
+                for l in range(L):
                     if self.activePath[l]:
                         Cm = getArrayPointer(m, l)
                         C[m, Cm, 0, phi % 2] = 0
@@ -289,7 +295,6 @@ class PolarSCListDecoder(Decoder):
             assert C[0, C0, beta, 0] != -1
             self.solution[beta] = C[0, C0, beta, 0]
         self.objectiveValue = np.dot(self.solution, self.llrs)
-        print(self.solution in self.code)
 
     def params(self):
         return OrderedDict(name=self.name)
