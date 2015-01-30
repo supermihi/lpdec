@@ -243,6 +243,10 @@ def get(what, identifier, code=None):
             return DummyDecoder(code=code, name=row[table.c.name])
 
 
+def createCode(cls, **kwargs):
+    from lpdec.imports import *
+    parms = sqla.select([codesTable.c.json], codesTable.c.classname == str(cls))
+
 def names(what='codes'):
     """Return the names of all codes or decoders, depending on the parameter `what` which is one of
     ('decoders', 'codes').
