@@ -7,6 +7,11 @@
 
 import json
 
+def classByName(name):
+    from lpdec import subclasses
+    classes = subclasses(JSONDecodable)
+    return classes[name]
+
 class JSONEncoder(json.JSONEncoder):
     """Custom JSON that encodes subclasses of :class:`JSONDecodable` by
     :func:`JSONDecodable.params` and the name of the class in the `className` attribute.
@@ -22,15 +27,14 @@ class JSONEncoder(json.JSONEncoder):
 def makeObjectHook(**kwargs):
     def jsonObjectHook(dct):
         """Specialized JSON object decoder can create :class:`JSONDecodable` objects."""
-        from lpdec import subclasses
-        classes = subclasses(JSONDecodable)
         if 'className' in dct:
-            if dct['className'] not in classes:
-                raise RuntimeError('Class "{}" not loaded'.format(dct['className']))
             clsName = dct['className']
             del dct['className']
             dct.update(kwargs)
-            return classes[clsName](**dct)
+            try:
+                return classByName(clsName)(**dct)
+            except KeyError:
+                raise RuntimeError('Class "{}" not loaded'.format(clsName))
         return dct
     return jsonObjectHook
 
@@ -55,11 +59,10 @@ cdef class JSONDecodable(object):
         if not isinstance(decoded, JSONDecodable):
             if classname is None:
                 raise ValueError('Classname must be given if paramString does not contain one.')
-            from lpdec import subclasses
-            classes = subclasses(cls)
-            if classname not in classes:
+            try:
+                return classByName(classname)(**decoded)
+            except KeyError:
                 raise ValueError('Subclass {} of {} not found'.format(classname, type(cls)))
-            return classes[classname](**decoded)
         return decoded
 
     def __repr__(self):

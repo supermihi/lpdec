@@ -21,7 +21,7 @@ import numpy as np
 import lpdec
 
 from lpdec import database as db, utils
-from lpdec.utils import TERM_BOLD_RED, TERM_BOLD, TERM_NORMAL, TERM_RED, Timer, utcnow
+from lpdec.utils import *
 
 DEBUG_SAMPLE = -1
 ALLOW_DIRTY_VERSION = False
@@ -354,7 +354,7 @@ class Simulator(object):
                 val = 0 if abs(obj) < 1e-8 else obj
                 outputString = '{:<.7f}'.format(val) + ('*' if store else '')
                 prv(outputFormat[decoder].format(outputString) + TERM_NORMAL, end='')
-            prv(' {}'.format(signaller.correctObjectiveValue()))
+            prv(' {}{:6f}{}'.format(TERM_CYAN, signaller.correctObjectiveValue(), TERM_NORMAL))
             if unfinishedDecoders == 0:
                 printStatus()
                 break

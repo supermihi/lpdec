@@ -163,8 +163,8 @@ class SignalGenerator(object):
     
     def __next__(self):
         if not self.allZero:
-            infoWord = self.wordRandom.randint(0, 2, self.code.infolength)
-            self.encoderOutput = self.code.encode(infoWord)
+            self.infoWord = self.wordRandom.randint(0, 2, self.code.infolength)
+            self.encoderOutput = self.code.encode(self.infoWord)
             self.channelInput = 1 - 2 * self.encoderOutput  # BPSK
         self.channelOutput = self.channel(self.channelInput)
         return self.channelOutput

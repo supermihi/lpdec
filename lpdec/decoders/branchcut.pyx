@@ -25,6 +25,7 @@ from lpdec.decoders.base cimport Decoder
 from lpdec.decoders.adaptivelp import AdaptiveLPDecoder
 from lpdec.decoders.iterative import IterativeDecoder
 from lpdec.utils import Timer
+from lpdec.persistence import classByName
 
 cdef double inf = np.inf
 logger = logging.getLogger(name='branchcut')
@@ -185,7 +186,11 @@ cdef class BranchAndCutDecoder(Decoder):
             lpParams = {}
         if iterParams is None:
             iterParams = {}
+        if isinstance(lpClass, basestring):
+            lpClass = classByName(lpClass)
         self.lbProvider = lpClass(code, **lpParams)
+        if isinstance(iterClass, basestring):
+            iterClass = classByName(iterClass)
         self.ubProvider = iterClass(code, **iterParams)
         self.highSNR = highSNR
         if branchMethod == 'mostFractional':
@@ -583,7 +588,11 @@ cdef class BranchAndCutDecoder(Decoder):
         parms['selectionMethod'] = method
         if self.childOrder != '01':
             parms['childOrder'] = self.childOrder
+        if type(self.lbProvider) is not AdaptiveLPDecoder:
+            parms['lpClass'] = str(type(self.lbProvider))
         parms['lpParams'] = self.lbProvider.params()
+        if type(self.ubProvider) is not IterativeDecoder:
+            parms['iterClass'] = str(type(self.ubProvider))
         parms['iterParams'] = self.ubProvider.params()
         if self.highSNR:
             parms['highSNR'] = True

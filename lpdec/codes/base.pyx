@@ -54,31 +54,31 @@ cdef class BinaryLinearBlockCode(JSONDecodable):
     def rate(self):
         return self.infolength / self.blocklength
 
-    @property
-    def generatorMatrix(self):
-        """Generator matrix of this code; generated on first access if not available."""
-        if self._generatorMatrix is None:
-            if self._parityCheckMatrix is None:
-                # neither parity-check nor generator matrix exist -> encode all unit vectors
-                self._generatorMatrix = np.zeros((self.infolength, self.blocklength), dtype=np.int)
-                infoWord = np.zeros(self.infolength, dtype=np.int)
-                for i in range(self.infolength):
-                    infoWord[i] = 1
-                    if i > 0:
-                        infoWord[i-1] = 0
-                    self._generatorMatrix[i, :] = self.encode(infoWord)
-            else:
-                cols = np.hstack((np.arange(self.infolength, self.blocklength),
-                                  np.arange(self.infolength))).astype(np.intp)
-                self._generatorMatrix = mod2la.orthogonalComplement(self._parityCheckMatrix, cols)
-        return self._generatorMatrix
+    property generatorMatrix:
+        def __get__(self):
+            """Generator matrix of this code; generated on first access if not available."""
+            if self._generatorMatrix is None:
+                if self.parityCheckMatrix is None:
+                    # neither parity-check nor generator matrix exist -> encode all unit vectors
+                    self._generatorMatrix = np.zeros((self.infolength, self.blocklength), dtype=np.int)
+                    infoWord = np.zeros(self.infolength, dtype=np.int)
+                    for i in range(self.infolength):
+                        infoWord[i] = 1
+                        if i > 0:
+                            infoWord[i-1] = 0
+                        self._generatorMatrix[i, :] = self.encode(infoWord)
+                else:
+                    cols = np.hstack((np.arange(self.infolength, self.blocklength),
+                                      np.arange(self.infolength))).astype(np.intp)
+                    self._generatorMatrix = mod2la.orthogonalComplement(self._parityCheckMatrix, cols)
+            return self._generatorMatrix
 
-    @property
-    def parityCheckMatrix(self):
-        """The parity-check matrix, calculated on first access if not given a priori."""
-        if self._parityCheckMatrix is None:
-            self._parityCheckMatrix = mod2la.orthogonalComplement(self.generatorMatrix)
-        return self._parityCheckMatrix
+    property parityCheckMatrix:
+        def __get__(self):
+            """The parity-check matrix, calculated on first access if not given a priori."""
+            if self._parityCheckMatrix is None:
+                self._parityCheckMatrix = mod2la.orthogonalComplement(self.generatorMatrix)
+            return self._parityCheckMatrix
 
     cpdef np.ndarray[ndim=1, dtype=np.int_t] encode(self, np.ndarray[ndim=1, dtype=np.int_t] infoword):
         """Encode an information word.
