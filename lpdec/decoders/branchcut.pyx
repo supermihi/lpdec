@@ -178,6 +178,7 @@ cdef class BranchAndCutDecoder(Decoder):
                  name='BranchAndCutDecoder',
                  lpClass=AdaptiveLPDecoder,
                  lpParams=None,
+                 iterClass=IterativeDecoder,
                  iterParams=None):
         self.name = name
         if lpParams is None:
@@ -185,7 +186,7 @@ cdef class BranchAndCutDecoder(Decoder):
         if iterParams is None:
             iterParams = {}
         self.lbProvider = lpClass(code, **lpParams)
-        self.ubProvider = IterativeDecoder(code, **iterParams)
+        self.ubProvider = iterClass(code, **iterParams)
         self.highSNR = highSNR
         if branchMethod == 'mostFractional':
             self.branchMethod = mostFractional
@@ -344,14 +345,15 @@ cdef class BranchAndCutDecoder(Decoder):
             if depthStr not in self._stats["nodesPerDepth"]:
                 self._stats["nodesPerDepth"][depthStr] = 0
             self._stats["nodesPerDepth"][depthStr] += 1
-
+            if i % 100 == 0:
+                logger.debug('{}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(
+                    self.root.lb, ub, node.depth,len(activeNodes), self.lbProvider.numConstrs,
+                    i, self._stats["lpTime"], self._stats['iterTime']))
             # upper bound calculation
             if i > 1 and self.calcUb: # for first iteration this was done in setLLR
                 self.timer.start()
                 self.ubProvider.solve()
                 self._stats["iterTime"] += self.timer.stop()
-            if self.ubProvider.foundCodeword:
-                logger.debug('ub solution={}'.format(self.ubProvider.objectiveValue))
             if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
                 candidate = self.ubProvider.solution.copy()
                 ub = self.ubProvider.objectiveValue
@@ -365,7 +367,6 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
             else:
                 self.lbProvider.hint = None
-            logger.debug('lp with {} rounds'.format(self.lbProvider.maxRPCrounds))
             self.lbProvider.solve(-inf, ub)
             self._stats['lpTime'] += self.timer.stop()
             if self.lbProvider.objectiveValue > node.lb:
@@ -373,7 +374,6 @@ cdef class BranchAndCutDecoder(Decoder):
 
             # pruning or branching
             if node.lb == np.inf:
-                logger.debug("node pruned by infeasibility")
                 self._stats["prInf"] += 1
             elif self.lbProvider.foundCodeword:
                 # solution is integral
