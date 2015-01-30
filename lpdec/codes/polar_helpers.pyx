@@ -152,16 +152,16 @@ cdef class BMSChannel:
 
     @cython.wraparound(True)
     @staticmethod
-    def AWGNC(SNR, nu, rate):
+    def AWGNC(SNR, nu):
         """Computes a degraded version of the AWGN channel, discretized to :math:`2\cdot \\nu`
-        values, for given *SNR* and *rate*.
+        values, for given *SNR*.
         """
         import sympy
         from scipy.optimize import newton
         from scipy.stats import norm
         y = sympy.symbols('y')
         SNR = 10 ** (SNR / 10) # SNR is specified in dB
-        lamb = sympy.exp(4*rate*y*SNR)  # likelihood ratio as function of y
+        lamb = sympy.exp(4*y*SNR)  # likelihood ratio as function of y
         C = 1 - lamb/(1+lamb)*sympy.log(1+1/lamb, 2) - 1/(lamb+1)*sympy.log(lamb+1, 2)
         lC = sympy.lambdify(y, C, 'numpy')
         Cprime = sympy.simplify(sympy.diff(C, y))
@@ -176,8 +176,8 @@ cdef class BMSChannel:
             Ai[i] = newton(lCi, x0=Ai[i-1] + .1, fprime=lCprime, fprime2=lCprimeprime)
         Ai[-1] = np.inf
         chan = BMSChannel(2*nu)
-        rv0 = norm(loc=1, scale=np.sqrt(1 / (2 * rate * SNR))) # f(y|0)
-        rv1 = norm(loc=-1, scale=np.sqrt(1 / (2 * rate * SNR))) # f(y|1)
+        rv0 = norm(loc=1, scale=np.sqrt(1 / (2 * SNR))) # f(y|0)
+        rv1 = norm(loc=-1, scale=np.sqrt(1 / (2 * SNR))) # f(y|1)
         for i in range(nu):
             chan.Wgiven0[2*i] = rv0.cdf(Ai[i+1]) - rv0.cdf(Ai[i])
             chan.Wgiven0[2*i+1] = rv1.cdf(Ai[i+1]) - rv1.cdf(Ai[i])

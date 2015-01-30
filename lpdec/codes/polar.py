@@ -30,7 +30,19 @@ class PolarCode(BinaryLinearBlockCode):
       :cite:`TaranalliSiegel14ALPPolar`. Created on-the-fly on first access. See
       :class:`PolarFactorGraph` for details.
     """
-    def __init__(self, n, frozen, name=None):
+    def __init__(self, n, frozen=None, name=None, **kwargs):
+        if frozen is None:
+            try:
+                mu = kwargs['mu']
+                SNR = kwargs['SNR']
+                rate = kwargs['rate']
+            except KeyError:
+                raise ValueError('Either frozen bits or all of (SNR, mu, rate) must be specified')
+            assert mu % 2 == 0
+            chan = BMSChannel.AWGNC(SNR, mu // 2)
+            frozen = computeFrozenIndices(chan, n, mu, rate=rate)
+            if name is None:
+                name = 'PolarCode(n={}, SNR={}, mu={}, rate={})'.format(n, SNR, mu, rate)
         frozen = sorted(frozen)
         if name is None:
             name = 'PolarCode(n={}, frozen={})'.format(n, repr(frozen))
@@ -88,6 +100,7 @@ def computeFrozenIndices(BMSC, n, mu, threshold=None, rate=None):
     """
     def bitChannelDegrading(i):
         """Bit-Channel degrading function to compute degraded version of *i*-th bit channel."""
+        assert mu % 2 == 0
         Q = BMSC.degradingMerge(mu)
         i_binary = np.binary_repr(i, n)
         for j in range(n):
@@ -256,6 +269,15 @@ class SparsePolarDecoder(Decoder):
         Decoder.__init__(self, code, name=name)
         self.longLLR = np.random.normal(loc=0, scale=1e-9, size=self.longCode.blocklength)
         self.longSent = np.zeros(self.longCode.blocklength, dtype=np.int)
+
+    def release(self, index):
+        return self.decoder.release(index)
+
+    def fix(self, index, value):
+        return self.decoder.fix(index, value)
+
+    def __getattr__(self, item):
+        return getattr(self.decoder, item)
 
     def setStats(self, stats):
         self.decoder.setStats(stats)
