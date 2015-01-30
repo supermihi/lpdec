@@ -243,9 +243,17 @@ def get(what, identifier, code=None):
             return DummyDecoder(code=code, name=row[table.c.name])
 
 
-def createCode(cls, **kwargs):
-    from lpdec.imports import *
-    parms = sqla.select([codesTable.c.json], codesTable.c.classname == str(cls))
+def createCode(name, cls, **kwargs):
+    """Convenience function that returns a code from database, if it exists, and otherwise creates
+    it with the given parameters."""
+    import lpdec.imports
+    s = sqla.select([codesTable.c.name], codesTable.c.name == name)
+    ans = engine.execute(s).fetchone()
+    if ans is None:
+        return cls(**kwargs)
+    else:
+        return get('code', name)
+
 
 def names(what='codes'):
     """Return the names of all codes or decoders, depending on the parameter `what` which is one of
