@@ -84,7 +84,7 @@ cdef class PolarSCListDecoder(Decoder):
         public int L
         int m
         public list inactivePathIndices, inactiveArrayIndices
-        int[:] activePath
+        int[:] activePath, fixes
         np.intp_t[:, :] pathIndexToArrayIndex
         int[:, :] arrayReferenceCount
         double[:, :, :, :] P
@@ -106,6 +106,7 @@ cdef class PolarSCListDecoder(Decoder):
         self.solution = np.empty(code.blocklength)
         self.probForks = np.empty((L, 2), np.double)
         self.contForks = np.empty((L, 2), np.intc)
+        self.fixes = -np.ones(code.blocklength, dtype=np.intc)
 
 
     cdef int clonePath(self, int l):
@@ -259,8 +260,12 @@ cdef class PolarSCListDecoder(Decoder):
 
         p0 = self.getArrayPointer(0, l)
         for beta in range(n):
-            P[0, p0, beta, 1] = 1 / (np.exp(self.llrs[beta])+1)
-            P[0, p0, beta, 0] = 1 - P[0, p0, beta, 1]
+            if self.fixes[beta] == -1:
+                P[0, p0, beta, 1] = 1 / (np.exp(self.llrs[beta])+1)
+                P[0, p0, beta, 0] = 1 - P[0, p0, beta, 1]
+            else:
+                P[0, p0, beta, 0] = 1 - self.fixes[beta]
+                P[0, p0, beta, 1] = self.fixes[beta]
 
         for phi in range(n):
             self.recursivelyCalcP(m, phi)
@@ -288,6 +293,13 @@ cdef class PolarSCListDecoder(Decoder):
         for beta in range(n):
             self.solution[beta] = C[0, C0, beta, 0]
         self.objectiveValue = np.dot(self.solution, self.llrs)
+        self.foundCodeword = self.solution in self.code
+
+    cpdef release(self, int index):
+        self.fixes[index] = -1
+
+    cpdef fix(self, int index, int val):
+        self.fixes[index] = val
 
     def params(self):
         return OrderedDict(name=self.name)

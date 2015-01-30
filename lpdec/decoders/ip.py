@@ -200,7 +200,6 @@ class GurobiIPDecoder(Decoder):
         """
         from gurobipy import quicksum, GRB
         self.model.addConstr(quicksum(self.x), GRB.GREATER_EQUAL, 1, name='excludeZero')
-        self.model.update()
         self.model.setParam('MIPGapAbs', 1-1e-5)
         self.setLLRs(np.ones(self.code.blocklength))
         self.solve()
