@@ -73,6 +73,7 @@ cdef class AdaptiveLPDecoder(Decoder):
     """
 
     cdef public bint removeAboveAverageSlack, keepCuts, allZero, variableFixing
+    cdef bint glpkVerbose
     cdef int nrFixedConstraints, insertActive, solveCalls
     cdef public double maxActiveAngle, minCutoff
     cdef public int removeInactive, numConstrs, maxRPCrounds
@@ -95,7 +96,8 @@ cdef class AdaptiveLPDecoder(Decoder):
                  maxActiveAngle=1,
                  allZero=False,
                  variableFixing=False,
-                 name=None):
+                 name=None,
+                 glpkVerbose=False):
         if name is None:
             name = 'AdaptiveLPDecoder'
         Decoder.__init__(self, code=code, name=name)
@@ -123,6 +125,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         self.timer = Timer()
         # initialize GLPK
         self.prob = NULL
+        self.glpkVerbose = glpkVerbose
         self.initGLPK()
 
     def initGLPK(self):
@@ -131,7 +134,8 @@ cdef class AdaptiveLPDecoder(Decoder):
         else:
             self.prob = glpk.glp_create_prob()
         glpk.glp_init_smcp(&self.parm)
-        self.parm.msg_lev = glpk.GLP_MSG_OFF
+        if not self.glpkVerbose:
+            self.parm.msg_lev = glpk.GLP_MSG_OFF
         self.parm.meth = glpk.GLP_DUAL # use dual simplex method
         # self.parm.tol_bnd = 1e-9 never change tolerances! :)
         # self.parm.tol_dj = 1e-9

@@ -11,21 +11,18 @@ import fnmatch
 import io
 import re
 import sys
-from os.path import join, dirname, abspath
+from os.path import join, dirname
 
 from setuptools import setup, find_packages
 from Cython.Build import cythonize
 import numpy as np
 
 
-here = abspath(dirname(__file__))
-
-
 def makeExtensions():
     """Returns an Extension object for the given submodule of lpdecoding."""
 
     sources = []
-    for root, dirnames, filenames in os.walk(join(dirname(__file__), 'lpdec')):
+    for root, dirnames, filenames in os.walk('lpdec'):
         for filename in fnmatch.filter(filenames, '*.pyx'):
             sources.append(str(join(root, filename)))
     directives = {'embedsignature': True}
@@ -46,12 +43,14 @@ def makeExtensions():
             if 'gurobi60' in e.libraries:
                 try:
                     e.library_dirs = [join(os.environ['GUROBI_HOME'], 'lib')]
+                    e.include_dirs = [join(os.environ['GUROBI_HOME'], 'include')]
                 except KeyError:
-                    pass
+                    print('GUROBI_HOME not set. Compiling gurobi extensions might fail. Use '
+                          ' --no-gurobi to disable them.')
     return extensions
 
 
-with io.open(os.path.join(here, 'lpdec', '__init__.py'), 'r', encoding='UTF-8') as f:
+with io.open(join('lpdec', '__init__.py'), 'r', encoding='UTF-8') as f:
     version_file = f.read()
     version_match = re.search(r'^__version__ = [\'"]([^\'"]*)[\'"]', version_file, re.M)
     version = version_match.group(1)

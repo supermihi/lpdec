@@ -11,6 +11,7 @@ import os
 import tempfile
 import shutil
 import subprocess
+from fractions import Fraction
 import numpy as np
 
 
@@ -81,11 +82,20 @@ def convexHull(points):
         cols = int(cols) - 1
         A = np.zeros((rows, cols), dtype=np.int)
         b = np.zeros((rows, 1), dtype=np.int)
+
         for i, row in enumerate(hrep[1:]):
+            aTmp = []
             brow, Arow = row.strip().split(None, 1)
-            b[i] = int(brow)
+            bTmp = Fraction(brow)
+            #b[i] = int(brow)
             for j, Aentry in enumerate(Arow.split()):
-                A[i, j] = -int(Aentry)
+                #A[i, j] = -int(Aentry)
+                aTmp.append(-Fraction(Aentry))
+            kgv = (bTmp + sum(aTmp)).denominator
+            b[i] = int(kgv*bTmp)
+            for j, a in enumerate(aTmp):
+                A[i, j] = int(kgv*a)
+
         return A, b
     finally:
         shutil.rmtree(tmpdir)
