@@ -113,7 +113,7 @@ def inv(a, p):
 
 
 def gaussianElimination(q, matrix, columns=None, diagonalize=True):
-        """The Gaussian elimination algorithm in GF(2) arithmetics.
+        """The Gaussian elimination algorithm in GF(q) arithmetics.
 
         When called on a `(k × n)` matrix, the algorithm performs Gaussian elimination,
         bringin the matrix to reduced row echelon form.

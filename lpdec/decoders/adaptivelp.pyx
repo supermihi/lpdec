@@ -21,7 +21,6 @@ from libc.math cimport fabs, sqrt
 from lpdec.decoders cimport glpk
 
 from lpdec.mod2la cimport gaussianElimination
-from lpdec.codes.base cimport BinaryLinearBlockCode
 from lpdec.decoders.base cimport Decoder
 from lpdec.utils import Timer
 
@@ -86,7 +85,7 @@ cdef class AdaptiveLPDecoder(Decoder):
     cdef np.int_t[:] fixes
     cdef public object timer, erasureDecoder
 
-    def __init__(self, BinaryLinearBlockCode code,
+    def __init__(self, code,
                  maxRPCrounds=-1,
                  minCutoff=1e-5,
                  removeInactive=0,

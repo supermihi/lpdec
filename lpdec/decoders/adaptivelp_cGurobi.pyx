@@ -21,7 +21,6 @@ from libc.math cimport fabs, sqrt
 from lpdec.decoders cimport gurobi as grb
 
 from lpdec.mod2la cimport gaussianElimination
-from lpdec.codes.base cimport BinaryLinearBlockCode
 from lpdec.decoders.base cimport Decoder
 from lpdec.utils import Timer
 
@@ -85,7 +84,7 @@ cdef class CGurobiALPDecoder(Decoder):
     cdef np.int_t[:] fixes
     cdef public object timer, erasureDecoder, statusFile
 
-    def __init__(self, BinaryLinearBlockCode code,
+    def __init__(self, code,
                  maxRPCrounds=-1,
                  minCutoff=1e-5,
                  removeInactive=0,
@@ -262,6 +261,7 @@ cdef class CGurobiALPDecoder(Decoder):
         cdef np.double_t[:] diffFromHalf = self.diffFromHalf
         cdef np.ndarray[dtype=double, ndim=1] solution = self.solution
         cdef double newObjectiveValue
+        cdef int i
         rpcrounds = 0
         iteration = 0
         if not self.keepCuts:

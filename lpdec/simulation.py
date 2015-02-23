@@ -307,11 +307,11 @@ class Simulator(object):
                         point.samples >= i:
                     continue
                 if self.concurrent:
-                    threads[decoder].jobQueue.put((channelOutput, signaller.encoderOutput))
+                    threads[decoder].jobQueue.put((channelOutput, signaller.codeword))
                 else:
                     with Timer() as timer:
                         if self.revealSent:
-                            decoder.decode(channelOutput, sent=signaller.encoderOutput)
+                            decoder.decode(channelOutput, sent=signaller.codeword)
                         else:
                             decoder.decode(channelOutput)
                     point.cputime += timer.duration
@@ -329,7 +329,7 @@ class Simulator(object):
                     thread = threads[decoder]
                     thread.jobQueue.join()
                     point.cputime += thread.time
-                error = not np.allclose(decoder.solution, signaller.encoderOutput, 1e-7)
+                error = not np.allclose(decoder.solution, signaller.codeword, 1e-7)
                 obj = decoder.objectiveValue
                 ml = decoder.mlCertificate
                 point.samples += 1

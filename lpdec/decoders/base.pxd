@@ -6,7 +6,6 @@
 # published by the Free Software Foundation
 
 from lpdec.persistence cimport JSONDecodable
-from lpdec.codes.base cimport BinaryLinearBlockCode
 cimport numpy as np
 
 cdef class Decoder(JSONDecodable):
@@ -16,7 +15,7 @@ cdef class Decoder(JSONDecodable):
     cdef public np.int_t[:] sent
     cdef public np.ndarray solution
     cdef public double objectiveValue
-    cdef public BinaryLinearBlockCode code
+    cdef public object code
     cdef public bint mlCertificate, foundCodeword
     cdef public object _stats
     cpdef setLLRs(self, np.double_t[:] llrs, np.int_t[:] sent=?)

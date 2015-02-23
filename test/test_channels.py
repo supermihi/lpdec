@@ -20,7 +20,7 @@ class TestBSC(unittest.TestCase):
 
     def setUp(self):
         np.random.seed(self.inputSeed)
-        self.p = np.random.random()
+        self.p = .5*np.random.random()
         self.channel = channels.BSC(self.p, self.channelSeed)
 
     def testRandomBSC(self):
@@ -28,12 +28,11 @@ class TestBSC(unittest.TestCase):
         totals = flips = 0
         for i in range(TRIALS):
             # generate random BPSK vector of random size between 10 and 100
-            input = 1 - 2*np.random.randint(0, 2, np.random.randint(10, 100))
+            input = np.random.randint(0, 2, np.random.randint(10, 100))
             totals += input.size
             output = self.channel(input)
             self.assertEqual(input.shape, output.shape)
-            self.assert_(np.all(input**2 == 1))
-            flips += np.sum(input != output)
+            flips += np.sum(1-2*input != np.sign(output))
         self.assertAlmostEqual(self.p, flips / totals, 2)
 
     def testAllzeroBSC(self):
@@ -41,11 +40,11 @@ class TestBSC(unittest.TestCase):
         flips = 0
         totals = 0
         for i in range(TRIALS):
-            input = np.ones(np.random.randint(10, 100))  # generate random  length 1-vector
+            input = np.zeros(np.random.randint(10, 100))  # generate random-length zero-codeword
             totals += input.size
             output = self.channel(input)
             self.assertEqual(input.shape, output.shape)
-            flips += np.sum(input != output)
+            flips += np.sum(output < 0)
         self.assertAlmostEqual(self.p, flips / totals, 2)
 
     def testSeed(self):

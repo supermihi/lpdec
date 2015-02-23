@@ -9,7 +9,6 @@ from collections import OrderedDict
 import numpy as np
 cimport numpy as np
 from lpdec.persistence cimport JSONDecodable
-from lpdec.codes.base import BinaryLinearBlockCode
 
 
 cdef class Decoder(JSONDecodable):
@@ -22,7 +21,7 @@ cdef class Decoder(JSONDecodable):
 
     .. attribute:: code
 
-        The :class:`lpdec.codes.BinaryLinearBlockCode` instance for which the decoder is
+        The :class:`lpdec.codes.LinearBlockCode` instance for which the decoder is
         configured.
     .. attribute:: foundCodeword
 
@@ -44,7 +43,7 @@ cdef class Decoder(JSONDecodable):
         self.code = code
         if name is None:
             raise ValueError('A decoder must have a name')
-        self.llrs = np.zeros(code.blocklength, dtype=np.double)
+        self.llrs = np.zeros(code.blocklength * (code.q - 1), dtype=np.double)
         self.solution = np.zeros(code.blocklength, dtype=np.double)
         self.name = name
         self.mlCertificate = self.foundCodeword = False

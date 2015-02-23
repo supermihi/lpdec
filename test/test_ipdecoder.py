@@ -73,10 +73,10 @@ class TestMLDecoders:
             refObjVal = None
             refError = None
             for useHint in False, True:
-                hint = sig.encoderOutput if useHint else None
+                hint = sig.codeword if useHint else None
                 for decoder in decoders:
                     solution = decoder.decode(llr, sent=hint)
-                    error = not np.allclose(solution, sig.encoderOutput)
+                    error = not np.allclose(solution, sig.codeword)
                     if refOutput is None:
                         refOutput = solution.copy()
                         refObjVal = decoder.objectiveValue
@@ -127,8 +127,8 @@ class TestCplexIPDecoder(unittest.TestCase):
                 llrZC = next(sigZC)
                 for useHint in True, False:
                     if useHint:
-                        hintRC = sigRC.encoderOutput
-                        hintZC = sigZC.encoderOutput
+                        hintRC = sigRC.codeword
+                        hintZC = sigZC.codeword
                     else:
                         hintRC = hintZC = None
                     outputRC = decoder.decode(llrRC, sent=hintRC)
@@ -141,8 +141,8 @@ class TestCplexIPDecoder(unittest.TestCase):
                     strikedZC = decoder.callback.occured
                     if useHint:
                         self.assertNotEqual(strikedZC, decoder.mlCertificate)
-                    errorRC = not np.allclose(outputRC, sigRC.encoderOutput)
-                    errorZC = not np.allclose(outputZC, sigZC.encoderOutput)
+                    errorRC = not np.allclose(outputRC, sigRC.codeword)
+                    errorZC = not np.allclose(outputZC, sigZC.codeword)
                     self.assertEqual(errorRC, errorZC)
                     if not useHint or (not strikedRC and not strikedZC):
                         self.assertTrue(np.allclose(objRC, objZC + sigRC.correctObjectiveValue()))

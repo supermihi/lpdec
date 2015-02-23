@@ -27,7 +27,7 @@ class TestAdaptiveLPDecoder(unittest.TestCase):
             llr = next(sig)
             for decoder in decoders:
                 solution = decoder.decode(llr)
-                if not np.allclose(solution, sig.encoderOutput):
+                if not np.allclose(solution, sig.codeword):
                     errors[decoder] += 1
         for i in range(len(decoders) - 1):
             self.assertGreater(errors[decoders[i]], errors[decoders[i+1]])
