@@ -6,14 +6,10 @@
 # published by the Free Software Foundation
 #
 
-"""This module implements popular channel simulations used for coding systems.
-
-All channels currently provided (i.e., BSC and AWGN) use BPSK modulation; that is,
-zeros are mapped to a +1 signal and ones are mapped to -1 on the channel.
-"""
 from __future__ import division, print_function
 from collections import OrderedDict
 import numpy as np
+from lpdec.codes import nonbinary
 from lpdec.persistence import JSONDecodable
 
 
@@ -41,6 +37,9 @@ class Channel(JSONDecodable):
         self.seed = seed
         self.random = None
         self.q = q
+        self.signals = np.empty((q, 2))
+        for k in range(q):
+            self.signals[k] = np.cos(2*np.pi*k/q), np.sin(2*np.pi*k/q)
         self.resetSeed()
 
     def resetSeed(self):
@@ -51,9 +50,9 @@ class Channel(JSONDecodable):
         if self.q == 2:
             return 1 - 2*codeword
         else:
-            out = np.empty(codeword.size)
-            out[::2] = np.cos(2*np.pi*codeword/self.q)
-            out[1::2] = np.sin(2*np.pi*codeword/self.q)
+            out = np.empty(codeword.size * 2)
+            for i in range(codeword.size):
+                out[2*i:2*i+2] = self.signals[codeword[i]]
             return out
 
     def simulate(self, codeword):
@@ -86,18 +85,37 @@ class AWGNC(Channel):
         Channel.__init__(self, seed, q)
         self.snr = float(snr)
         self.coderate = coderate
-        self.variance = 8 * coderate * 10 ** (snr / 10)
-        self.mean = 4 * coderate * 10 ** (snr / 10)
-        self.sigma = np.sqrt(self.variance)
+        if q == 2:
+            # in this case, the LLRs are iid with N(4 r SNR, 8 r SNR)
+            self.llrVariance = 8 * coderate * 10 ** (snr / 10)
+            self.llrMean = 4 * coderate * 10 ** (snr / 10)
+            self.llrSigma = np.sqrt(self.llrVariance)
+        else:
+            N0 = 1 / (coderate * 10 ** (snr / 10))
+            self.pskSigma = np.sqrt(N0/2)
+            self.llrFactor = coderate * 10 ** (snr / 10)
+
         self.round = round
 
     def simulate(self, codeword):
         modulated = self.modulate(codeword)
-
-        word = self.random.normal(self.mean, self.sigma, modulated.shape) * modulated
+        if self.q == 2:
+            llrs = self.random.normal(self.llrMean, self.llrSigma, modulated.shape) * modulated
+        else:
+            q = self.q
+            out = modulated + self.random.normal(0, self.pskSigma, modulated.shape)
+            llrs = np.empty(modulated.shape)
+            zero = self.signals[0]
+            for i in range(codeword.size):
+                iStart = i*(q-1)
+                y = out[iStart:iStart+2]
+                yVs0 = np.dot(y-zero, y-zero)
+                for k in range(q-1):
+                    yVsk = np.dot(y-self.signals[k+1], y-self.signals[k+1])
+                    llrs[iStart+k] = self.llrFactor*(yVsk - yVs0)
         if self.round is not None:
-            return np.around(word, self.round)
-        return word
+            return np.around(llrs, self.round)
+        return llrs
 
     def params(self):
         parms = OrderedDict([('snr', self.snr), ('coderate', self.coderate)])
@@ -192,4 +210,9 @@ class SignalGenerator(object):
         """Returns the objective value (scalar product of :attr:`channelOutput` and
         :attr:`codeword`) of the codeword that was actually sent.
         """
-        return np.dot(self.codeword, self.llrOutput)
+        if self.channel.q == 2:
+            return np.dot(self.codeword, self.llrOutput)
+        else:
+            return np.dot(nonbinary.binaryEmbedding(self.codeword, self.channel.q),
+                          self.llrOutput)
+

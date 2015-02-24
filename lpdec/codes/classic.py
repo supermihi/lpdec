@@ -9,6 +9,7 @@ import itertools
 import numpy as np
 from collections import OrderedDict
 from lpdec.codes import BinaryLinearBlockCode
+from lpdec.codes.nonbinary import NonbinaryLinearBlockCode
 
 
 class HammingCode(BinaryLinearBlockCode):
@@ -50,3 +51,17 @@ class HammingCode(BinaryLinearBlockCode):
             ans['extended'] = True
         return ans
 
+
+class TernaryGolayCode(NonbinaryLinearBlockCode):
+
+    def __init__(self):
+        K = np.array([[1, 1, 1, 2, 2, 0],
+                      [1, 1, 2, 1, 0, 2],
+                      [1, 2, 1, 0, 1, 2],
+                      [1, 2, 0, 1, 2, 1],
+                      [1, 0, 2, 2, 1, 1]])
+        H = np.hstack((K, np.eye(5, dtype=np.int)))
+        NonbinaryLinearBlockCode.__init__(self, parityCheckMatrix=H, name='TernaryGolayCode', q=3)
+
+    def params(self):
+        return OrderedDict()

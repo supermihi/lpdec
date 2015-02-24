@@ -11,7 +11,7 @@ import fnmatch
 import io
 import re
 import sys
-from os.path import join, dirname
+from os.path import join
 
 from setuptools import setup, find_packages
 from Cython.Build import cythonize

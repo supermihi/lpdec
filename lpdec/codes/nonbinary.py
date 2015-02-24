@@ -113,7 +113,7 @@ def inv(a, p):
 
 
 def gaussianElimination(q, matrix, columns=None, diagonalize=True):
-        """The Gaussian elimination algorithm in GF(q) arithmetics.
+        """The Gaussian elimination algorithm in GF() arithmetics.
 
         When called on a `(k × n)` matrix, the algorithm performs Gaussian elimination,
         bringin the matrix to reduced row echelon form.
@@ -213,7 +213,7 @@ def binaryEmbedding(vector, q):
 def reverseEmbedding(vector, q):
     ret = np.zeros(vector.size//(q-1), np.int)
     for i in np.flatnonzero(vector):
-        ret[i//2] = 1 + i % 2
+        ret[i//q] = 1 + i % q
     return ret
 
 
