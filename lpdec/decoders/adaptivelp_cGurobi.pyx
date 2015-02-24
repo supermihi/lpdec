@@ -192,9 +192,6 @@ cdef class CGurobiALPDecoder(Decoder):
                 inserted += 1
                 grb.GRBaddconstr(self.model,  Njsize,  <int*>Nj.data,  <double*>setV.data,
                                  grb.GRB_LESS_EQUAL, setVsize-1, NULL)
-                for j in range(Njsize):
-                    if setV[j] == -1:
-                    else:
             if originalHmat and vSum < 1-1e-5:
                 #  in this case, we are in the "original matrix" phase and would have a cut for
                 #  insertion which is declined because of minCutoff. This implies that we don't
