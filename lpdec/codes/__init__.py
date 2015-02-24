@@ -5,6 +5,7 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
+from __future__ import division
 import os
 from collections import OrderedDict
 import numpy as np
