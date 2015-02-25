@@ -36,7 +36,6 @@ cdef class IterativeDecoder(Decoder):
         np.int_t  [:,:] matrix
 
     cpdef solve(self, double lb=?, double ub=?)
-    cpdef params(self)
 
     cpdef fix(self, int index, int val)
     cpdef release(self, int index)

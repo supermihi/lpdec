@@ -6,10 +6,13 @@
 # published by the Free Software Foundation
 
 import unittest
+import numpy as np
 from lpdec.codes import BinaryLinearBlockCode
 from lpdec.codes.classic import HammingCode
 from lpdec.channels import *
 from lpdec.decoders.adaptivelp import AdaptiveLPDecoder
+from lpdec.decoders.adaptivelp_gurobi import GurobiALPDecoder
+from lpdec.decoders.adaptivelp_cGurobi import CGurobiALPDecoder
 from . import testData
 
 
@@ -31,3 +34,16 @@ class TestAdaptiveLPDecoder(unittest.TestCase):
                         errors[decoder] += 1
             for i in range(len(decoders) - 1):
                 self.assertGreaterEqual(errors[decoders[i]], errors[decoders[i+1]])
+
+
+    def test_different_classes(self):
+        code = BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N23_M11.txt'))
+        channel = AWGNC(0, code.rate, seed=1337)
+        decoders = [cls(code, maxRPCrounds=0) for cls in AdaptiveLPDecoder, GurobiALPDecoder, CGurobiALPDecoder]
+        sig = channel.signalGenerator(code, wordSeed=1337)
+        for i in range(1000):
+            llr = next(sig)
+            for decoder in decoders:
+                decoder.decode(llr)
+        for decoder in decoders[1:]:
+            self.assert_(np.allclose(decoder.solution, decoders[0].solution))

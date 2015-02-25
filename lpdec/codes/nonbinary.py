@@ -18,28 +18,6 @@ from lpdec.persistence import JSONDecodable
 from lpdec import matrices, utils
 
 
-def getNonbinaryMatrix(source):
-    """Creates a non-binary matrix of type :class:`np.ndarray` from either a file or a
-    two-dimensional python list.
-
-    If `source` is a file path, the file must contain an explicit representation of the
-    matrix (by means of whitespace-separated numbers).
-
-    :rtype: :class:`np.ndarray` with dtype `np.int`.
-    :returns: A numpy ndarray representation of the matrix.
-    """
-    if utils.isStr(source):
-        with open(source, 'rt') as f:
-            return [[int(x) for x in line.strip().split()]
-                    for line in f.readlines()
-                    if len(line.strip()) > 0]
-    else:
-        assert hasattr(source, '__iter__') and hasattr(source[0], '__iter__')
-        import copy
-        lines = copy.copy(source)
-    return np.array(lines, dtype=np.int)
-
-
 class NonbinaryLinearBlockCode(JSONDecodable):
     """Base class for non-binary linear block codes over GF(q).
 
@@ -58,11 +36,11 @@ class NonbinaryLinearBlockCode(JSONDecodable):
         if parityCheckMatrix is not None:
             if utils.isStr(parityCheckMatrix):
                 self.filename = os.path.expanduser(parityCheckMatrix)
-                self.parityCheckMatrix = getNonbinaryMatrix(self.filename)
+                self.parityCheckMatrix = matrices.getNonbinaryMatrix(self.filename)
                 if name is None:
                     name = os.path.basename(self.filename)
             elif not isinstance(parityCheckMatrix, np.ndarray):
-                    self.parityCheckMatrix = getNonbinaryMatrix(parityCheckMatrix)
+                    self.parityCheckMatrix = matrices.getNonbinaryMatrix(parityCheckMatrix)
             else:
                 self.parityCheckMatrix = parityCheckMatrix
             if q is None:

@@ -7,6 +7,7 @@
 
 from __future__ import unicode_literals, print_function
 import numpy as np
+from lpdec import utils
 
 
 def getBinaryMatrix(source):
@@ -20,11 +21,7 @@ def getBinaryMatrix(source):
     :rtype: :class:`np.ndarray` with dtype `np.int`.
     :returns: A numpy ndarray representation of the matrix.
     """
-    try:
-        isString = isinstance(source, basestring)
-    except NameError:
-        isString = isinstance(source, str)
-    if isString:
+    if utils.isStr(source):
         with open(source, 'rt') as f:
             lines = [[int(x) for x in l.strip().split()]
                      for l in f.readlines()
@@ -51,6 +48,16 @@ def getBinaryMatrix(source):
             if index != 0:
                 data[index - 1, column] = 1
     return data
+
+
+def getNonbinaryMatrix(source):
+    if utils.isStr(source):
+        with open(source, 'rt') as f:
+            lines = [[int(x) for x in l.strip().split()]
+                     for l in f.readlines() if len(l.strip()) > 0]
+        return np.array(lines, dtype=np.int)
+    else:
+        return np.array(source, dtype=np.int)
 
 
 def toListAlist(matrix):

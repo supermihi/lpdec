@@ -77,7 +77,7 @@ cdef class IterativeDecoder(Decoder):
                     self.checkNeighbors[i, self.checkNodeDegree[i]] = j
                     self.checkNodeDegree[i] += 1
 
-    cpdef setStats(self, object stats):
+    def setStats(self, object stats):
         for param in 'iterations', 'noncodewords':
             if param not in stats:
                 stats[param] = 0
@@ -305,7 +305,7 @@ cdef class IterativeDecoder(Decoder):
                     for j in range(self.code.blocklength):
                         solution[j] = candidate[j]
 
-    cpdef params(self):
+    def params(self):
         parms = OrderedDict()
         if self.minSum:
             parms['minSum'] = True

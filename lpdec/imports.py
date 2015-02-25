@@ -13,9 +13,11 @@ from lpdec.codes import *
 from lpdec.codes.classic import *
 from lpdec.codes.ldpc import *
 from lpdec.codes.polar import *
+from lpdec.codes.nonbinary import *
 
 from lpdec.decoders import *
 from lpdec.decoders.iterative import *
+from lpdec.decoders.nonbinary import *
 from lpdec.decoders.ip import *
 from lpdec.decoders.branchcut import *
 from lpdec.decoders.erasure import *

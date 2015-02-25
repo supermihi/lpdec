@@ -20,7 +20,5 @@ cdef class Decoder(JSONDecodable):
     cdef public object _stats
     cpdef setLLRs(self, np.double_t[:] llrs, np.int_t[:] sent=?)
     cpdef solve(self, double lb=?, double ub=?)
-    cpdef object stats(self)
-    cpdef setStats(self, object stats)
     cpdef fix(self, int index, int value)
     cpdef release(self, int index)

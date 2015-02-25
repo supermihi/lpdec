@@ -86,10 +86,10 @@ cdef class Decoder(JSONDecodable):
         self.solve(lb, ub)
         return self.solution
 
-    cpdef setStats(self, object stats):
+    def setStats(self, object stats):
         self._stats = stats
 
-    cpdef object stats(self):
+    def stats(self):
         return self._stats
 
     cpdef fix(self, int index, int value):

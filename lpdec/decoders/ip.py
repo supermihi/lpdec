@@ -71,7 +71,7 @@ class CplexIPDecoder(cplexhelpers.CplexDecoder):
 
     def params(self):
         params = OrderedDict(name=self.name)
-        params['cplexParams'] = cplexhelpers.getCplexParams(self.cplex)
+        params['cplexParams'] = self.cplexParams(self.cplex)
         return params
 
 

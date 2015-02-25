@@ -216,7 +216,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             self._stats['cuts'] += inserted
         return inserted
 
-    cpdef setStats(self, object stats):
+    def setStats(self, object stats):
         statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime']
         if self.insertActive != 0:
             statNames.extend(['activeCuts'])
@@ -483,7 +483,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             glpk.glp_std_basis(self.prob)
             self.numConstrs = self.nrFixedConstraints
                    
-    cpdef params(self):
+    def params(self):
         params = OrderedDict(name=self.name)
         if self.maxRPCrounds != -1:
             params['maxRPCrounds'] = self.maxRPCrounds

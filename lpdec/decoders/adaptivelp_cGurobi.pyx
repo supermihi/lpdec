@@ -202,7 +202,7 @@ cdef class CGurobiALPDecoder(Decoder):
             grb.GRBupdatemodel(self.model)
         return inserted
 
-    cpdef setStats(self, object stats):
+    def setStats(self, object stats):
         statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime']
         if self.insertActive != 0:
             statNames.extend(['activeCuts'])
@@ -430,7 +430,7 @@ cdef class CGurobiALPDecoder(Decoder):
         grb.GRBgetintattr(self.model, grb.GRB_INT_ATTR_NUMCONSTRS, &self.numConstrs)
         assert self.numConstrs == self.nrFixedConstraints
                    
-    cpdef params(self):
+    def params(self):
         params = OrderedDict(name=self.name)
         if self.maxRPCrounds != -1:
             params['maxRPCrounds'] = self.maxRPCrounds

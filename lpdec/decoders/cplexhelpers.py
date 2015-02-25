@@ -14,52 +14,6 @@ import numpy as np
 from lpdec.decoders import Decoder
 
 
-def getInstance(**params):
-    """Create and return a :class:`cplex.Cplex` instance with disabled debugging output. Keyword
-    args are passed to :func:`setCplexParams`.
-    """
-    import cplex
-    cpx = cplex.Cplex()
-    cpx.set_results_stream(None)
-    cpx.set_warning_stream(None)
-    cpx.set_error_stream(None)
-    setCplexParams(cpx, **params)
-    return cpx
-
-
-def enableDebugOutput(cpx):
-    cpx.set_results_stream(sys.stderr)
-    cpx.set_warning_stream(sys.stderr)
-    cpx.set_error_stream(sys.stderr)
-
-
-def setCplexParams(cpx, **kwargs):
-    """Helper to set CPLEX parameters.
-
-    CPLEX parameters can be set by using their name in the python interface, excluding the
-    leading ``cplex.parameters.``, as key (e.g. ``workmem``, ``mip.strategy``).
-    """
-    if 'version' in kwargs:
-        assert cpx.get_version() == kwargs.pop('version')
-    for arg, val in kwargs.items():
-        parts = arg.split('.')
-        param = cpx.parameters
-        for part in parts:
-            param = getattr(param, part)
-        param.set(val)
-
-
-def getCplexParams(cpx):
-    """Return all non-default CPLEX parameters as (ordered) dictionary. Additionally contains the
-    CPLEX version under the ``version`` key.
-    """
-    params = OrderedDict()
-    params['version'] = cpx.get_version()
-    for param, value in cpx.parameters.get_changed():
-        params[repr(param).split('.', 1)[1]] = value
-    return params
-
-
 class CplexDecoder(Decoder):
     """Generic base class for CPLEX based integer programming decoders.
 
@@ -72,12 +26,52 @@ class CplexDecoder(Decoder):
         Decoder.__init__(self, code, name)
         if cplexParams is None:
             cplexParams = {}
-        self.cplex = getInstance(**cplexParams)
+        self.cplex = self.createCplex(**cplexParams)
         self.cplex.objective.set_sense(self.cplex.objective.sense.minimize)
         self.x = ['x' + str(num) for num in range(code.blocklength)]
         self.cplex.variables.add(types=['B'] * code.blocklength, names=self.x)
         self.callback = self.cplex.register_callback(ShortcutCallback)
         self.callback.decoder = self
+
+    @staticmethod
+    def createCplex( **params):
+        """Create and return a :class:`cplex.Cplex` instance with disabled debugging output. Keyword
+        args are used to set parameters.
+
+        CPLEX parameters can be set by using their name in the python interface, excluding the
+        leading ``cplex.parameters.``, as key (e.g. ``workmem``, ``mip.strategy``).
+        """
+        import cplex
+        cpx = cplex.Cplex()
+        stream = None
+        if params.get('debug', False):
+            stream = sys.stderr
+        if 'debug' in params:
+            del params['debug']
+        cpx.set_results_stream(stream)
+        cpx.set_warning_stream(stream)
+        cpx.set_error_stream(stream)
+        if 'version' in params:
+            assert cpx.get_version() == params.pop('version')
+
+        for arg, val in params.items():
+            parts = arg.split('.')
+            param = cpx.parameters
+            for part in parts:
+                param = getattr(param, part)
+            param.set(val)
+        return cpx
+
+    @staticmethod
+    def cplexParams(cpx):
+        """Return all non-default CPLEX parameters as (ordered) dictionary. Additionally contains
+        the CPLEX version under the ``version`` key.
+        """
+        params = OrderedDict()
+        params['version'] = cpx.get_version()
+        for param, value in cpx.parameters.get_changed():
+            params[repr(param).split('.', 1)[1]] = value
+        return params
 
     def setStats(self, stats):
         if 'CPLEX nodes' not in stats:

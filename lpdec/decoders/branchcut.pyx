@@ -234,7 +234,7 @@ cdef class BranchAndCutDecoder(Decoder):
                           iterParams=dict(iterations=100, reencodeOrder=2,
                                           reencodeIfCodeword=False))
 
-    cpdef setStats(self, stats):
+    def setStats(self, stats):
         for item in "nodes", "prBd1", "prBd2", "prInf", "prOpt", "termEx", "termGap", 'lpTime', \
                     'iterTime':
             if item not in stats:
@@ -254,7 +254,7 @@ cdef class BranchAndCutDecoder(Decoder):
         Decoder.setStats(self, stats)
 
 
-    cpdef stats(self):
+    def stats(self):
         stats = self._stats.copy()
         stats['lpStats'] = self.lbProvider.stats().copy()
         stats['iterStats'] = self.ubProvider.stats().copy()
@@ -569,7 +569,7 @@ cdef class BranchAndCutDecoder(Decoder):
         elif self.selectionMethod == bfs:
             return activeNodes.pop(0)
 
-    cpdef params(self):
+    def params(self):
         if self.selectionMethod == mixed:
             method = "mixed{}/{}/{}/{}/{}".format('-' if self.ubBB else "",
                                                    self.mixParam,
