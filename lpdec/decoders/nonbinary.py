@@ -5,6 +5,7 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
+from __future__ import division, print_function
 import numpy as np
 from collections import OrderedDict
 from lpdec.utils import Timer
@@ -80,16 +81,18 @@ class FlanaganLPDecoder(Decoder):
         self._stats['lpTime'] += self.timer.duration
         self._stats['simplexIters'] += self.model.IterCount
         if self.model.Status == gu.GRB.OPTIMAL:
+            self.objectiveValue = self.model.ObjVal
             for i in range(self.code.blocklength):
                 self.solution[i] = 0
                 for k in range(1, self.code.q):
-                    if self.f[i, k].X > 1e-4:
+                    if self.f[i, k].X > 1e-5:
                         if self.solution[i] != 0:
                             self.mlCertificate = self.foundCodeword = False
-                            self.solution[i] = .5  # error
+                            self.solution[:] = .5  # error
+                            return
                         else:
                             self.solution[i] = k
-            self.objectiveValue = self.model.ObjVal
+
         else:
             raise RuntimeError()
 

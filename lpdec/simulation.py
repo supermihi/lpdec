@@ -220,6 +220,7 @@ class Simulator(object):
         self.outputInterval = 30 # number of seconds between status output
         self.verbose = True # print information for every frame
         self.concurrent = False
+        self.allDecodersShouldBeEqual = False
         #  check if the code exists in the database but has different parameters. This avoids
         #  a later error which would imply a waste of time.
         from lpdec.database import simulation as dbsim
@@ -315,6 +316,20 @@ class Simulator(object):
                         else:
                             decoder.decode(channelOutput)
                     point.cputime += timer.duration
+            if self.allDecodersShouldBeEqual:
+                solution = None
+                firstDecoder = None
+                for decoder in self.dataPoints:
+                    if solution is None:
+                        solution = decoder.solution
+                        firstDecoder = decoder
+                    else:
+                        if not np.allclose(decoder.solution, solution):
+                            print('solution of {}:\n{}'.format(firstDecoder, solution))
+                            print('solution of {}:\n{}'.format(decoder, decoder.solution))
+                            print('objective values: {} vs {}'.format(firstDecoder.objectiveValue,
+                                                                      decoder.objectiveValue))
+                            raise AssertionError()
             # go through decoders again. Print output for each decoder. In concurrent mode,
             # join all the job queues.
             for decoder, point in self.dataPoints.items():

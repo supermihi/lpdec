@@ -78,7 +78,7 @@ class CplexIPDecoder(cplexhelpers.CplexDecoder):
 class GurobiIPDecoder(Decoder):
     """Gurobi implementation of the IPD maximum-likelihood decoder.
 
-    :param BinaryLinearBlockCode code: The code to decoder.
+    :param LinearBlockCode code: The code to decoder.
     :param dict gurobiParams: Optional dictionary of parameters; these are passed to the Gurobi
         model via :func:`gurobipy.Model.setParam`. The attributes :attr:`tuningSet1`,
         :attr:`tuningSet2` and :attr:`tuningSet3` contain three sets of parameters that were
@@ -116,7 +116,7 @@ class GurobiIPDecoder(Decoder):
         Decoder.__init__(self, code, name)
         from gurobipy import Model, GRB, quicksum, gurobi
         matrix = code.parityCheckMatrix
-        self.model = Model('ML Decoder')
+        self.model = Model('lpdec ML Decoder')
         self.model.setParam('OutputFlag', 0)
         if gurobiParams is None:
             gurobiParams = dict()
@@ -128,17 +128,29 @@ class GurobiIPDecoder(Decoder):
             if gurobiVersion != installedVersion:
                 raise RuntimeError('Installed Gurobi version {} does not match requested {}'
                                    .format(installedVersion, gurobiVersion))
-        self.x = [self.model.addVar(vtype=GRB.BINARY, name="x{}".format(i))
-                  for i in range(code.blocklength)]
-        self.z = [self.model.addVar(vtype=GRB.INTEGER, name="z{}".format(i))
-                  for i in range(matrix.shape[0])]
+        if code.q == 2:
+            self.x = [self.model.addVar(vtype=GRB.BINARY, name="x{}".format(i))
+                      for i in range(code.blocklength)]
+        else:
+            self.x = OrderedDict()
+            for i in range(code.blocklength):
+                for k in range(1, code.q):
+                    self.x[i, k] = self.model.addVar(vtype=GRB.BINARY, name='x{},{}'.format(i, k))
+        self.z = []
+        for i in range(matrix.shape[0]):
+            ub = np.sum(matrix[i] != 0) * (code.q - 1) // 3
+            self.z.append(self.model.addVar(0, ub, vtype=GRB.INTEGER, name='z{}'.format(i)))
         self.model.update()
         for z, row in zip(self.z, matrix):
-            self.model.addConstr(quicksum(self.x[i] for i in np.flatnonzero(row)) - 2 * z,
-                                 GRB.EQUAL, 0)
+            if code.q == 2:
+                self.model.addConstr(quicksum(self.x[i] for i in np.flatnonzero(row)) - 2 * z,
+                                     GRB.EQUAL, 0)
+            else:
+                Nj = np.flatnonzero(row)
+                self.model.addConstr(quicksum(k*self.x[i, k] for k in range(1, code.q) for i in \
+                                     np.flatnonzero(row)) - code.q * z, GRB.EQUAL, 0)
         self.model.update()
         self.mlCertificate = self.foundCodeword = True
-        self.solution = np.empty(code.blocklength, dtype=np.double)
 
     tuningSet1 = dict(MIPFocus=2, PrePasses=2, Presolve=2)
     tuningSet2 = dict(MIPFocus=2, VarBranch=1)
@@ -151,7 +163,7 @@ class GurobiIPDecoder(Decoder):
 
     def setLLRs(self, llrs, sent=None):
         from gurobipy import GRB, LinExpr
-        self.model.setObjective(LinExpr(llrs, self.x), GRB.MINIMIZE)
+        self.model.setObjective(LinExpr(llrs, self.x if self.code.q == 2 else self.x.values()))
         Decoder.setLLRs(self, llrs, sent)
 
     @staticmethod
@@ -166,17 +178,25 @@ class GurobiIPDecoder(Decoder):
                 model.terminate()
 
     def solve(self, lb=-np.inf, ub=np.inf):
+        q = self.code.q
         from gurobipy import GRB
         self.mlCertificate = True
         if self.sent is not None:
             sent = np.asarray(self.sent)
-            for val, var in zip(sent, self.x):
-                var.Start = val
-            zValues = np.dot(self.code.parityCheckMatrix, sent / 2).tolist()
+            if q == 2:
+                for val, var in zip(sent, self.x):
+                    var.Start = val
+                self.model._realObjective = np.dot(self.sent, self.llrs)
+            else:
+                self.model._realObjective = 0
+                for i, val in enumerate(sent):
+                    for k in range(1, q):
+                        self.x[i, k].Start = 1 if val == k else 0
+                    if val != 0:
+                        self.model._realObjective += self.llrs[i*(q-1)+val-1]
+            zValues = np.dot(self.code.parityCheckMatrix, sent // q).tolist()
             for val, var in zip(zValues, self.z):
                 var.Start = val
-
-            self.model._realObjective = np.dot(self.sent, self.llrs)
             self.model._incObj = None
             self.model.optimize(GurobiIPDecoder.callback)
         else:
@@ -189,8 +209,15 @@ class GurobiIPDecoder(Decoder):
                 self.mlCertificate = False
         self._stats["nodes"] += self.model.getAttr("NodeCount")
         self.objectiveValue = self.model.objVal
-        for i, x in enumerate(self.x):
-            self.solution[i] = x.x
+        if q == 2:
+            for i, x in enumerate(self.x):
+                self.solution[i] = x.x
+        else:
+            for i in range(self.code.blocklength):
+                self.solution[i] = 0
+                for k in range(1, self.code.q):
+                    if self.x[i, k].X > .5:
+                        self.solution[i] = k
 
     def minimumDistance(self, hint=None):
         """Calculate the minimum distance of :attr:`code` via integer programming.
@@ -199,6 +226,7 @@ class GurobiIPDecoder(Decoder):
         minimizes :math:`\\sum_{i=1}^n x`.
         """
         from gurobipy import quicksum, GRB
+        assert self.code.q == 2
         self.model.addConstr(quicksum(self.x), GRB.GREATER_EQUAL, 1, name='excludeZero')
         self.model.setParam('MIPGapAbs', 1-1e-5)
         self.setLLRs(np.ones(self.code.blocklength))
