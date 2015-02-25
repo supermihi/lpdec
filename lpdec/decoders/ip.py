@@ -136,9 +136,14 @@ class GurobiIPDecoder(Decoder):
             for i in range(code.blocklength):
                 for k in range(1, code.q):
                     self.x[i, k] = self.model.addVar(vtype=GRB.BINARY, name='x{},{}'.format(i, k))
+
+        self.model.update()
+        for i in range(code.blocklength):
+            self.model.addConstr(quicksum(self.x[i, k] for k in range(1, code.q)),
+                                 GRB.LESS_EQUAL, 1)
         self.z = []
         for i in range(matrix.shape[0]):
-            ub = np.sum(matrix[i] != 0) * (code.q - 1) // 3
+            ub = np.sum(matrix[i]) * (code.q - 1) // 3
             self.z.append(self.model.addVar(0, ub, vtype=GRB.INTEGER, name='z{}'.format(i)))
         self.model.update()
         for z, row in zip(self.z, matrix):
@@ -146,9 +151,8 @@ class GurobiIPDecoder(Decoder):
                 self.model.addConstr(quicksum(self.x[i] for i in np.flatnonzero(row)) - 2 * z,
                                      GRB.EQUAL, 0)
             else:
-                Nj = np.flatnonzero(row)
-                self.model.addConstr(quicksum(k*self.x[i, k] for k in range(1, code.q) for i in \
-                                     np.flatnonzero(row)) - code.q * z, GRB.EQUAL, 0)
+                self.model.addConstr(quicksum(row[i]*k*self.x[i, k] for k in range(1, code.q) for i
+                                              in np.flatnonzero(row)) - code.q * z, GRB.EQUAL, 0)
         self.model.update()
         self.mlCertificate = self.foundCodeword = True
 
@@ -215,7 +219,7 @@ class GurobiIPDecoder(Decoder):
         else:
             for i in range(self.code.blocklength):
                 self.solution[i] = 0
-                for k in range(1, self.code.q):
+                for k in range(1, q):
                     if self.x[i, k].X > .5:
                         self.solution[i] = k
 
