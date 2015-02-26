@@ -59,9 +59,10 @@ class FlanaganLPDecoder(Decoder):
             self.model.addConstr(gu.quicksum(vars), gu.GRB.LESS_EQUAL, 1)
             for i, ij in enumerate(nonzeros):
                 for alpha in range(1, code.q):
-                    self.model.addConstr(gu.quicksum(vars[j] for j in range(len(vars)) if
-                                                     codewords[j][i] == alpha), gu.GRB.EQUAL,
-                                         self.f[ij, alpha])
+                    if any(codewords[j][i] == alpha for j in range(len(vars))):
+                        self.model.addConstr(gu.quicksum(vars[j] for j in range(len(vars)) if
+                                                         codewords[j][i] == alpha), gu.GRB.EQUAL,
+                                             self.f[ij, alpha])
         self.model.update()
         self.xvars = list(self.f.values())
         self.solution = np.empty(code.blocklength)
