@@ -36,7 +36,7 @@ class GurobiDecoder(Decoder):
         """Create and return a gurobi Model instance with disabled debugging output. Keyword
         args are used to set parameters.
         """
-        from gurobipy import Model, GRB, gurobi
+        from gurobipy import Model, gurobi
         model = Model(self.name)
         model.setParam('OutputFlag', 0)
         if version:
