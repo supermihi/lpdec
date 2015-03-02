@@ -45,7 +45,7 @@ class GurobiDecoder(Decoder):
                 raise RuntimeError('Installed Gurobi version {} does not match requested {}'
                                    .format(installedVersion, version))
         for param, value in params.items():
-            self.model.setParam(param, value)
+            model.setParam(param, value)
         self.grbParams = params
         return model
 

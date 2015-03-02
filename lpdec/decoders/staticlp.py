@@ -7,7 +7,6 @@
 
 from __future__ import division, print_function
 import numpy as np
-from collections import OrderedDict
 from lpdec.utils import Timer
 from lpdec.decoders.gurobihelpers import GurobiDecoder
 import itertools
@@ -154,5 +153,6 @@ if __name__ == '__main__':
         simulator.concurrent = False
         simulator.run()
     print(decLP.stats())
+    print(decALP.stats())
 
 
