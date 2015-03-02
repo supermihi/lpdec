@@ -179,7 +179,7 @@ class GurobiIPDecoder(gurobihelpers.GurobiDecoder):
             else:
                 self.objectiveValue = self.model._incObj
                 self.mlCertificate = False
-        self._stats['nodes'] += self.model.getAttr('NodeCount')
+        self._stats['nodes'] += self.model.NodeCount
         self.readSolution()
 
     def minimumDistance(self, hint=None):
