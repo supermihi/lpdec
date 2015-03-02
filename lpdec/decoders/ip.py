@@ -173,7 +173,7 @@ class GurobiIPDecoder(gurobihelpers.GurobiDecoder):
             self.model.optimize(GurobiIPDecoder.callback)
         else:
             self.model.optimize()
-        if self.model.getAttr('Status') == GRB.INTERRUPTED:
+        if self.model.Status == GRB.INTERRUPTED:
             if self.sent is None or self.model._incObj is None:
                 raise KeyboardInterrupt()
             else:
