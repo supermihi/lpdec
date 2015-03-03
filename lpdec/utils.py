@@ -80,6 +80,7 @@ def machineString():
     """
     return '{0} ({1})'.format(platform.node(), platform.platform())
 
+
 def isStr(arg):
     """Python version-agnostic test if *arg* is a string."""
     if sys.version_info.major == 3:
