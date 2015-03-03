@@ -63,6 +63,13 @@ class Channel(JSONDecodable):
         """
         raise NotImplementedError()
 
+    def skip(self, word, num):
+        """Skip *num* simulations on codeword *word*. Subclasses can override this method to ensure
+        more efficient skipping of large numbers of frames.
+        """
+        for i in range(num):
+            self.simulate(word)
+
     def __call__(self, codeword):
         return self.simulate(codeword)
 
@@ -116,6 +123,15 @@ class AWGNC(Channel):
         if self.round is not None:
             return np.around(llrs, self.round)
         return llrs
+
+    def skip(self, word, num):
+        modulated = self.modulate(word)
+        if self.q == 2:
+            for _ in range(num):
+                self.random.normal(self.llrMean, self.llrSigma, modulated.shape)
+        else:
+            for _ in range(num):
+                self.random.normal(0, self.pskSigma, modulated.shape)
 
     def params(self):
         parms = OrderedDict([('snr', self.snr), ('coderate', self.coderate)])
@@ -194,10 +210,10 @@ class SignalGenerator(object):
         generation of random words is not actually performed.
         """
         zero = np.zeros(self.code.blocklength, dtype=np.int)
-        for _ in range(num):
-            if not self.allZero:
+        if not self.allZero:
+            for _ in range(num):
                 self.wordRandom.randint(0, 2, self.code.infolength)
-            self.channel(zero)
+        self.channel.skip(zero, num)
     
     def __next__(self):
         if not self.allZero:
