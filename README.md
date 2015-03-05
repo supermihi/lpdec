@@ -20,7 +20,8 @@ results).
 Some of the decoder implementations require additional software, namely 
 [GLPK](http://www.gnu.org/software/glpk/) (with C headers),
 [IBM CPLEX](http://www.ibm.com/software/commerce/optimization/cplex-optimizer/), and
- [Gurobi](http://gurobi.com).
+ [Gurobi](http://gurobi.com). We use the alternative gurobi python API called
+  [gurobimh](https://github.com/supermihi/gurobimh).
 
 Installation
 ------------
