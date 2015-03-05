@@ -18,7 +18,7 @@ cdef class Decoder(JSONDecodable):
     cdef public object code
     cdef public bint mlCertificate, foundCodeword
     cdef public object _stats
-    cpdef setLLRs(self, np.double_t[:] llrs, np.int_t[:] sent=?)
+    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=np.double_t] llrs, np.int_t[:] sent=?)
     cpdef solve(self, double lb=?, double ub=?)
     cpdef fix(self, int index, int value)
     cpdef release(self, int index)

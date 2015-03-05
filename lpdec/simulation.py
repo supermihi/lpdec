@@ -235,6 +235,7 @@ class Simulator(object):
         def prv(*args, **kwargs):  # print function conditioned on self.verbose
             if self.verbose:
                 print(*args, **kwargs)
+        timer = Timer()
         from lpdec.database import simulation as dbsim
         self.dataPoints = OrderedDict()  # maps decoders to DataPoint instances
         #  check for problems with the decoders before time is spent on computations
@@ -310,7 +311,7 @@ class Simulator(object):
                 if self.concurrent:
                     threads[decoder].jobQueue.put((channelOutput, signaller.codeword))
                 else:
-                    with Timer() as timer:
+                    with timer:
                         if self.revealSent:
                             decoder.decode(channelOutput, sent=signaller.codeword)
                         else:

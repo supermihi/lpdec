@@ -10,7 +10,7 @@ from __future__ import division, print_function
 from collections import OrderedDict
 import logging
 import numpy as np
-import gurobipy as g
+import gurobimh as g
 
 from lpdec.decoders.base import Decoder
 from lpdec import mod2la

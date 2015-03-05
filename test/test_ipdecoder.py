@@ -30,7 +30,7 @@ class TestMLDecoders:
         except:
             pass
         try:
-            import gurobipy
+            import gurobimh
             decoders.append(GurobiIPDecoder(code))
         except:
             pass

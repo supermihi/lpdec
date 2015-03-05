@@ -23,7 +23,7 @@ class GurobiDecoder(Decoder):
         if gurobiParams is None:
             gurobiParams = {}
         self.model = self.createModel(gurobiVersion, **gurobiParams)
-        from gurobipy import GRB
+        from gurobimh import GRB
         vt = GRB.BINARY if integer else GRB.CONTINUOUS
         self.x = OrderedDict()
         for i in range(code.blocklength):
@@ -36,7 +36,7 @@ class GurobiDecoder(Decoder):
         """Create and return a gurobi Model instance with disabled debugging output. Keyword
         args are used to set parameters.
         """
-        from gurobipy import Model, gurobi
+        from gurobimh import Model, gurobi
         model = Model(self.name)
         model.setParam('OutputFlag', 0)
         if version:
@@ -50,7 +50,7 @@ class GurobiDecoder(Decoder):
         return model
 
     def setLLRs(self, llrs, sent=None):
-        from gurobipy import GRB, LinExpr
+        from gurobimh import GRB, LinExpr
         self.model.setObjective(LinExpr(llrs, self.xlist))
         Decoder.setLLRs(self, llrs, sent)
 
@@ -66,19 +66,18 @@ class GurobiDecoder(Decoder):
         for i in range(self.code.blocklength):
             self.solution[i] = 0
             for k in range(1, self.code.q):
-                if self.x[i, k].X > 1e-5:
-                    if self.solution[i] != 0:
-                        self.solution[:] = .5  # error
-                        return False
-                    else:
-                        self.solution[i] = k
+                if self.x[i, k].X > 1-1e-5:
+                    self.solution[i] = k
+                elif self.x[i, k].X > 1e-5:
+                    self.solution[:] = .5  # error
+                    return False
         return True
 
     def params(self):
         ret = OrderedDict()
         if len(self.grbParams):
             ret['gurobiParams'] = self.grbParams
-        import gurobipy
-        ret['gurobiVersion'] = '.'.join(str(v) for v in gurobipy.gurobi.version())
+        import gurobimh
+        ret['gurobiVersion'] = '.'.join(str(v) for v in gurobimh.gurobi.version())
         ret['name'] = self.name
         return ret

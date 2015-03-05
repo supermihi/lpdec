@@ -11,7 +11,7 @@ from lpdec.utils import Timer
 from lpdec.decoders.gurobihelpers import GurobiDecoder
 import itertools
 from lpdec.codes import nonbinary
-import gurobipy as gu
+import gurobimh as gu
 
 
 class StaticLPDecoder(GurobiDecoder):

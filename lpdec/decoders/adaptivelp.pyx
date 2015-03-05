@@ -255,7 +255,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         """Returns True if and only if the given index is fixed."""
         return self.fixes[i] != -1
 
-    cpdef setLLRs(self, np.double_t[:] llrs, np.int_t[:] sent=None):
+    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=np.double_t] llrs, np.int_t[:] sent=None):
         cdef int j
         cdef np.ndarray[dtype=np.int_t, ndim=1] hint
         self.solveCalls = 0

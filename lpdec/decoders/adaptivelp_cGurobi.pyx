@@ -227,7 +227,7 @@ cdef class CGurobiALPDecoder(Decoder):
         """Returns True if and only if the given index is fixed."""
         return self.fixes[i] != -1
 
-    cpdef setLLRs(self, np.double_t[:] llrs, np.int_t[:] sent=None):
+    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=np.double_t] llrs, np.int_t[:] sent=None):
         cdef np.ndarray[ndim=1, dtype=double] cllr = np.asarray(llrs)
         cdef np.ndarray[dtype=np.int_t, ndim=1] hint
         grb.GRBsetdblattrarray(self.model, grb.GRB_DBL_ATTR_OBJ, 0, cllr.size, <double*>cllr.data)

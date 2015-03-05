@@ -77,7 +77,7 @@ class GurobiIPDecoder(gurobihelpers.GurobiDecoder):
 
     :param LinearBlockCode code: The code to decoder.
     :param dict gurobiParams: Optional dictionary of parameters; these are passed to the Gurobi
-        model via :func:`gurobipy.Model.setParam`. The attributes :attr:`tuningSet1`,
+        model via :func:`gurobimh.Model.setParam`. The attributes :attr:`tuningSet1`,
         :attr:`tuningSet2` and :attr:`tuningSet3` contain three sets of parameters that were
         obtained from the Gurobi tuning tool.
     :param str gurobiVersion: Version of the Gurobi package; if supplied, an error is raised if
@@ -118,7 +118,7 @@ class GurobiIPDecoder(gurobihelpers.GurobiDecoder):
                     break
         gurobihelpers.GurobiDecoder.__init__(self, code, name, gurobiParams, gurobiVersion,
                                              integer=True)
-        from gurobipy import GRB, quicksum
+        from gurobimh import GRB, quicksum
         matrix = code.parityCheckMatrix
         for i in range(code.blocklength):
             self.model.addConstr(quicksum(self.x[i, k] for k in range(1, code.q)),
@@ -148,7 +148,7 @@ class GurobiIPDecoder(gurobihelpers.GurobiDecoder):
         """ A callback function for Gurobi that is able to terminate the MIP solver if a solution
         which is better than the sent codeword has been found.
         """
-        from gurobipy import GRB
+        from gurobimh import GRB
         if where == GRB.Callback.MIPNODE:
             if model.cbGet(GRB.Callback.MIPNODE_OBJBST) < model._realObjective - 1e-6:
                 model._incObj = model.cbGet(GRB.Callback.MIPNODE_OBJBST)
@@ -156,7 +156,7 @@ class GurobiIPDecoder(gurobihelpers.GurobiDecoder):
 
     def solve(self, lb=-np.inf, ub=np.inf):
         q = self.code.q
-        from gurobipy import GRB
+        from gurobimh import GRB
         self.mlCertificate = True
         if self.sent is not None:
             sent = np.asarray(self.sent)
@@ -188,7 +188,7 @@ class GurobiIPDecoder(gurobihelpers.GurobiDecoder):
         Compared to the decoding formulation, this adds the constraint :math:`|x| \\geq 1` and
         minimizes :math:`\\sum_{i=1}^n x`.
         """
-        from gurobipy import quicksum, GRB
+        from gurobimh import quicksum, GRB
         self.model.addConstr(quicksum(self.xlist), GRB.GREATER_EQUAL, 1, name='excludeZero')
         self.model.setParam('MIPGapAbs', 1-1e-5)
         self.setLLRs(np.ones(self.code.blocklength * (self.code.q - 1)))
