@@ -8,32 +8,31 @@
 from lpdec.decoders.base cimport Decoder
 cimport numpy as np
 
-
 cdef class IterativeDecoder(Decoder):
 
     cdef:
-        np.int_t[:]    checkNodeSatStates
-        np.double_t[:] varSoftBits
-        np.int_t[:]    varHardBits
-        np.int_t[:]    varNodeDegree
-        np.int_t[:]    checkNodeDegree
-        np.intp_t[:,:]  varNeighbors
-        np.intp_t[:,:]  checkNeighbors
-        np.double_t[:,:]  varToChecks
-        np.double_t[:,:]  checkToVars
-        np.double_t[:] fP, bP
-        np.double_t[:] fixes
+        int[:]    checkNodeSatStates
+        double[:] varSoftBits
+        int[:]    varHardBits
+        int[:]    varNodeDegree
+        int[:]    checkNodeDegree
+        Py_ssize_t[:,:]  varNeighbors
+        Py_ssize_t[:,:]  checkNeighbors
+        double[:,:]  varToChecks
+        double[:,:]  checkToVars
+        double[:] fP, bP
+        double[:] fixes
         int            iterations
         int            reencodeOrder
         bint           minSum, reencodeIfCodeword
         public bint    excludeZero
         # helpers for the order-i reprocessing
-        np.int_t[:]    syndrome, candidate, varDeg2, fixSyndrome
-        np.intp_t[:]   indices, pool
-        np.intp_t[:,:] varNeigh2
+        int[:]    syndrome, candidate, varDeg2, fixSyndrome
+        Py_ssize_t[:]   indices, pool
+        Py_ssize_t[:,:] varNeigh2
         int            maxRange
         double         reencodeRange
-        np.int_t  [:,:] matrix
+        np.int_t  [:,::1] matrix
 
     cpdef solve(self, double lb=?, double ub=?)
 

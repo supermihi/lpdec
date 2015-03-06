@@ -267,7 +267,7 @@ cdef class BranchAndCutDecoder(Decoder):
         cdef:
             int index, i
             double minDiff = np.inf
-            np.double_t[:] solution = self.lbProvider.solution
+            double[:] solution = self.lbProvider.solution
         if self.branchMethod == mostFractional:
             for i in range(self.code.blocklength):
                 if fabs(solution[i] - .5) < minDiff:
@@ -289,7 +289,7 @@ cdef class BranchAndCutDecoder(Decoder):
             raise NotImplementedError('Eiriks method not implemented')
 
 
-    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=np.double_t] llrs, np.int_t[:] sent=None):
+    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=double] llrs, np.int_t[::1] sent=None):
         self.ubProvider.setLLRs(llrs, sent)
         if sent is not None:
             self.sentObjective = np.dot(sent, llrs)
@@ -328,7 +328,7 @@ cdef class BranchAndCutDecoder(Decoder):
         cdef:
             Node node, newNode0, newNode1, newNode
             list activeNodes = []
-            np.ndarray[dtype=np.double_t, ndim=1] candidate = np.zeros(self.code.blocklength, dtype=np.double)
+            np.ndarray[dtype=double, ndim=1] candidate = np.zeros(self.code.blocklength, dtype=np.double)
             int i, branchIndex
             str depthStr
         ub = 0

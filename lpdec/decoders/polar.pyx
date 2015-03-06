@@ -238,7 +238,7 @@ cdef class PolarSCListDecoder(Decoder):
             int L = self.L
             int phi, lp
             double pp
-            np.ndarray[ndim=4, dtype=np.double_t] P = np.asarray(self.P)
+            np.ndarray[ndim=4, dtype=double] P = np.asarray(self.P)
             np.ndarray[ndim=4, dtype=bint] C = np.asarray(self.C)
             np.intp_t[:, :] pathIndexToArrayIndex = self.pathIndexToArrayIndex
             int[:, :] arrayReferenceCount = self.arrayReferenceCount

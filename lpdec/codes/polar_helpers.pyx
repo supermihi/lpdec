@@ -97,7 +97,7 @@ cdef class BMSChannel:
     The elements are ordered in such a way that conjugate elements are adjacent, i.e.,
     for an index i, the elements y_i and y_{i^1} are adjacent (^ is bit-wise XOR)."""
 
-    cdef np.double_t[:] Wgiven0
+    cdef double[:] Wgiven0
     cdef int length
     cdef BMSChannel degraded, ari1, ari2
 

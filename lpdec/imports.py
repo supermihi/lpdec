@@ -21,6 +21,14 @@ from lpdec.decoders.staticlp import *
 from lpdec.decoders.ip import *
 from lpdec.decoders.branchcut import *
 from lpdec.decoders.erasure import *
+try:
+    from lpdec.decoders.adaptivelp_glpk import AdaptiveLPDecoder
+except ImportError:
+    pass
+try:
+    from lpdec.decoders.adaptivelp_gurobi import AdaptiveLPDecoderGurobi
+except ImportError:
+    pass
 
 from lpdec.utils import *
 

@@ -76,13 +76,14 @@ cdef class AdaptiveLPDecoder(Decoder):
     cdef int nrFixedConstraints, insertActive, solveCalls
     cdef public double maxActiveAngle, minCutoff
     cdef public int removeInactive, numConstrs, maxRPCrounds
-    cdef np.int_t[:,:] hmat, htilde
+    cdef np.int_t[:,::1] hmat, htilde
     cdef glpk.glp_prob *prob
     cdef glpk.glp_smcp parm
-    cdef np.double_t[:] diffFromHalf
-    cdef np.ndarray setV, Nj
+    cdef double[::1] diffFromHalf
+    cdef int[::1] Nj
+    cdef double[::1] setV
     cdef public np.ndarray hint
-    cdef np.int_t[:] fixes
+    cdef int[::1] fixes
     cdef public object timer, erasureDecoder
 
     def __init__(self, code,
@@ -119,7 +120,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         self.diffFromHalf = np.empty(code.blocklength)
         self.setV = np.empty(1+code.blocklength, dtype=np.double)
         self.Nj = np.empty(1+code.blocklength, dtype=np.intc)
-        self.fixes = -np.ones(code.blocklength, dtype=np.int)
+        self.fixes = -np.ones(code.blocklength, dtype=np.intc)
         self.numConstrs = 0
         self.timer = Timer()
         # initialize GLPK
@@ -146,7 +147,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             self.insertZeroConstraints()
         self.nrFixedConstraints = glpk.glp_get_num_rows(self.prob)
 
-    cdef int cutSearchAlgorithm(self, bint originalHmat):
+    cdef int cutSearchAlgorithm(self, bint originalHmat) except -2:
         """Runs the cut search algorithm and inserts found cuts. If ``originalHmat`` is True,
         the code-defining parity-check matrix is used for searching, otherwise :attr:`htilde`
         which is the result of Gaussian elimination on the most fractional positions of the last
@@ -154,11 +155,11 @@ cdef class AdaptiveLPDecoder(Decoder):
         :returns: The number of cuts inserted
         """
         cdef:
-            np.ndarray[dtype=double, ndim=1] setV = self.setV
-            np.ndarray[dtype=int, ndim=1] Nj = self.Nj
-            np.double_t[:] solution = self.solution
-            np.double_t[:] diffFromHalf = self.diffFromHalf
-            np.int_t[:,:] matrix
+            double[::1] setV = self.setV
+            int[::1] Nj = self.Nj
+            double[::1] solution = self.solution
+            double[::1] diffFromHalf = self.diffFromHalf
+            np.int_t[:,::1] matrix
             int inserted = 0, row, j, ind, setVsize, minDistIndex, Njsize
             double minDistFromHalf, dist, vSum
         matrix = self.hmat if originalHmat else self.htilde
@@ -206,7 +207,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                 for j in range(Njsize):
                     Nj[1 + j] += 1 # GLPK indexing: shift indexes by one
                 glpk.glp_set_row_bnds(self.prob, ind, glpk.GLP_UP, 0.0, setVsize-1)
-                glpk.glp_set_mat_row(self.prob, ind, Njsize, <int*>Nj.data, <double*>setV.data)
+                glpk.glp_set_mat_row(self.prob, ind, Njsize, &Nj[0], &setV[0])
             if originalHmat and vSum < 1-1e-5:
                 #  in this case, we are in the "original matrix" phase and would have a cut for
                 #  insertion which is declined because of minCutoff. This implies that we don't
@@ -255,9 +256,9 @@ cdef class AdaptiveLPDecoder(Decoder):
         """Returns True if and only if the given index is fixed."""
         return self.fixes[i] != -1
 
-    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=np.double_t] llrs, np.int_t[:] sent=None):
+    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=double] llrs, np.int_t[::1] sent=None):
         cdef int j
-        cdef np.ndarray[dtype=np.int_t, ndim=1] hint
+        cdef np.ndarray[dtype=int, ndim=1] hint
         self.solveCalls = 0
         for j in range(self.code.blocklength):
             glpk.glp_set_obj_coef(self.prob, 1+j, llrs[j])
@@ -278,7 +279,7 @@ cdef class AdaptiveLPDecoder(Decoder):
 
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
         cdef int removed, error, numCuts, rpcrounds = 0, iteration = 0
-        cdef np.double_t[:] diffFromHalf = self.diffFromHalf
+        cdef double[::1] diffFromHalf = self.diffFromHalf
         cdef np.ndarray[dtype=double, ndim=1] solution = self.solution
         if not self.keepCuts:
             self.removeNonfixedConstraints()
@@ -400,12 +401,12 @@ cdef class AdaptiveLPDecoder(Decoder):
             self.numConstrs -= removed
             assert self.numConstrs == glpk.glp_get_num_rows(self.prob)
 
-    cdef void insertActiveConstraints(self, np.int_t[:] codeword):
+    cdef void insertActiveConstraints(self, int[::1] codeword):
         """Inserts constraints that are active at the given codeword."""
-        cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV, llrs = self.llrs
-        cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
+        cdef double[::1] coeff = self.setV, llrs = self.llrs
+        cdef int[::1] Nj = self.Nj
         cdef int ind, i, j, absG, Njsize, rowIndex
-        cdef np.int_t[:,:] hmat = self.hmat
+        cdef np.int_t[:,::1] hmat = self.hmat
         cdef double lambdaSum, normDenom, absLambda = np.linalg.norm(llrs)
         for i in range(hmat.shape[0]):
             Njsize = 0
@@ -429,8 +430,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                         coeff[1+ind] = -1
                         rowIndex = glpk.glp_add_rows(self.prob, 1)
                         glpk.glp_set_row_bnds(self.prob, rowIndex, glpk.GLP_UP, 0.0, absG-2)
-                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize,
-                                             <int*>Nj.data, <double*>coeff.data)
+                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize, &Nj[0], &coeff[0])
                         coeff[1+ind] = 1
                         self._stats["activeCuts"] += 1
                         self.numConstrs += 1
@@ -439,8 +439,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                         coeff[1+ind] = 1
                         rowIndex = glpk.glp_add_rows(self.prob, 1)
                         glpk.glp_set_row_bnds(self.prob, rowIndex, glpk.GLP_UP, 0.0, absG)
-                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize,
-                                             <int*>Nj.data, <double*>coeff.data)
+                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize, &Nj[0], &coeff[0])
                         coeff[1+ind] = -1
                         self._stats["activeCuts"] += 1
                         self.numConstrs += 1
@@ -452,7 +451,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV
         cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
         cdef int ind, i, j, Njsize, rowIndex
-        cdef np.int_t[:,:] hmat = self.hmat
+        cdef np.int_t[:,::1] hmat = self.hmat
         for i in range(hmat.shape[0]):
             Njsize = 0
             for j in range(hmat.shape[1]):

@@ -75,13 +75,13 @@ cdef class CGurobiALPDecoder(Decoder):
     cdef int nrFixedConstraints, insertActive, solveCalls
     cdef public double maxActiveAngle, minCutoff
     cdef public int removeInactive, numConstrs, maxRPCrounds
-    cdef np.int_t[:,:] hmat, htilde
+    cdef np.int_t[:,::1] hmat, htilde
     cdef grb.GRBmodel *model
     cdef grb.GRBenv *env
-    cdef np.double_t[:] diffFromHalf
+    cdef double[::1] diffFromHalf
     cdef np.ndarray setV, Nj
     cdef public np.ndarray hint
-    cdef np.int_t[:] fixes
+    cdef int[::1] fixes
     cdef public object timer, erasureDecoder
 
     def __init__(self, code,
@@ -117,7 +117,7 @@ cdef class CGurobiALPDecoder(Decoder):
         self.diffFromHalf = np.empty(code.blocklength)
         self.setV = np.empty(code.blocklength, dtype=np.double)
         self.Nj = np.empty(code.blocklength, dtype=np.intc)
-        self.fixes = -np.ones(code.blocklength, dtype=np.int)
+        self.fixes = -np.ones(code.blocklength, dtype=np.intc)
         self.numConstrs = 0
         self.timer = Timer()
         self.reset()
@@ -143,11 +143,11 @@ cdef class CGurobiALPDecoder(Decoder):
         :returns: The number of cuts inserted
         """
         cdef:
-            np.ndarray[dtype=double, ndim=1] setV = self.setV
-            np.ndarray[dtype=int, ndim=1] Nj = self.Nj
-            np.double_t[:] solution = self.solution
-            np.double_t[:] diffFromHalf = self.diffFromHalf
-            np.int_t[:,:] matrix
+            double[::1] setV = self.setV
+            int[::1] Nj = self.Nj
+            double[::1] solution = self.solution
+            double[::1] diffFromHalf = self.diffFromHalf
+            np.int_t[:,::1] matrix
             int inserted = 0, row, j, ind, setVsize, minDistIndex, Njsize
             double minDistFromHalf, dist, vSum
         matrix = self.hmat if originalHmat else self.htilde
@@ -190,7 +190,7 @@ cdef class CGurobiALPDecoder(Decoder):
             if vSum < 1 - self.minCutoff:
                 # inequality violated -> insert
                 inserted += 1
-                grb.GRBaddconstr(self.model,  Njsize,  <int*>Nj.data,  <double*>setV.data,
+                grb.GRBaddconstr(self.model,  Njsize,  &Nj[0],  &setV[0],
                                  grb.GRB_LESS_EQUAL, setVsize-1, NULL)
             if originalHmat and vSum < 1-1e-5:
                 #  in this case, we are in the "original matrix" phase and would have a cut for
@@ -227,10 +227,9 @@ cdef class CGurobiALPDecoder(Decoder):
         """Returns True if and only if the given index is fixed."""
         return self.fixes[i] != -1
 
-    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=np.double_t] llrs, np.int_t[:] sent=None):
-        cdef np.ndarray[ndim=1, dtype=double] cllr = np.asarray(llrs)
+    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=double] llrs, np.int_t[::1] sent=None):
         cdef np.ndarray[dtype=np.int_t, ndim=1] hint
-        grb.GRBsetdblattrarray(self.model, grb.GRB_DBL_ATTR_OBJ, 0, cllr.size, <double*>cllr.data)
+        grb.GRBsetdblattrarray(self.model, grb.GRB_DBL_ATTR_OBJ, 0, llrs.size, &llrs[0])
         Decoder.setLLRs(self, llrs, sent)
         if self.insertActive & 1:
             if self.hint is None and sent is None:
@@ -247,7 +246,7 @@ cdef class CGurobiALPDecoder(Decoder):
 
 
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
-        cdef np.double_t[:] diffFromHalf = self.diffFromHalf
+        cdef double[::1] diffFromHalf = self.diffFromHalf
         cdef np.ndarray[dtype=double, ndim=1] solution = self.solution
         cdef double newObjectiveValue
         cdef int i
@@ -356,10 +355,10 @@ cdef class CGurobiALPDecoder(Decoder):
 
     cdef void insertActiveConstraints(self, np.int_t[:] codeword):
         """Inserts constraints that are active at the given codeword."""
-        cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV, llrs = self.llrs
-        cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
+        cdef double[::1] coeff = self.setV, llrs = self.llrs
+        cdef int[::1] Nj = self.Nj
         cdef int ind, i, j, absG, Njsize, rowIndex
-        cdef np.int_t[:,:] hmat = self.hmat
+        cdef np.int_t[:,::1] hmat = self.hmat
         cdef double lambdaSum, normDenom, absLambda = np.linalg.norm(llrs)
         for i in range(hmat.shape[0]):
             Njsize = 0
@@ -381,14 +380,14 @@ cdef class CGurobiALPDecoder(Decoder):
                 if coeff[ind] == 1:
                     if (lambdaSum-2*llrs[Nj[ind]]) / normDenom  < self.maxActiveAngle:
                         coeff[ind] = -1
-                        grb.GRBaddconstr(self.model, Njsize, <int*>Nj.data, <double*>coeff.data, grb.GRB_LESS_EQUAL, absG-2, NULL)
+                        grb.GRBaddconstr(self.model, Njsize, &Nj[0], &coeff[0], grb.GRB_LESS_EQUAL, absG-2, NULL)
                         coeff[ind] = 1
                         self._stats["activeCuts"] += 1
                         self.numConstrs += 1
                 else:
                     if (lambdaSum+2*llrs[Nj[ind]]) / normDenom < self.maxActiveAngle:
                         coeff[ind] = 1
-                        grb.GRBaddconstr(self.model, Njsize, <int*>Nj.data, <double*>coeff.data, grb.GRB_LESS_EQUAL, absG, NULL)
+                        grb.GRBaddconstr(self.model, Njsize, &Nj[0], &coeff[0], grb.GRB_LESS_EQUAL, absG, NULL)
                         coeff[ind] = -1
                         self._stats["activeCuts"] += 1
                         self.numConstrs += 1
@@ -397,10 +396,10 @@ cdef class CGurobiALPDecoder(Decoder):
         """Inserts constraints that are active at the zero codeword. This can be used in case of
         all-zero decoding to avoid frequent adaptive insertion of the same constraints.
         """
-        cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV
-        cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
+        cdef double[::1] coeff = self.setV
+        cdef int[::1] Nj = self.Nj
         cdef int ind, i, j, Njsize, rowIndex
-        cdef np.int_t[:,:] hmat = self.hmat
+        cdef np.int_t[:,::1] hmat = self.hmat
         for i in range(hmat.shape[0]):
             Njsize = 0
             for j in range(hmat.shape[1]):
@@ -410,7 +409,7 @@ cdef class CGurobiALPDecoder(Decoder):
                     Njsize += 1            
             for ind in range(Njsize):
                 coeff[ind] = 1
-                grb.GRBaddconstr(self.model, Njsize, <int*>Nj.data, <double*>coeff.data,
+                grb.GRBaddconstr(self.model, Njsize, &Nj[0], &coeff[0],
                                  grb.GRB_LESS_EQUAL, 0.0, NULL)
                 coeff[ind] = -1
                 self.numConstrs += 1

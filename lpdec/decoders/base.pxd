@@ -12,13 +12,13 @@ cdef class Decoder(JSONDecodable):
 
     cdef public object name
     cdef public np.ndarray llrs
-    cdef public np.int_t[:] sent
+    cdef public np.int_t[::1] sent
     cdef public np.ndarray solution
     cdef public double objectiveValue
     cdef public object code
     cdef public bint mlCertificate, foundCodeword
     cdef public object _stats
-    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=np.double_t] llrs, np.int_t[:] sent=?)
+    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=double] llrs, np.int_t[::1] sent=?)
     cpdef solve(self, double lb=?, double ub=?)
     cpdef fix(self, int index, int value)
     cpdef release(self, int index)
