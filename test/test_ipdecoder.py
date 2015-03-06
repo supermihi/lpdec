@@ -82,9 +82,10 @@ class TestMLDecoders:
                         refObjVal = decoder.objectiveValue
                         refError = error
                     else:
-                        assert np.allclose(refOutput, solution), '{} != {}'.format(refOutput, solution)
-                        assert np.allclose(refObjVal, decoder.objectiveValue)
                         assert refError == error
+                        if not useHint:
+                            assert np.allclose(refObjVal, decoder.objectiveValue)
+                            assert np.allclose(refOutput, solution)
 
 
     def test_decoding(self):
