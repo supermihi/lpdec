@@ -125,7 +125,7 @@ class GurobiIPDecoder(gurobihelpers.GurobiDecoder):
                                  GRB.LESS_EQUAL, 1)
         self.z = []
         for i in range(matrix.shape[0]):
-            ub = np.sum(matrix[i]) * (code.q - 1) // 3
+            ub = np.sum(matrix[i]) * (code.q - 1) // code.q
             self.z.append(self.model.addVar(0, ub, vtype=GRB.INTEGER, name='z{}'.format(i)))
         self.model.update()
         for z, row in zip(self.z, matrix):
@@ -156,6 +156,7 @@ class GurobiIPDecoder(gurobihelpers.GurobiDecoder):
 
     def solve(self, lb=-np.inf, ub=np.inf):
         q = self.code.q
+        self.model.write('ham.lp')
         from gurobimh import GRB
         self.mlCertificate = True
         if self.sent is not None:

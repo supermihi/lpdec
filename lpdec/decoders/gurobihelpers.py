@@ -50,7 +50,7 @@ class GurobiDecoder(Decoder):
         return model
 
     def setLLRs(self, llrs, sent=None):
-        from gurobimh import GRB, LinExpr
+        from gurobimh import LinExpr
         self.model.setObjective(LinExpr(llrs, self.xlist))
         Decoder.setLLRs(self, llrs, sent)
 
@@ -66,11 +66,12 @@ class GurobiDecoder(Decoder):
         for i in range(self.code.blocklength):
             self.solution[i] = 0
             for k in range(1, self.code.q):
-                if self.x[i, k].X > 1-1e-5:
-                    self.solution[i] = k
-                elif self.x[i, k].X > 1e-5:
-                    self.solution[:] = .5  # error
-                    return False
+                if self.x[i, k].X > 1e-5:
+                    if self.solution[i] != 0:
+                        self.solution[:] = .5  # error
+                        return False
+                    else:
+                        self.solution[i] = k
         return True
 
     def params(self):

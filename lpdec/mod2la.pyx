@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # cython: boundscheck=False, nonecheck=False, cdivision=True, wraparound=False
-# cython: profile=False
 # Copyright 2014-2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
