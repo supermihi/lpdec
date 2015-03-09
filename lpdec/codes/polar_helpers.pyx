@@ -13,6 +13,7 @@ from __future__ import division
 from libc.math cimport log2
 import numpy as np
 cimport numpy as np
+from numpy.math cimport INFINITY
 cimport cython
 
 @cython.profile(False)
@@ -122,7 +123,7 @@ cdef class BMSChannel:
     def LR(self, int y):
         """Return the likelihood ratio of output element y"""
         if self.Wgiven0[y^1] == 0:
-            return np.inf
+            return INFINITY
         return self.Wgiven0[y] / self.Wgiven0[y^1]
 
     @staticmethod
@@ -174,7 +175,7 @@ cdef class BMSChannel:
             # we find the next breakpoint using Newton's method
             lCi = sympy.lambdify(y, C-i/nu, 'numpy')
             Ai[i] = newton(lCi, x0=Ai[i-1] + .1, fprime=lCprime, fprime2=lCprimeprime)
-        Ai[-1] = np.inf
+        Ai[-1] = INFINITY
         chan = BMSChannel(2*nu)
         rv0 = norm(loc=1, scale=np.sqrt(1 / (2 * SNR))) # f(y|0)
         rv1 = norm(loc=-1, scale=np.sqrt(1 / (2 * SNR))) # f(y|1)

@@ -8,9 +8,8 @@ from __future__ import division, unicode_literals
 from collections import OrderedDict
 import numpy as np
 cimport numpy as np
+from numpy.math cimport INFINITY
 from lpdec.persistence cimport JSONDecodable
-from lpdec.utils import Timer
-cdef double inf = np.inf
 
 cdef class Decoder(JSONDecodable):
     """
@@ -61,7 +60,7 @@ cdef class Decoder(JSONDecodable):
         self.llrs = llrs
         self.sent = sent
 
-    cpdef solve(self, double lb=-inf, double ub=inf):
+    cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         """Run the solver on :attr:`llrs`. A codeword may be given as hint.
 
         This is the main method to run the decoding algorithm; the LLR vector must be set
@@ -78,8 +77,8 @@ cdef class Decoder(JSONDecodable):
     def decode(self,
                double[::1] llrs,
                np.int_t[::1] sent=None,
-               double lb=-inf,
-               double ub=inf):
+               double lb=-INFINITY,
+               double ub=INFINITY):
         """Decode the given LLR vector and return the solution.
 
         This convenience function sets the LLR vector, calls solve(), and return self.solution.

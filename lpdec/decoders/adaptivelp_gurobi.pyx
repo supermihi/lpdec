@@ -17,6 +17,7 @@ from collections import OrderedDict
 import logging
 import numpy as np
 cimport numpy as np
+from numpy.math cimport INFINITY
 from libc.math cimport fabs
 import gurobimh as g
 cimport gurobimh as g
@@ -226,20 +227,18 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.model.update()
 
 
-    cpdef solve(self, double lb=-np.inf, double ub=np.inf):
+    cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef double[::1] solution = self.solution
         cdef double newObjectiveValue
-        cdef int i
+        cdef int i, iteration = 0, rpcrounds = 0
         self.chg1 = self.chg2 = self.chg3 = 1e6
-        rpcrounds = 0
-        iteration = 0
         if not self.keepCuts:
             self.removeNonfixedConstraints()
         # if self.insertActive & 2 and self.hint is not None:
         #     self.insertActiveConstraints(self.hint)
         self.foundCodeword = self.mlCertificate = False
-        self.objectiveValue = -np.inf
-        if self.sent is not None and ub == np.inf:
+        self.objectiveValue = -INFINITY
+        if self.sent is not None and ub == INFINITY:
             # calculate known upper bound on the objective from sent codeword
             ub = np.dot(self.sent, self.llrs) + 2e-6
         while True:
@@ -251,7 +250,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             self.numConstrs = self.model.NumConstrs
             self._stats["totalConstraints"] += self.numConstrs
             if self.model.Status in (g.GRB_INFEASIBLE, g.GRB_INF_OR_UNBD):
-                self.objectiveValue = np.inf
+                self.objectiveValue = INFINITY
                 self.foundCodeword = self.mlCertificate = False
                 break
             elif self.model.Status != g.GRB_OPTIMAL:
@@ -267,7 +266,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             self.objectiveValue = newObjectiveValue
             if self.objectiveValue >= ub - 1e-6:
                 # lower bound from the LP is above known upper bound -> no need to proceed
-                self.objectiveValue = np.inf
+                self.objectiveValue = INFINITY
                 self._stats["ubReached"] += 1
                 self.foundCodeword = self.mlCertificate = False
                 break
@@ -278,11 +277,11 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             if iteration >= 2:
                 self.chg2 = self.chg1
             self.chg1 = 0
-            for i in range(self.solution.size):
-                self.chg1 += fabs(self.newSolution[i] - self.solution[i])
+            for i in range(solution.size):
+                self.chg1 += fabs(self.newSolution[i] - solution[i])
             if self.chg1 + self.chg2 + self.chg3 < 1e-6:
                 print('no chg {}'.format(iteration))
-            self.solution[:] = self.newSolution
+            solution[:] = self.newSolution
             for i in range(self.solution.size):
                 if solution[i] < 1e-6:
                     solution[i] = 0

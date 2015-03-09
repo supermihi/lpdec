@@ -10,13 +10,13 @@ from __future__ import division, print_function
 from collections import OrderedDict
 cimport numpy as np
 import numpy as np
+from numpy.math cimport INFINITY
 from libc.math cimport tanh, atanh, fmin, fmax, fabs, isnan
 from lpdec.decoders.base cimport Decoder
 from lpdec.mod2la cimport gaussianElimination
 
 
 cdef double almostInf = 1e5
-cdef double inf = np.inf
 
 
 cdef class IterativeDecoder(Decoder):
@@ -87,12 +87,12 @@ cdef class IterativeDecoder(Decoder):
         """Variable fixing is implemented by adding :attr:`fixes` to the LLRs. This vector
         contains :math:`\infty` for a fix to zero and :math:`-\infty` for a fix to one.
         """
-        self.fixes[index] = (.5 - val) * inf
+        self.fixes[index] = (.5 - val) * INFINITY
 
     cpdef release(self, int index):
         self.fixes[index] = 0
 
-    cpdef solve(self, double lb=-inf, double ub=inf):
+    cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef:
             int[:]      checkNodeSatStates = self.checkNodeSatStates
             int[:]      varHardBits = self.varHardBits
@@ -130,7 +130,7 @@ cdef class IterativeDecoder(Decoder):
                     varSoftBits[i] += checkToVars[varNeighbors[i,j], i]
                     if isnan(varSoftBits[i]):
                         # this might happen if contradicting bits are fixed
-                        self.objectiveValue = np.inf
+                        self.objectiveValue = INFINITY
                         return
                 varHardBits[i] = ( varSoftBits[i] <= 0 )
                 for j in range(varNodeDegree[i]):
@@ -144,7 +144,7 @@ cdef class IterativeDecoder(Decoder):
                 if checkNodeSatStates[i]:
                     codeword = checkNodeSatStates[i] = False # reset for next iteration
                 if self.minSum:
-                    fP[0] = bP[deg] = inf
+                    fP[0] = bP[deg] = INFINITY
                     sign = False
                     for j in range(deg):
                         varIndex = checkNeighbors[i,j]
@@ -184,7 +184,7 @@ cdef class IterativeDecoder(Decoder):
             self._stats['noncodewords'] += 1
         if not codeword or (self.excludeZero and self.objectiveValue == 0) or self.reencodeIfCodeword:
             if not codeword or (self.excludeZero and self.objectiveValue == 0):
-                self.objectiveValue = inf
+                self.objectiveValue = INFINITY
             if self.reencodeOrder >= 0:
                 self.reprocess()
         self._stats['iterations'] += iteration
@@ -221,7 +221,7 @@ cdef class IterativeDecoder(Decoder):
                 if fixes[j] == 0:
                     pool[poolSize] = j
                     poolSize += 1
-                elif fixes[j] == -inf:
+                elif fixes[j] == -INFINITY:
                     for row in range(matrix.shape[0]):
                         fixSyndrome[row] ^= matrix[row, j]
         # poolRange: one plus maximum pool index for flipping due to reencodeRange limitation.

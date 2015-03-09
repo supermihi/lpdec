@@ -278,7 +278,7 @@ cdef class AdaptiveLPDecoder(Decoder):
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
         cdef int removed, error, numCuts, rpcrounds = 0, iteration = 0
         cdef double[::1] diffFromHalf = self.diffFromHalf
-        cdef np.ndarray[dtype=double, ndim=1] solution = self.solution
+        cdef double[::1] solution = self.solution
         if not self.keepCuts:
             self.removeNonfixedConstraints()
         if self.insertActive & 2 and self.hint is not None:

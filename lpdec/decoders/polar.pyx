@@ -9,6 +9,7 @@ from __future__ import division, print_function
 from collections import OrderedDict
 import numpy as np
 cimport numpy as np
+from numpy.math cimport INFINITY
 
 from lpdec.decoders.base cimport Decoder
 from lpdec.decoders.base import Decoder
@@ -27,7 +28,7 @@ class PolarSCDecoder(Decoder):
         self.C = np.empty((m+1, 2**m, 2), dtype=np.int)
         self.solution = np.zeros(code.blocklength)
 
-    def solve(self, lb=-np.inf, ub=np.inf):
+    def solve(self, lb=-INFINITY, ub=INFINITY):
         n = self.code.blocklength
         m = self.code.n
         P = self.P
@@ -231,7 +232,7 @@ cdef class PolarSCListDecoder(Decoder):
             else:
                 self.C[self.m, Cm, 0, phi % 2] = 1
 
-    cpdef solve(self, double lb=-np.inf, double ub=np.inf):
+    cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef:
             int n = self.code.blocklength
             int m = self.code.n

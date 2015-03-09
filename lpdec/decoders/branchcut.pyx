@@ -19,6 +19,7 @@ from collections import OrderedDict
 from libc.math cimport fabs, fmin
 import numpy as np
 cimport numpy as np
+from numpy.math cimport INFINITY
 
 from lpdec.decoders.base cimport Decoder
 from lpdec.decoders.adaptivelp_glpk import AdaptiveLPDecoder
@@ -26,7 +27,6 @@ from lpdec.decoders.iterative import IterativeDecoder
 from lpdec.utils import Timer
 from lpdec.persistence import classByName
 
-cdef double inf = np.inf
 logger = logging.getLogger(name='branchcut')
 
 cdef enum BranchMethod:
@@ -98,8 +98,8 @@ cdef class Node:
             self.lb = self.parent.lb
         else:
             self.depth = 0
-            self.lb = -inf
-        self.lbChild0 = self.lbChild1 = -inf
+            self.lb = -INFINITY
+        self.lbChild0 = self.lbChild1 = -INFINITY
 
     cpdef updateBound(self, double lbChild, int childValue):
         cdef double newLb, oldChild = self.lbChild0 if childValue == 0 else self.lbChild1
@@ -265,7 +265,7 @@ cdef class BranchAndCutDecoder(Decoder):
         branch method."""
         cdef:
             int index, i
-            double minDiff = np.inf
+            double minDiff = INFINITY
             double[:] solution = self.lbProvider.solution
         if self.branchMethod == mostFractional:
             for i in range(self.code.blocklength):
@@ -293,7 +293,7 @@ cdef class BranchAndCutDecoder(Decoder):
         if sent is not None:
             self.sentObjective = np.dot(sent, llrs)
         else:
-            self.sentObjective = -inf
+            self.sentObjective = -INFINITY
         if self.highSNR:
             self.ubProvider.foundCodeword = self.ubProvider.mlCertificate = False
         else:
@@ -323,7 +323,7 @@ cdef class BranchAndCutDecoder(Decoder):
         return self.lbProvider.fixed(index)
 
 
-    cpdef solve(self, double lb=-np.inf, double ub=np.inf):
+    cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef:
             Node node, newNode0, newNode1, newNode
             list activeNodes = []
@@ -371,13 +371,13 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
             else:
                 self.lbProvider.hint = None
-            self.lbProvider.solve(-inf, ub)
+            self.lbProvider.solve(-INFINITY, ub)
             self._stats['lpTime'] += self.timer.stop()
             if self.lbProvider.objectiveValue > node.lb:
                 node.lb = self.lbProvider.objectiveValue
 
             # pruning or branching
-            if node.lb == np.inf:
+            if node.lb == INFINITY:
                 self._stats["prInf"] += 1
             elif self.lbProvider.foundCodeword:
                 # solution is integral
@@ -448,7 +448,7 @@ cdef class BranchAndCutDecoder(Decoder):
         self.root.lb = 1
         activeNodes = []
         candidate = None
-        ub = np.inf
+        ub = INFINITY
         self._stats['nodes'] += 1
         for iteration in itertools.count(start=1):
             # statistic collection and debug output
@@ -462,7 +462,7 @@ cdef class BranchAndCutDecoder(Decoder):
             self._stats["nodesPerDepth"][depthStr] += 1
             pruned = False # store if current node can be pruned
             if node.lb >= ub-1+delta:
-                node.lb = np.inf
+                node.lb = INFINITY
                 pruned = True
             if not pruned:
                 # upper bound calculation
@@ -482,11 +482,11 @@ cdef class BranchAndCutDecoder(Decoder):
                     self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
                 else:
                     self.lbProvider.hint = None
-                self.lbProvider.solve(-inf, ub - 1 + delta)
+                self.lbProvider.solve(-INFINITY, ub - 1 + delta)
                 self._stats['lpTime'] += self.timer.stop()
                 if self.lbProvider.objectiveValue > node.lb:
                     node.lb = self.lbProvider.objectiveValue
-                if node.lb == np.inf:
+                if node.lb == INFINITY:
                     self._stats['prInf'] += 1
                 elif self.lbProvider.foundCodeword and self.lbProvider.objectiveValue > .5:
                     # solution is integral
@@ -502,7 +502,7 @@ cdef class BranchAndCutDecoder(Decoder):
                     # branch
                     branchIndex = self.branchIndex()
                     if branchIndex == -1:
-                        node.lb = np.inf
+                        node.lb = INFINITY
                         print('********** PRUNE 000000 ***************')
                     else:
                         newNodes = [Node(parent=node, branchIndex=branchIndex, branchValue=i) for
@@ -537,7 +537,7 @@ cdef class BranchAndCutDecoder(Decoder):
 
     cdef Node popMinNode(self, list activeNodes):
         cdef int i, minIndex
-        cdef double minValue = np.inf
+        cdef double minValue = INFINITY
         for i in range(len(activeNodes)):
             if activeNodes[i].lb < minValue:
                 minIndex = i
