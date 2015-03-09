@@ -73,18 +73,16 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         hint to insert active constraints.
     """
 
-    cdef public bint removeAboveAverageSlack, keepCuts, allZero, variableFixing
+    cdef public bint removeAboveAverageSlack, keepCuts, allZero
     cdef int nrFixedConstraints, insertActive, solveCalls
     cdef public double maxActiveAngle, minCutoff
     cdef public int removeInactive, numConstrs, maxRPCrounds
     cdef np.int_t[:,::1] hmat, htilde
     cdef g.Model model
-    cdef double[:] diffFromHalf
-    cdef int[::1] Nj
-    cdef double[::1] setV
-    cdef public np.ndarray hint
-    cdef int[::1] fixes
-    cdef public object timer, erasureDecoder
+    cdef double[::1] diffFromHalf, newSolution, setV
+    cdef int[::1] Nj, fixes
+    cdef public object timer
+    cdef double chg1, chg2, chg3
 
     def __init__(self, code,
                  maxRPCrounds=-1,
@@ -111,7 +109,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         # initialize various structures
         self.hmat = code.parityCheckMatrix
         self.htilde = self.hmat.copy() # the copy is used for gaussian elimination
-        self.solution = np.empty(code.blocklength)
+        self.newSolution = np.empty(code.blocklength)
         self.diffFromHalf = np.empty(code.blocklength)
         self.setV = np.empty(code.blocklength, dtype=np.double)
         self.Nj = np.empty(code.blocklength, dtype=np.intc)
@@ -219,11 +217,12 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         """Returns True if and only if the given index is fixed."""
         return self.fixes[i] != -1
 
-    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=double] llrs, np.int_t[::1] sent=None):
+    cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
         self.model.fastSetObjective(0, llrs.size, llrs)
         Decoder.setLLRs(self, llrs, sent)
         if self.insertActive & 1:
-            raise NotImplemented()
+            raise NotImplementedError()
+        self.removeNonfixedConstraints()
         self.model.update()
 
 
@@ -231,12 +230,13 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         cdef double[::1] solution = self.solution
         cdef double newObjectiveValue
         cdef int i
+        self.chg1 = self.chg2 = self.chg3 = 1e6
         rpcrounds = 0
         iteration = 0
         if not self.keepCuts:
             self.removeNonfixedConstraints()
-        if self.insertActive & 2 and self.hint is not None:
-            self.insertActiveConstraints(self.hint)
+        # if self.insertActive & 2 and self.hint is not None:
+        #     self.insertActiveConstraints(self.hint)
         self.foundCodeword = self.mlCertificate = False
         self.objectiveValue = -np.inf
         if self.sent is not None and ub == np.inf:
@@ -257,11 +257,13 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             elif self.model.Status != g.GRB_OPTIMAL:
                 raise RuntimeError("Unknown Gurobi status {}".format(self.model.Status))
             newObjectiveValue = self.model.ObjVal
-            if newObjectiveValue <= self.objectiveValue and iteration > self.code.blocklength:
-                # prevent infinite loops in some rare cases where numerical issues cause
-                # non-increasing objective value after cut generation
-                print('cga: no improvement in iteration {}'.format(iteration))
-                break
+            # if newObjectiveValue <= self.objectiveValue:
+            #     print(newObjectiveValue, self.objectiveValue, iteration)
+            #     if iteration > self.code.blocklength:
+            #         # prevent infinite loops in some rare cases where numerical issues cause
+            #         # non-increasing objective value after cut generation
+            #         print('cga: no improvement in iteration {}'.format(iteration))
+            #         break
             self.objectiveValue = newObjectiveValue
             if self.objectiveValue >= ub - 1e-6:
                 # lower bound from the LP is above known upper bound -> no need to proceed
@@ -270,8 +272,18 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 self.foundCodeword = self.mlCertificate = False
                 break
             integral = True
-            self.model.fastGetX(0, self.code.blocklength, solution)
-            for i in range(self.code.blocklength):
+            self.model.fastGetX(0, self.code.blocklength, self.newSolution)
+            if iteration >= 3:
+                self.chg3 = self.chg2
+            if iteration >= 2:
+                self.chg2 = self.chg1
+            self.chg1 = 0
+            for i in range(self.solution.size):
+                self.chg1 += fabs(self.newSolution[i] - self.solution[i])
+            if self.chg1 + self.chg2 + self.chg3 < 1e-6:
+                print('no chg {}'.format(iteration))
+            self.solution[:] = self.newSolution
+            for i in range(self.solution.size):
                 if solution[i] < 1e-6:
                     solution[i] = 0
                 elif solution[i] > 1-1e-6:
@@ -301,7 +313,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     self.mlCertificate = self.foundCodeword = False
                     break
                 rpcrounds += 1
-        self.hint = None
+        # self.hint = None
 
     cdef void removeInactiveConstraints(self):
         """Removes constraints which are not active at the current solution."""

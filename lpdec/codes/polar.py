@@ -66,7 +66,7 @@ class PolarCode(BinaryLinearBlockCode):
             for i in range(self.blocklength):
                 G[i] = Fkron[int(np.binary_repr(i, self.n)[::-1], 2)]
             # construct parity-check matrix
-            self._parityCheckMatrix = G.T[self.frozen]
+            self._parityCheckMatrix = G.T[self.frozen].copy()  # make C-contiguous
         return self._parityCheckMatrix
 
     @property
@@ -201,6 +201,7 @@ class PolarFactorGraph(FactorGraph):
         FactorGraph.__init__(self, vars, checks, x)
         self.polarVars = polarVars
         self.polarChecks = polarChecks
+        self.isSparsified = False
 
     def sparsify(self):
         """Makes the graph smaller by eliminating frozen variables and removing degree-2 checks
@@ -209,6 +210,8 @@ class PolarFactorGraph(FactorGraph):
 
         See :cite:`TaranalliSiegel14ALPPolar` for details on the construction.
         """
+        if self.isSparsified:
+            return
         # 1. sparsify z-structures
         for structure in reversed(self.zStructures):
             (vul, cu, vur), (vll, cl, vlr) = structure
@@ -241,11 +244,12 @@ class PolarFactorGraph(FactorGraph):
             v.index = i
         for i, c in enumerate(self.checkNodes):
             c.index = i
+        self.isSparsified = True
 
     def parityCheckMatrix(self):
         H = FactorGraph.parityCheckMatrix(self)
         Hunfrozen = H[:, [i for i in range(H.shape[1]) if not self.varNodes[i].frozen]]
-        return Hunfrozen
+        return Hunfrozen.copy()
 
 
 class SparsePolarDecoder(Decoder):

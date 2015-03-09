@@ -82,7 +82,6 @@ cdef class AdaptiveLPDecoder(Decoder):
     cdef double[::1] diffFromHalf
     cdef int[::1] Nj
     cdef double[::1] setV
-    cdef public np.ndarray hint
     cdef int[::1] fixes
     cdef public object timer, erasureDecoder
 
@@ -256,9 +255,8 @@ cdef class AdaptiveLPDecoder(Decoder):
         """Returns True if and only if the given index is fixed."""
         return self.fixes[i] != -1
 
-    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=double] llrs, np.int_t[::1] sent=None):
+    cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
         cdef int j
-        cdef np.ndarray[dtype=int, ndim=1] hint
         self.solveCalls = 0
         for j in range(self.code.blocklength):
             glpk.glp_set_obj_coef(self.prob, 1+j, llrs[j])
@@ -401,7 +399,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             self.numConstrs -= removed
             assert self.numConstrs == glpk.glp_get_num_rows(self.prob)
 
-    cdef void insertActiveConstraints(self, int[::1] codeword):
+    cdef void insertActiveConstraints(self, np.int_t[::1] codeword):
         """Inserts constraints that are active at the given codeword."""
         cdef double[::1] coeff = self.setV, llrs = self.llrs
         cdef int[::1] Nj = self.Nj

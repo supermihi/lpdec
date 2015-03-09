@@ -20,9 +20,8 @@ from libc.math cimport fabs, fmin
 import numpy as np
 cimport numpy as np
 
-from lpdec.decoders.base import Decoder
 from lpdec.decoders.base cimport Decoder
-from lpdec.decoders.adaptivelp import AdaptiveLPDecoder
+from lpdec.decoders.adaptivelp_glpk import AdaptiveLPDecoder
 from lpdec.decoders.iterative import IterativeDecoder
 from lpdec.utils import Timer
 from lpdec.persistence import classByName
@@ -289,7 +288,7 @@ cdef class BranchAndCutDecoder(Decoder):
             raise NotImplementedError('Eiriks method not implemented')
 
 
-    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=double] llrs, np.int_t[::1] sent=None):
+    cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
         self.ubProvider.setLLRs(llrs, sent)
         if sent is not None:
             self.sentObjective = np.dot(sent, llrs)
@@ -302,7 +301,7 @@ cdef class BranchAndCutDecoder(Decoder):
             self.ubProvider.solve()
             self._stats["iterTime"] += self.timer.stop()
             if self.ubProvider.foundCodeword:
-                self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
+                self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
                 logger.debug('init ub={}'.format(self.ubProvider.objectiveValue))
                 # codeword will be used in first iteration of main algorithm; no need to copy it
                 # here
@@ -328,7 +327,7 @@ cdef class BranchAndCutDecoder(Decoder):
         cdef:
             Node node, newNode0, newNode1, newNode
             list activeNodes = []
-            np.ndarray[dtype=double, ndim=1] candidate = np.zeros(self.code.blocklength, dtype=np.double)
+            double[::1] candidate = np.zeros(self.code.blocklength, dtype=np.double)
             int i, branchIndex
             str depthStr
         ub = 0
@@ -369,7 +368,7 @@ cdef class BranchAndCutDecoder(Decoder):
             # lower bound calculation
             self.timer.start()
             if (i == 1 or self.calcUb) and self.ubProvider.foundCodeword:
-                self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
+                self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
             else:
                 self.lbProvider.hint = None
             self.lbProvider.solve(-inf, ub)

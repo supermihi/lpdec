@@ -80,7 +80,6 @@ cdef class CGurobiALPDecoder(Decoder):
     cdef grb.GRBenv *env
     cdef double[::1] diffFromHalf
     cdef np.ndarray setV, Nj
-    cdef public np.ndarray hint
     cdef int[::1] fixes
     cdef public object timer, erasureDecoder
 
@@ -227,15 +226,15 @@ cdef class CGurobiALPDecoder(Decoder):
         """Returns True if and only if the given index is fixed."""
         return self.fixes[i] != -1
 
-    cpdef setLLRs(self, np.ndarray[ndim=1, dtype=double] llrs, np.int_t[::1] sent=None):
-        cdef np.ndarray[dtype=np.int_t, ndim=1] hint
+    cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
+        cdef np.ndarray[ndim=1, dtype=np.double_t] hint
         grb.GRBsetdblattrarray(self.model, grb.GRB_DBL_ATTR_OBJ, 0, llrs.size, &llrs[0])
         Decoder.setLLRs(self, llrs, sent)
         if self.insertActive & 1:
             if self.hint is None and sent is None:
                 return
             elif self.hint is not None:
-                hint = self.hint
+                hint = np.asarray(self.hint)
             else:
                 hint = np.asarray(sent)
             self.removeNonfixedConstraints()

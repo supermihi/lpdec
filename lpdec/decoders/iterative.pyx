@@ -102,7 +102,7 @@ cdef class IterativeDecoder(Decoder):
             double[:,:] varToChecks = self.varToChecks, checkToVars = self.checkToVars
             double[:]   varSoftBits = self.varSoftBits, bP = self.bP, fP = self.fP
             double[:]   llrs = self.llrs, solution = self.solution
-            double[:]   llrFixed = self.llrs + self.fixes
+            double[::1]   llrFixed = np.asarray(self.llrs) + self.fixes
             int i, j, deg, iteration, checkIndex, varIndex
             int numVarNodes = self.code.blocklength
             int numCheckNodes = self.code.parityCheckMatrix.shape[0]
