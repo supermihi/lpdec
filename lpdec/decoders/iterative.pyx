@@ -102,7 +102,7 @@ cdef class IterativeDecoder(Decoder):
             double[:,:] varToChecks = self.varToChecks, checkToVars = self.checkToVars
             double[:]   varSoftBits = self.varSoftBits, bP = self.bP, fP = self.fP
             double[:]   llrs = self.llrs, solution = self.solution
-            double[::1]   llrFixed = np.asarray(self.llrs) + self.fixes
+            double[::1]   llrFixed = np.add(self.llrs, self.fixes)
             int i, j, deg, iteration, checkIndex, varIndex
             int numVarNodes = self.code.blocklength
             int numCheckNodes = self.code.parityCheckMatrix.shape[0]
@@ -202,7 +202,7 @@ cdef class IterativeDecoder(Decoder):
         cdef np.int_t[:,::1] matrix = self.matrix
         cdef Py_ssize_t[:,:] varNeigh = self.varNeigh2
         cdef double[:] fixes = self.fixes, solution = self.solution, llrs = self.llrs
-        cdef Py_ssize_t[:] unit = np.asarray(gaussianElimination(matrix, sorted, True))
+        cdef Py_ssize_t[:] unit = gaussianElimination(matrix, sorted, True)
 
         for j in unit:
             if fixes[j] != 0:

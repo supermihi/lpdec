@@ -246,7 +246,7 @@ cdef class CGurobiALPDecoder(Decoder):
 
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
         cdef double[::1] diffFromHalf = self.diffFromHalf
-        cdef np.ndarray[dtype=double, ndim=1] solution = self.solution
+        cdef double[::1] solution = self.solution
         cdef double newObjectiveValue
         cdef int i
         rpcrounds = 0
@@ -291,8 +291,7 @@ cdef class CGurobiALPDecoder(Decoder):
                 self.foundCodeword = self.mlCertificate = False
                 break
             integral = True
-            grb.GRBgetdblattrarray(self.model, grb.GRB_DBL_ATTR_X, 0, self.code.blocklength,
-                                   <double*> solution.data)
+            grb.GRBgetdblattrarray(self.model, grb.GRB_DBL_ATTR_X, 0, solution.size, &solution[0])
             for i in range(self.code.blocklength):
                 if solution[i] < 1e-6:
                     solution[i] = 0

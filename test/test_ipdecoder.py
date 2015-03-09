@@ -111,8 +111,7 @@ class TestCplexIPDecoder(unittest.TestCase):
         distance = self.decoder.minimumDistance()
         codeword = self.decoder.solution
         self.assertEqual(distance, 7)
-        self.assertEqual(codeword.sum(), 7)
-        self.assertIsInstance(codeword, np.ndarray)
+        self.assertEqual(np.sum(codeword), 7)
 
     @requireCPLEX
     def test_decoding(self):

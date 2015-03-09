@@ -479,7 +479,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.timer.start()
 
                 if (iteration == 1 or self.calcUb) and self.ubProvider.foundCodeword:
-                    self.lbProvider.hint = self.ubProvider.solution.astype(np.int)
+                    self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
                 else:
                     self.lbProvider.hint = None
                 self.lbProvider.solve(-INFINITY, ub - 1 + delta)
