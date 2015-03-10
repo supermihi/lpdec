@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright 2015 Michael Helmling
-#
+# cython: boundscheck=False, nonecheck=False, initializedcheck=False, wraparound=False
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
@@ -85,11 +85,11 @@ cdef class PolarSCListDecoder(Decoder):
         public int L
         int m
         public list inactivePathIndices, inactiveArrayIndices
-        int[:] activePath, fixes
-        np.intp_t[:, :] pathIndexToArrayIndex
-        int[:, :] arrayReferenceCount
-        double[:, :, :, :] P
-        int[:, :, :, :] C
+        int[::1] activePath, fixes
+        np.intp_t[:, ::1] pathIndexToArrayIndex
+        int[:, ::1] arrayReferenceCount
+        double[:, :, :, ::1] P
+        int[:, :, :, ::1] C
         np.ndarray probForks, contForks
 
     def __init__(self, code, L=4, name=None):
@@ -160,14 +160,14 @@ cdef class PolarSCListDecoder(Decoder):
             pLam_ = self.getArrayPointer(lam - 1, l)
             for beta in range(2**(self.m-lam)):
                 if phi % 2 == 0:
-                    for u in (0,1):
+                    for u in range(2):
                         self.P[lam, pLam, beta, u] = .5 * (
                             self.P[lam-1, pLam_, 2*beta, u] * self.P[lam-1, pLam_, 2*beta+1, 0]
                           + self.P[lam-1, pLam_, 2*beta, u^1] * self.P[lam-1, pLam_, 2*beta+1, 1])
                         sigma = max(sigma, self.P[lam, pLam, beta, u])
                 else:
                     u = self.C[lam, pLam, beta, 0]
-                    for upp in (0, 1):
+                    for upp in range(2):
                         self.P[lam, pLam, beta, upp] = .5 * self.P[lam-1, pLam_, 2*beta, u ^ upp]\
                                                      * self.P[lam-1, pLam_, 2*beta+1, upp]
                         sigma = max(sigma, self.P[lam, pLam, beta, upp])
@@ -175,7 +175,7 @@ cdef class PolarSCListDecoder(Decoder):
             if self.activePath[l]:
                 pLam = self.getArrayPointer(lam, l)
                 for beta in range(2**(self.m-lam)):
-                    for u in (0, 1):
+                    for u in range(2):
                         self.P[lam, pLam, beta, u] /= sigma
 
     cdef void recursivelyUpdateC(self, int lam, int phi):
@@ -192,11 +192,12 @@ cdef class PolarSCListDecoder(Decoder):
         if psi % 2 == 1:
             self.recursivelyUpdateC(lam-1, psi)
 
-    def continuePaths(self, int phi):
+    cdef void continuePaths(self, int phi):
         """Implementation of continuePaths_UnfrozenBit (Algorithm 18)"""
         cdef int l, lp, Pm, Cm, rho, i = 0
         cdef np.ndarray[ndim=2, dtype=double] probForks = self.probForks
         cdef np.ndarray[ndim=2, dtype=bint] contForks = self.contForks
+        cdef np.intp_t[:] strd
 
         for l in range(self.L):
             if not self.activePath[l]:
@@ -210,7 +211,7 @@ cdef class PolarSCListDecoder(Decoder):
         # implements line 14
         srtd = np.argsort(probForks, None)
         contForks[:, :] = 0
-        contForks.flat[srtd[-rho:]] = 1
+        contForks.flat[srtd[srtd.size-rho:]] = 1
         for l in range(self.L):
             if not self.activePath[l]:
                 continue
@@ -237,15 +238,15 @@ cdef class PolarSCListDecoder(Decoder):
             int n = self.code.blocklength
             int m = self.code.n
             int L = self.L
-            int phi, lp
+            int phi, lp, l, lam, s
             double pp
-            np.ndarray[ndim=4, dtype=double] P = np.asarray(self.P)
-            np.ndarray[ndim=4, dtype=bint] C = np.asarray(self.C)
-            np.intp_t[:, :] pathIndexToArrayIndex = self.pathIndexToArrayIndex
-            int[:, :] arrayReferenceCount = self.arrayReferenceCount
+            double[:,:,:,::1] P = self.P
+            int[:,:,:,::1] C = self.C
+            np.intp_t[:, ::1] pathIndexToArrayIndex = self.pathIndexToArrayIndex
+            int[:, ::1] arrayReferenceCount = self.arrayReferenceCount
             list inactivePathIndices = list(range(L))
             list inactiveArrayIndices = [list(range(L)) for _ in range(m+1)]
-            np.ndarray[ndim=1, dtype=bint] activePath = np.asarray(self.activePath)
+            int[::1] activePath = self.activePath
         self.inactivePathIndices = inactivePathIndices
         self.inactiveArrayIndices = inactiveArrayIndices
 
@@ -254,7 +255,7 @@ cdef class PolarSCListDecoder(Decoder):
         # assign initial path
         l = self.inactivePathIndices.pop()
         self.activePath[l] = True
-        for lam in range(self.code.n + 1):
+        for lam in range(m + 1):
             s = self.inactiveArrayIndices[lam].pop()
             pathIndexToArrayIndex[lam, l] = s
             arrayReferenceCount[lam, s] = 1
