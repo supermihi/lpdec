@@ -8,8 +8,8 @@ decoding based on methods of mathematical optimization, such as linear programmi
 Requirements
 ------------
 The library is written in [Python](www.python.org). It was mainly developed using Python version 
-2.7, but was recently ported to Python3, although that port is not stable yet. Note that there is
- no CPLEX interface for Python3, so you can not use the CPLEX solvers with that version of Python.
+2.7, but was recently ported to Python3. Note that there is no CPLEX interface for Python3, so you
+can not use the CPLEX solvers with that version of Python.
  
 To compile the library, you need [Cython](www.cython.org). Runtime requirements are the 
 Python packages [numpy](www.numpy.org), [dateutil](https://labix.org/python-dateutil), 
@@ -34,8 +34,7 @@ If you do not have GLPK installed, use:
 
     python setup.py install --no-glpk --user
 
-In both commands, replace ``python`` by an appropriate call to your Python interpreter. You will 
-probably run into less problems when using ``python2``.
+In both commands, replace ``python`` by an appropriate call to your Python interpreter.
 
 Documentation
 -------------
