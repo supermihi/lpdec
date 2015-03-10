@@ -22,5 +22,10 @@ Factor Graphs
 
 Polar Codes
 ===========
+Main module: :mod:`lpdec.codes.polar`
+----------------------------------------
 .. automodule:: lpdec.codes.polar
+
+Compiled helper module
+----------------------
 .. automodule:: lpdec.codes.polar_helpers

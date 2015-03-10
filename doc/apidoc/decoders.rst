@@ -19,8 +19,12 @@ Iterative (Message-Passing) Decoders
 Adaptive LP Decoder with optional RPC cuts
 ==========================================
 
-.. automodule:: lpdec.decoders.adaptivelp
-.. automodule:: lpdec.decoders.adaptivelp_cGurobi
+GLPK implementation
+-------------------
+.. automodule:: lpdec.decoders.adaptivelp_glpk
+Gurobi implementation
+---------------------
+.. automodule:: lpdec.decoders.adaptivelp_gurobi
 
 Branch-and-Cut Decoder
 ======================

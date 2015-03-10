@@ -141,7 +141,8 @@ class PolarFactorGraph(FactorGraph):
     Array of check nodes with shape (N, n). `polarChecks[i,j]` is the check right of
     :math:`s_{i,j}` in the paper.
 
-    Nodes in the polar factor graph have additional attributes *column* and *row*.
+    Nodes in the polar factor graph have additional attributes *column* and *row*. The *varNodes*
+    list is ordered such that the first :math:`2^n` nodes correspond to the variable nodes.
     """
     def __init__(self, n):
         N = 2 ** n
