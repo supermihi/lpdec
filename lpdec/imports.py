@@ -21,6 +21,7 @@ from lpdec.decoders.staticlp import *
 from lpdec.decoders.ip import *
 from lpdec.decoders.branchcut import *
 from lpdec.decoders.erasure import *
+from lpdec.decoders.polar import *
 try:
     from lpdec.decoders.adaptivelp_glpk import AdaptiveLPDecoder
 except ImportError:
