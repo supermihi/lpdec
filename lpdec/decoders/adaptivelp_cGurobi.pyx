@@ -93,6 +93,8 @@ cdef class CGurobiALPDecoder(Decoder):
                  maxActiveAngle=1,
                  allZero=False,
                  name=None):
+        import warnings
+        warnings.warn('deprecated - use adaptivelp_gurobi module', DeprecationWarning)
         if name is None:
             name = 'CGurobiALPDecoder'
         Decoder.__init__(self, code=code, name=name)

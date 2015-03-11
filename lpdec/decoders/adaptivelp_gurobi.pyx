@@ -96,7 +96,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                  allZero=False,
                  name=None):
         if name is None:
-            name = 'GurobiALPDecoder2'
+            name = 'ALPDecoderGurobi'
         Decoder.__init__(self, code=code, name=name)
         self.maxRPCrounds = maxRPCrounds
         self.minCutoff = minCutoff
