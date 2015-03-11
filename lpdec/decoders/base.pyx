@@ -10,6 +10,7 @@ import numpy as np
 cimport numpy as np
 from numpy.math cimport INFINITY
 from lpdec.persistence cimport JSONDecodable
+from lpdec import utils
 
 cdef class Decoder(JSONDecodable):
     """
@@ -112,3 +113,74 @@ cdef class Decoder(JSONDecodable):
                                               p = paramString)
 
 
+
+cdef class ProjectionDecoder(Decoder):
+    """A ProjectionDecoder is used for decoding of an :math:`(n,k)` code :math:`C` by actually using
+    a longer code :math:`\tilde C` such that :math:`C` is the projection of `\tilde C` onto the
+    first :math:`n` coordinates. The ProjectionDecoder inserts zeros into the llrs and cuts the
+    solution such that it acts like a decoder for the projected code to the outside world.
+
+    Args:
+      - code: the projected code :math:`C`
+      - longCode: the long code :math:`\tilde C`
+      - decoderCls: class of the wrapped decoder for the long code
+      - **decoderParams: additional parameters to the wrapped decoder
+    """
+
+    cdef double[::1] longLLR
+    cdef np.int_t[::1] longSent
+    cdef Decoder decoder
+    cdef object decoderCls, longCode
+    cdef int n
+
+    def __init__(self, code, longCode, decoderCls, **decoderParams):
+        self.longCode = longCode
+        if utils.isStr(decoderCls):
+            import lpdec.imports
+            decoderCls = lpdec.imports.__dict__[decoderCls]
+        self.decoder = decoderCls(code=longCode, **decoderParams)
+        self.decoderCls = decoderCls
+        name = 'Proj_{}({})'.format(code.blocklength, self.decoder.name)
+        Decoder.__init__(self, code, name=name)
+        self.n = code.blocklength
+        self.longLLR = np.zeros(longCode.blocklength, dtype=np.double)
+        self.longSent = np.zeros(longCode.blocklength, dtype=np.int)
+
+    cpdef release(self, int index):
+        return self.decoder.release(index)
+
+    cpdef fix(self, int index, int value):
+        return self.decoder.fix(index, value)
+
+    def __getattr__(self, item):
+        return getattr(self.decoder, item)
+
+    def setStats(self, stats):
+        self.decoder.setStats(stats)
+
+    def stats(self):
+        return self.decoder.stats()
+
+    cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
+        self.longLLR[:self.n] = llrs
+        if sent is not None:
+            self.longSent[:self.n] = sent
+            self.decoder.setLLRs(self.longLLR, sent=self.longSent)
+        else:
+            self.decoder.setLLRs(self.longLLR)
+
+    cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
+        self.decoder.solve(lb, ub)
+        self.solution = self.decoder.solution[:self.n]
+        self.objectiveValue = self.decoder.objectiveValue
+        self.mlCertificate = self.decoder.mlCertificate
+        self.foundCodeword = self.decoder.foundCodeword
+
+    def params(self):
+        ans = OrderedDict(decoderCls=self.decoderCls.__name__)
+        for key, value in self.decoder.params().items():
+            if key == 'name':
+                ans[key] = self.name
+            else:
+                ans[key] = value
+        return ans

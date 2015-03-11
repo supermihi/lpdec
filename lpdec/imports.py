@@ -15,7 +15,7 @@ from lpdec.codes.ldpc import *
 from lpdec.codes.polar import *
 from lpdec.codes.nonbinary import *
 
-from lpdec.decoders import *
+from lpdec.decoders.base import *
 from lpdec.decoders.iterative import *
 from lpdec.decoders.staticlp import *
 from lpdec.decoders.ip import *

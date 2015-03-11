@@ -14,6 +14,47 @@ from lpdec.codes import nonbinary
 import gurobimh as gu
 
 
+class ExplicitLPDecoder(GurobiDecoder):
+    """LP Decoder using the static explicit LP formulation (no auxiliary variables) from
+    :cite:`Feldman+05LPDecoding`.
+    """
+
+    def __init__(self, code, gurobiParams=None, gurobiVersion=None, ml=False, name=None):
+        if name is None:
+            name = 'Explicit{}Decoder'.format('ML' if ml else 'LP')
+        self.ml = ml
+        GurobiDecoder.__init__(self, code, name, gurobiParams, gurobiVersion, integer=ml)
+        self.timer = Timer()
+        assert code.q == 2, 'only binary codes are supported'
+        from lpdec.polytopes import feldmanInequalities
+        A, b = feldmanInequalities(code.parityCheckMatrix)
+        for i in range(len(b)):
+            self.model.addConstr(gu.LinExpr(A[i], self.xlist), gu.GRB.LESS_EQUAL, b[i])
+        self.model.update()
+
+    def setStats(self, stats):
+        if 'lpTime' not in stats:
+            stats['lpTime'] = 0.0
+        if 'simplexIters' not in stats:
+            stats['simplexIters'] = 0
+        GurobiDecoder.setStats(self, stats)
+
+    def solve(self, lb=-np.inf, ub=np.inf):
+        with self.timer:
+            self.model.optimize()
+        self._stats['lpTime'] += self.timer.duration
+        self._stats['simplexIters'] += self.model.IterCount
+        if self.model.Status == gu.GRB.OPTIMAL:
+            self.mlCertificate = self.foundCodeword = self.readSolution()
+        else:
+            raise RuntimeError()
+
+    def params(self):
+        ret = GurobiDecoder.params(self)
+        ret['ml'] = self.ml
+        return ret
+
+
 class StaticLPDecoder(GurobiDecoder):
     """LP Decoder using the static LP formulation with auxiliary variables from
     :cite:`Feldman+05LPDecoding`. Also supports the linear-sized cascaded version from
@@ -122,37 +163,4 @@ class StaticLPDecoder(GurobiDecoder):
         ret['ml'] = self.ml
         ret['cascade'] = self.cascade
         return ret
-
-
-if __name__ == '__main__':
-    from lpdec.codes.classic import TernaryGolayCode
-    from lpdec.channels import AWGNC
-    from lpdec.utils import frange
-    from lpdec.simulation import Simulator
-    from lpdecres import alpternary
-    from lpdec.codes.nonbinary import NonbinaryLinearBlockCode
-    import lpdec.database as db
-    code = TernaryGolayCode()
-    decML = StaticLPDecoder(code, ml=True)
-    decLP = StaticLPDecoder(code, ml=False)
-    decCA = StaticLPDecoder(code, ml=False, cascade=True)
-    decALP = alpternary.AdaptiveTernaryLPDecoder(code)
-    from lpdec import simulation
-    simulation.ALLOW_DIRTY_VERSION = True
-    simulation.ALLOW_VERSION_MISMATCH = True
-    db.init('sqlite:///:memory:')
-    for snr in frange(3, 3.1, .5):
-        channel = AWGNC(snr, code.rate, seed=8374, q=3)
-        simulator = Simulator(code, channel, [decLP, decCA, decALP], 'ternary')
-        simulator.maxSamples = 100
-        simulator.maxErrors = 200
-        simulator.wordSeed = 1337
-        simulator.outputInterval = 1
-        simulator.dbStoreTimeInterval = 10
-        simulator.revealSent = True
-        simulator.concurrent = False
-        simulator.run()
-    print(decLP.stats())
-    print(decALP.stats())
-
 

@@ -26,7 +26,9 @@ def feldmanInequalities(hmat, fundamentalCone=False):
     if fundamentalCone:
         numConstraints = np.sum(hmat)
     else:
-        numConstraints = np.sum(2**(hmat.sum(1) - 1))
+        numConstraints = 0
+        for s in hmat.sum(1):
+            numConstraints += 2 ** (s - 1)
     A = np.zeros((numConstraints, hmat.shape[1]), dtype=np.int)
     b = np.empty((numConstraints,), dtype=np.int)
     k = 0

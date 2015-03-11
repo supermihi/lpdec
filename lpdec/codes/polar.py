@@ -69,13 +69,11 @@ class PolarCode(BinaryLinearBlockCode):
             self._parityCheckMatrix = G.T[self.frozen].copy()  # make C-contiguous
         return self._parityCheckMatrix
 
-    @property
     def factorGraph(self):
-        if not hasattr(self, '_factorGraph'):
-            self._factorGraph = PolarFactorGraph(self.n)
-            for index in self.frozen:
-                self._factorGraph.u[index].frozen = True
-        return self._factorGraph
+        factorGraph = PolarFactorGraph(self.n)
+        for index in self.frozen:
+            factorGraph.u[index].frozen = True
+        return factorGraph
 
     def params(self):
         ret = OrderedDict(n=self.n)
