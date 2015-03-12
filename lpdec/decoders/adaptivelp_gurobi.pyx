@@ -21,6 +21,7 @@ from numpy.math cimport INFINITY
 from libc.math cimport fabs
 import gurobimh as g
 cimport gurobimh as g
+from cython.operator cimport dereference
 
 
 from lpdec.mod2la cimport gaussianElimination
@@ -54,14 +55,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
       constraints are indeed removed.
     :param bool keepCuts: If set to ``True``, inserted cuts are not remove after decoding one
       frame.
-    :param int insertActive: Determine if and when cuts that are active at the sent or hinted
-      codeword are inserted. The value is an OR-combination of:
-
-      * ``0``: never insert active constraints (default)
-      * ``1``: insert constraints active at the sent codewords during :func:`setLLRs`,
-        it that was given.
-      * ``2``: insert constraints active at :attr:`hint`, if it exists, at the beginning of
-        :func:`solve`.
     :param double maxActiveAngle: Maximum angle between LLR vector and an active inequality for
       it to be inserted during the "insert active" step.
     :param bool allZero: If set to ``True``, constraints that are active at the all-zero codeword
@@ -75,7 +68,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     """
 
     cdef public bint removeAboveAverageSlack, keepCuts, allZero
-    cdef int nrFixedConstraints, insertActive, solveCalls
+    cdef int nrFixedConstraints,  solveCalls
     cdef public double maxActiveAngle, minCutoff
     cdef public int removeInactive, numConstrs, maxRPCrounds
     cdef np.int_t[:,::1] hmat, htilde
@@ -83,7 +76,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     cdef double[::1] diffFromHalf, newSolution, setV
     cdef int[::1] Nj, fixes
     cdef public object timer
-    cdef double chg1, chg2, chg3
+    cdef double chg1, chg2, chg3, _ub
 
     def __init__(self, code,
                  maxRPCrounds=-1,
@@ -91,7 +84,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                  removeInactive=0,
                  removeAboveAverageSlack=False,
                  keepCuts=False,
-                 insertActive=0,
                  maxActiveAngle=1,
                  allZero=False,
                  name=None):
@@ -103,7 +95,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.removeInactive = removeInactive
         self.removeAboveAverageSlack = removeAboveAverageSlack
         self.keepCuts = keepCuts
-        self.insertActive = insertActive
         self.maxActiveAngle=maxActiveAngle
         self.allZero = allZero
         self.model = None
@@ -194,15 +185,15 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         return inserted
 
     def setStats(self, object stats):
-        statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime']
-        if self.insertActive != 0:
-            statNames.extend(['activeCuts'])
+        statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime', 'simplexIters']
         for item in statNames:
             if item not in stats:
                 stats[item] = 0
         Decoder.setStats(self, stats)
 
     cpdef fix(self, int i, int val):
+        if self.fixes[i] != -1:
+            self.release(i)
         if val == 1:
             self.model.setElementDblAttr(b'LB', i, 1)
         else:
@@ -221,11 +212,18 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
         self.model.fastSetObjective(0, llrs.size, llrs)
         Decoder.setLLRs(self, llrs, sent)
-        if self.insertActive & 1:
-            raise NotImplementedError()
         self.removeNonfixedConstraints()
         self.model.update()
 
+    @staticmethod
+    cdef int callbackFunction(g.GRBmodel *model, void *cbdata, int where, void *userdata):
+        """Terminates the simplex algorithm if upper bound is hit."""
+        cdef double ub = dereference(<double*>userdata)
+        cdef double value
+        if where == g.GRB_CB_SIMPLEX:
+            g.GRBcbget(cbdata, where, g.GRB_CB_SPX_OBJVAL, <void*> &value)
+            if value > ub + 1e-6:
+                g.GRBterminate(model)
 
     cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef double[::1] solution = self.solution
@@ -234,25 +232,33 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.chg1 = self.chg2 = self.chg3 = 1e6
         if not self.keepCuts:
             self.removeNonfixedConstraints()
-        # if self.insertActive & 2 and self.hint is not None:
-        #     self.insertActiveConstraints(self.hint)
         self.foundCodeword = self.mlCertificate = False
         self.objectiveValue = -INFINITY
         if self.sent is not None and ub == INFINITY:
             # calculate known upper bound on the objective from sent codeword
             ub = np.dot(self.sent, self.llrs) + 2e-6
+        self._ub = ub
         while True:
             iteration += 1
             with self.timer:
-                self.model.optimize()
+                if ub < INFINITY:
+                    g.GRBsetcallbackfunc(self.model.model, self.callbackFunction, <void*>&ub)
+                self.model.optimize() #self.callback if ub < INFINITY else None)
+                if ub < INFINITY:
+                    g.GRBsetcallbackfunc(self.model.model, NULL, NULL)
             self._stats['lpTime'] += self.timer.duration
             self._stats["totalLPs"] += 1
+            self._stats['simplexIters'] += self.model.IterCount
             self.numConstrs = self.model.NumConstrs
             self._stats["totalConstraints"] += self.numConstrs
             if self.model.Status in (g.GRB_INFEASIBLE, g.GRB_INF_OR_UNBD):
                 self.objectiveValue = INFINITY
                 self.foundCodeword = self.mlCertificate = False
                 break
+            elif self.model.Status == g.GRB_INTERRUPTED and ub < INFINITY:
+                self.objectiveValue = INFINITY
+                self.foundCodeword = self.mlCertificate = False
+                self._stats['ubReached'] += 1
             elif self.model.Status != g.GRB_OPTIMAL:
                 raise RuntimeError("Unknown Gurobi status {}".format(self.model.Status))
             newObjectiveValue = self.model.ObjVal
@@ -362,8 +368,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             params['removeAboveAverageSlack'] = True
         if self.keepCuts:
             params['keepCuts'] = True
-        if self.insertActive != 0:
-            params['insertActive'] = self.insertActive
         if self.maxActiveAngle != 1:
             params['maxActiveAngle'] = self.maxActiveAngle
         if self.allZero:

@@ -302,8 +302,6 @@ class Simulator(object):
         for i in range(startSample, self.maxSamples+1):
             channelOutput = next(signaller)
             if DEBUG_SAMPLE and i not in DEBUG_SAMPLE:
-                if i-1 == DEBUG_SAMPLE[-1]:
-                    printStatus()
                 continue
             sampleOffset = max(5, int(math.ceil(math.log10(i)))) + len(': ')
             if i == startSample or (utcnow() - lastOutput).total_seconds() > self.outputInterval:
@@ -384,8 +382,8 @@ class Simulator(object):
                 prv(outputFormat[decoder].format(outputString) + TERM_NORMAL, end='')
             prv(' {}{:6f}{}'.format(TERM_CYAN, signaller.correctObjectiveValue(), TERM_NORMAL))
             if unfinishedDecoders == 0:
-                printStatus()
                 break
+        printStatus()
 
 
 class DecodingThread(threading.Thread):

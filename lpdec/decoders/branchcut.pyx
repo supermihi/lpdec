@@ -16,7 +16,7 @@ import itertools
 import random
 from collections import OrderedDict
 
-from libc.math cimport fabs, fmin
+from libc.math cimport fabs, fmin, fmax
 import numpy as np
 cimport numpy as np
 from numpy.math cimport INFINITY
@@ -30,14 +30,14 @@ from lpdec.persistence import classByName
 logger = logging.getLogger(name='branchcut')
 
 cdef enum BranchMethod:
-    mostFractional, leastReliable
+    mostFractional, leastReliable, firstFractional, strong, branchRandom
 
 
 cdef enum SelectionMethod:
     mixed, dfs, bbs, bfs
 
 
-cdef void move(Decoder lbProv, Decoder ubProv, Node node, Node newNode):
+cdef int move(Decoder lbProv, Decoder ubProv, Node node, Node newNode) except -1:
     """Moves from one brach-and-bound node to another, updating variable fixes in the upper and
     lower bound providers on the fly.
     """
@@ -195,6 +195,12 @@ cdef class BranchAndCutDecoder(Decoder):
             self.branchMethod = mostFractional
         elif branchMethod == 'leastReliable':
             self.branchMethod = leastReliable
+        elif branchMethod == 'firstFractional':
+            self.branchMethod = firstFractional
+        elif branchMethod == 'strong':
+            self.branchMethod = strong
+        elif branchMethod == 'random':
+            self.branchMethod = branchRandom
         else:
             raise ValueError('unknown branch method {}'.format(branchMethod))
         self.childOrder = childOrder
@@ -226,26 +232,26 @@ cdef class BranchAndCutDecoder(Decoder):
 
     optimizedOptions=dict(name='B&C[mixed-/30/100/5/2;llr;cut.2;M-100;iter100-o2]',
                           selectionMethod='mixed-/30/100/5/2', childOrder='llr',
-                          lpParams=dict(removeInactive=100, insertActive=1, keepCuts=True,
+                          lpParams=dict(removeInactive=100, keepCuts=True,
                                         maxRPCrounds=100, minCutoff=.2),
                           iterParams=dict(iterations=100, reencodeOrder=2,
                                           reencodeIfCodeword=False))
 
     def setStats(self, stats):
-        for item in "nodes", "prBd1", "prBd2", "prInf", "prOpt", "termEx", "termGap", 'lpTime', \
+        for item in 'nodes', 'prBd1', 'prBd2', 'prInf', 'prOpt', 'termEx', 'termGap', 'lpTime', \
                     'iterTime':
             if item not in stats:
                 stats[item] = 0
-        if "nodesPerDepth" not in stats:
-            stats["nodesPerDepth"] = {}
-        if "lpStats" in stats:
-            self.lbProvider.setStats(stats["lpStats"])
-            del stats["lpStats"]
+        if 'nodesPerDepth' not in stats:
+            stats['nodesPerDepth'] = {}
+        if 'lpStats' in stats:
+            self.lbProvider.setStats(stats['lpStats'])
+            del stats['lpStats']
         else:
             self.lbProvider.setStats(dict())
-        if "iterStats" in stats:
-            self.ubProvider.setStats(stats["iterStats"])
-            del stats["iterStats"]
+        if 'iterStats' in stats:
+            self.ubProvider.setStats(stats['iterStats'])
+            del stats['iterStats']
         else:
             self.ubProvider.setStats(dict())
         Decoder.setStats(self, stats)
@@ -258,33 +264,56 @@ cdef class BranchAndCutDecoder(Decoder):
         return stats
 
 
-    cdef int branchIndex(self):
+    cdef int branchIndex(self, double ub):
         """Determines the index of the current branching variable, according to the selected
         branch method."""
         cdef:
-            int index, i
-            double minDiff = INFINITY
-            double[:] solution = self.lbProvider.solution
-        if self.branchMethod == mostFractional:
-            for i in range(self.code.blocklength):
-                if fabs(solution[i] - .5) < minDiff:
-                    index = i
-                    minDiff = fabs(solution[i] - .5)
-            if solution[index] < 1e-6 or solution[index] > 1-1e-6:
-                #  no fractional value exists -> branch on first free position
-                for index in range(self.code.blocklength):
-                    if not self.fixed(index):
-                        return index
-                return -1
-            return index
-        elif self.branchMethod == leastReliable:
-            for i in np.argsort(np.abs(self.llrs)):
-                if fabs(.5-solution[i]) < .499:
-                    return i
-            return -1
-        else:
-            raise NotImplementedError('Eiriks method not implemented')
+            int i, maxIndex = -1, itersSinceBest = 0
+            double maxScore = -INFINITY, score
+            double[::1] solution = self.lbProvider.solution
+            double current = self.lbProvider.objectiveValue
+            int currentRPC = self.lbProvider.maxRPCrounds
+        if self.branchMethod == strong:
+            self.lbProvider.maxRPCrounds = 10
+        for i in range(self.code.blocklength):
+            if fabs(solution[i] - .5) < .499:
+                if self.branchMethod == leastReliable:
+                    score = 1./fmax(1e-8, fabs(self.llrs[i]))
+                elif self.branchMethod == mostFractional:
+                    score = 1./fmax(1e-8, fabs(solution[i] - .5))
+                elif self.branchMethod == firstFractional:
+                    score = maxIndex == -1
+                elif self.branchMethod == branchRandom:
+                    score = np.random.random_sample()
+                else:
+                    if itersSinceBest >= 7:
+                        return maxIndex
+                    score = self.strongBranchScore(i, current, ub)
+                if score > maxScore:
+                    maxIndex = i
+                    maxScore = score
+                    itersSinceBest = 0
+                itersSinceBest += 1
+        if self.branchMethod == strong:
+            self.lbProvider.maxRPCrounds = currentRPC
+        return maxIndex
 
+    cdef double strongBranchScore(self, int i, double origObj, double ub):
+        cdef double deltaMinus, deltaPlus
+        self.lbProvider.fix(i, 0)
+        self.lbProvider.solve(-INFINITY, ub)
+        deltaMinus = self.lbProvider.objectiveValue - origObj
+        if deltaMinus == INFINITY:
+            self.lbProvider.release(i)
+            return INFINITY
+        self.lbProvider.fix(i, 1)
+        self.lbProvider.solve(-INFINITY, ub)
+        deltaPlus = self.lbProvider.objectiveValue - origObj
+        self.lbProvider.release(i)
+        if deltaPlus == INFINITY:
+            return INFINITY
+        return 5./6*fmin(deltaMinus, deltaPlus) + 1./6*fmax(deltaMinus, deltaPlus)
+        
 
     cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
         self.ubProvider.setLLRs(llrs, sent)
@@ -297,7 +326,7 @@ cdef class BranchAndCutDecoder(Decoder):
         else:
             self.timer.start()
             self.ubProvider.solve()
-            self._stats["iterTime"] += self.timer.stop()
+            self._stats['iterTime'] += self.timer.stop()
             if self.ubProvider.foundCodeword:
                 self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
                 logger.debug('init ub={}'.format(self.ubProvider.objectiveValue))
@@ -336,7 +365,7 @@ cdef class BranchAndCutDecoder(Decoder):
         self.foundCodeword = self.mlCertificate = True
         self.root = node = Node() #  root node
         self.selectCnt = 0 #  parameter used for the mixed node selection strategy
-        self._stats["nodes"] += 1
+        self._stats['nodes'] += 1
         if self.selectionMethod == mixed:
             self.lbProvider.maxRPCrounds = self.maxRPCspecial
 
@@ -344,9 +373,9 @@ cdef class BranchAndCutDecoder(Decoder):
 
             # statistic collection and debug output
             depthStr = str(node.depth)
-            if depthStr not in self._stats["nodesPerDepth"]:
-                self._stats["nodesPerDepth"][depthStr] = 0
-            self._stats["nodesPerDepth"][depthStr] += 1
+            if depthStr not in self._stats['nodesPerDepth']:
+                self._stats['nodesPerDepth'][depthStr] = 0
+            self._stats['nodesPerDepth'][depthStr] += 1
             if i % 100 == 0:
                 logger.debug('{}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(
                     self.root.lb, ub, node.depth,len(activeNodes), self.lbProvider.model.NumConstrs,
@@ -390,10 +419,11 @@ cdef class BranchAndCutDecoder(Decoder):
                         break
             elif node.lb < ub-1e-6:
                 # branch
-                branchIndex = self.branchIndex()
+                branchIndex = self.branchIndex(ub)
                 if branchIndex < 0:
                     print('BAA', branchIndex)
                     print([i for i in range(self.code.blocklength) if self.fixed(i)])
+                    raise RuntimeError()
                 newNode0 = Node(parent=node, branchIndex=branchIndex, branchValue=0)
                 newNode1 = Node(parent=node, branchIndex=branchIndex, branchValue=1)
                 if (self.childOrder == '10') or \
@@ -498,7 +528,7 @@ cdef class BranchAndCutDecoder(Decoder):
                         self._stats['prOpt'] += 1
                 elif node.lb < ub-1+delta:
                     # branch
-                    branchIndex = self.branchIndex()
+                    branchIndex = self.branchIndex(ub)
                     if branchIndex == -1:
                         node.lb = INFINITY
                         print('********** PRUNE 000000 ***************')
@@ -577,7 +607,10 @@ cdef class BranchAndCutDecoder(Decoder):
             selectionMethodNames = { dfs: "dfs", bfs: "bfs", bbs: "bbs"}
             method = selectionMethodNames[self.selectionMethod]
         branchMethodNames = {mostFractional: "mostFractional",
-                             leastReliable: "leastReliable"}
+                             leastReliable: "leastReliable",
+                             firstFractional: 'firstFractional',
+                             strong: 'strong',
+                             branchRandom: 'random'}
         parms = OrderedDict()
         if self.branchMethod != mostFractional:
             parms['branchMethod'] = branchMethodNames[self.branchMethod]
