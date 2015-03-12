@@ -23,7 +23,7 @@ import lpdec
 from lpdec import database as db, utils
 from lpdec.utils import *
 
-DEBUG_SAMPLE = -1
+DEBUG_SAMPLE = None
 ALLOW_DIRTY_VERSION = False
 ALLOW_VERSION_MISMATCH = False
 
@@ -255,9 +255,14 @@ class Simulator(object):
             return
         signaller = self.channel.signalGenerator(self.code, wordSeed=self.wordSeed)
         startSample = min(point.samples for point in self.dataPoints.values()) + 1
-        if DEBUG_SAMPLE != -1:
-            print('**** DEBUG MODE: running sample {} only ****'.format(DEBUG_SAMPLE))
-            startSample = self.maxSamples = DEBUG_SAMPLE
+        global DEBUG_SAMPLE
+        if DEBUG_SAMPLE is not None:
+            if isinstance(DEBUG_SAMPLE, int):
+                DEBUG_SAMPLE = (DEBUG_SAMPLE, )
+            DEBUG_SAMPLE = sorted(DEBUG_SAMPLE)
+            print('**** DEBUG MODE: running samples {} only ****'.format(DEBUG_SAMPLE))
+            startSample = self.maxSamples = DEBUG_SAMPLE[0]
+            self.maxSamples = DEBUG_SAMPLE[-1]
         if startSample > 1:
             #  ensure random seed matches
             print('skipping {} frames ...'.format(startSample-1))
@@ -295,13 +300,17 @@ class Simulator(object):
                        for decoder in self.decoders}
 
         for i in range(startSample, self.maxSamples+1):
+            channelOutput = next(signaller)
+            if DEBUG_SAMPLE and i not in DEBUG_SAMPLE:
+                if i-1 == DEBUG_SAMPLE[-1]:
+                    printStatus()
+                continue
             sampleOffset = max(5, int(math.ceil(math.log10(i)))) + len(': ')
             if i == startSample or (utcnow() - lastOutput).total_seconds() > self.outputInterval:
                 printStatus()
                 lastOutput = utcnow()
             prv(('{:' + str(sampleOffset-2) + 'd}: ').format(i), end='')
             unfinishedDecoders = len(self.dataPoints)
-            channelOutput = next(signaller)
             # go through decoders. For those not yet finished, start decoding or, in concurrent
             # mode, place item in the queue
             for decoder, point in self.dataPoints.items():
@@ -365,8 +374,8 @@ class Simulator(object):
                     store = True
                 if point.unstoredCPUTime() > self.dbStoreTimeInterval:
                     store = True
-                if DEBUG_SAMPLE != -1:
-                    store = False # avoid storing results in debug mode
+                if DEBUG_SAMPLE:
+                    store = False  # avoid storing results in debug mode
                 if store:
                     point.store()
                 #  avoid "-0" in the output

@@ -30,7 +30,7 @@ from lpdec.persistence import classByName
 logger = logging.getLogger(name='branchcut')
 
 cdef enum BranchMethod:
-    mostFractional, leastReliable, eiriksPaper
+    mostFractional, leastReliable
 
 
 cdef enum SelectionMethod:
@@ -133,7 +133,6 @@ cdef class BranchAndCutDecoder(Decoder):
 
         * `"mostFractional"`: choose the variable which is nearest to :math:`\\frac{1}{2}`
         * `"leastReliable"`: choose the fractional variable whose LLR value is closest to 0
-        * `"eiriksPaper"`: (currently unimplemented)
     :param str selectionMethod: Method to determine the next node from the set of active nodes.
         Possible values:
 
@@ -197,8 +196,7 @@ cdef class BranchAndCutDecoder(Decoder):
         elif branchMethod == 'leastReliable':
             self.branchMethod = leastReliable
         else:
-            assert branchMethod == 'eiriksPaper'
-            raise NotImplementedError('eiriks branch method not implemented')
+            raise ValueError('unknown branch method {}'.format(branchMethod))
         self.childOrder = childOrder
         self.calcUb = True
         if selectionMethod.startswith('mixed'):
@@ -579,8 +577,7 @@ cdef class BranchAndCutDecoder(Decoder):
             selectionMethodNames = { dfs: "dfs", bfs: "bfs", bbs: "bbs"}
             method = selectionMethodNames[self.selectionMethod]
         branchMethodNames = {mostFractional: "mostFractional",
-                             leastReliable: "leastReliable",
-                             eiriksPaper: "eiriksPaper"}
+                             leastReliable: "leastReliable"}
         parms = OrderedDict()
         if self.branchMethod != mostFractional:
             parms['branchMethod'] = branchMethodNames[self.branchMethod]
