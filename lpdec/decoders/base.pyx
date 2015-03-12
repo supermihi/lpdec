@@ -155,6 +155,9 @@ cdef class ProjectionDecoder(Decoder):
     def __getattr__(self, item):
         return getattr(self.decoder, item)
 
+    def __setattr__(self, item, value):
+        setattr(self.decoder, item, value)
+
     def setStats(self, stats):
         self.decoder.setStats(stats)
 

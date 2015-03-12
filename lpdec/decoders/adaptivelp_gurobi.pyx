@@ -79,7 +79,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     cdef public double maxActiveAngle, minCutoff
     cdef public int removeInactive, numConstrs, maxRPCrounds
     cdef np.int_t[:,::1] hmat, htilde
-    cdef g.Model model
+    cdef public g.Model model
     cdef double[::1] diffFromHalf, newSolution, setV
     cdef int[::1] Nj, fixes
     cdef public object timer
@@ -183,7 +183,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 # inequality violated -> insert
                 inserted += 1
                 self.model.fastAddConstr2(setV[:Njsize], Nj[:Njsize], g.GRB_LESS_EQUAL, setVsize - 1)
-            if originalHmat and vSum < 1-1e-5:
+            elif originalHmat and vSum < 1-1e-5:
                 #  in this case, we are in the "original matrix" phase and would have a cut for
                 #  insertion which is declined because of minCutoff. This implies that we don't
                 #  have a codeword although this method may return 0

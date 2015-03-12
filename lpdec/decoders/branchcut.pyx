@@ -351,7 +351,7 @@ cdef class BranchAndCutDecoder(Decoder):
             self._stats["nodesPerDepth"][depthStr] += 1
             if i % 100 == 0:
                 logger.debug('{}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(
-                    self.root.lb, ub, node.depth,len(activeNodes), self.lbProvider.numConstrs,
+                    self.root.lb, ub, node.depth,len(activeNodes), self.lbProvider.model.NumConstrs,
                     i, self._stats["lpTime"], self._stats['iterTime']))
             # upper bound calculation
             if i > 1 and self.calcUb: # for first iteration this was done in setLLR

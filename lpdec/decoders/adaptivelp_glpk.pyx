@@ -207,7 +207,7 @@ cdef class AdaptiveLPDecoder(Decoder):
                     Nj[1 + j] += 1 # GLPK indexing: shift indexes by one
                 glpk.glp_set_row_bnds(self.prob, ind, glpk.GLP_UP, 0.0, setVsize-1)
                 glpk.glp_set_mat_row(self.prob, ind, Njsize, &Nj[0], &setV[0])
-            if originalHmat and vSum < 1-1e-5:
+            elif originalHmat and vSum < 1-1e-5:
                 #  in this case, we are in the "original matrix" phase and would have a cut for
                 #  insertion which is declined because of minCutoff. This implies that we don't
                 #  have a codeword although this method may return 0
