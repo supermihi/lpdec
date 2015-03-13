@@ -22,6 +22,7 @@ cimport numpy as np
 from numpy.math cimport INFINITY
 
 from lpdec.decoders.base cimport Decoder
+from lpdec.decoders import ProblemInfeasible, UpperBoundHit, LimitHit
 from lpdec.decoders.adaptivelp_glpk import AdaptiveLPDecoder
 from lpdec.decoders.iterative import IterativeDecoder
 from lpdec.utils import Timer
@@ -141,9 +142,9 @@ cdef class BranchAndCutDecoder(Decoder):
         * `"bbs"`: Best-bound search
         * `"mixed[-]/<a>/<b>/<c>/<d>"`: Mixed strategy. Uses depth-first search in general but
             jumps to the node with smallest lower bound every <a> iterations, but only if the
-            duality gap at the current node is at least <d>. In the DFS phase, at most <b> RPC
+            duality gap at the current node is at least <d>. In the DFS phase, at most <c> RPC
             cut-search iterations are performed in the LP solver in each node. After a BBS jump,
-            <c> is used instead.
+            <b> is used instead.
     :param str childOrder: Determines the order in which newly created child branch-and-bound
         nodes are appended to the list of active nodes. Possible values are:
 
@@ -264,7 +265,7 @@ cdef class BranchAndCutDecoder(Decoder):
         return stats
 
 
-    cdef int branchIndex(self, double ub):
+    cdef int branchIndex(self, double ub) except -3:
         """Determines the index of the current branching variable, according to the selected
         branch method."""
         cdef:
@@ -273,8 +274,11 @@ cdef class BranchAndCutDecoder(Decoder):
             double[::1] solution = self.lbProvider.solution
             double current = self.lbProvider.objectiveValue
             int currentRPC = self.lbProvider.maxRPCrounds
+            double origObjBuf = self.lbProvider.objBufLim
         if self.branchMethod == strong:
             self.lbProvider.maxRPCrounds = 10
+            self.lbProvider.objBufLim = .1
+            self.lbProvider.model.setParam('IterationLimit', 40)
         for i in range(self.code.blocklength):
             if fabs(solution[i] - .5) < .499:
                 if self.branchMethod == leastReliable:
@@ -287,7 +291,7 @@ cdef class BranchAndCutDecoder(Decoder):
                     score = np.random.random_sample()
                 else:
                     if itersSinceBest >= 7:
-                        return maxIndex
+                        break
                     score = self.strongBranchScore(i, current, ub)
                 if score > maxScore:
                     maxIndex = i
@@ -296,22 +300,32 @@ cdef class BranchAndCutDecoder(Decoder):
                 itersSinceBest += 1
         if self.branchMethod == strong:
             self.lbProvider.maxRPCrounds = currentRPC
+            self.lbProvider.objBufLim = origObjBuf
+            self.lbProvider.model.setParam('IterationLimit', INFINITY)
         return maxIndex
 
-    cdef double strongBranchScore(self, int i, double origObj, double ub):
+    cdef double strongBranchScore(self, int i, double origObj, double ub) except -12345.67:
         cdef double deltaMinus, deltaPlus
         self.lbProvider.fix(i, 0)
-        self.lbProvider.solve(-INFINITY, ub)
-        deltaMinus = self.lbProvider.objectiveValue - origObj
-        if deltaMinus == INFINITY:
+        try:
+            self.lbProvider.solve(-INFINITY, ub)
+        except (UpperBoundHit, ProblemInfeasible):
+            return INFINITY
+        except LimitHit:
+            pass
+        finally:
             self.lbProvider.release(i)
-            return INFINITY
+        deltaMinus = self.lbProvider.objectiveValue - origObj
         self.lbProvider.fix(i, 1)
-        self.lbProvider.solve(-INFINITY, ub)
-        deltaPlus = self.lbProvider.objectiveValue - origObj
-        self.lbProvider.release(i)
-        if deltaPlus == INFINITY:
+        try:
+            self.lbProvider.solve(-INFINITY, ub)
+        except (UpperBoundHit, ProblemInfeasible):
             return INFINITY
+        except LimitHit:
+            pass
+        finally:
+            self.lbProvider.release(i)
+        deltaPlus = self.lbProvider.objectiveValue - origObj
         return 5./6*fmin(deltaMinus, deltaPlus) + 1./6*fmax(deltaMinus, deltaPlus)
         
 
@@ -398,15 +412,21 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
             else:
                 self.lbProvider.hint = None
-            self.lbProvider.solve(-INFINITY, ub)
-            self._stats['lpTime'] += self.timer.stop()
-            if self.lbProvider.objectiveValue > node.lb:
-                node.lb = self.lbProvider.objectiveValue
+            try:
+                self.lbProvider.solve(-INFINITY, ub)
+                if self.lbProvider.objectiveValue > node.lb:
+                    node.lb = self.lbProvider.objectiveValue
+            except UpperBoundHit:
+                node.lb = INFINITY
+                self._stats['prBd2'] += 1
+            except ProblemInfeasible:
+                node.lb = INFINITY
+                self._stats['prInf'] += 1
+            finally:
+                self._stats['lpTime'] += self.timer.stop()
 
             # pruning or branching
-            if node.lb == INFINITY:
-                self._stats["prInf"] += 1
-            elif self.lbProvider.foundCodeword:
+            if self.lbProvider.foundCodeword:
                 # solution is integral
                 logger.debug("node pruned by integrality")
                 if self.lbProvider.objectiveValue < ub:
@@ -435,8 +455,6 @@ cdef class BranchAndCutDecoder(Decoder):
                     activeNodes.append(newNode0)
                     activeNodes.append(newNode1)
                 self._stats['nodes'] += 2
-            else:
-                self._stats["prBd2"] += 1
             if node.parent is not None:
                 node.parent.updateBound(node.lb, node.branchValue)
                 if self.root.lb >= ub - 1e-6:

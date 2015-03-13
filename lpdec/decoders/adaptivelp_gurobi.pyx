@@ -13,7 +13,7 @@
 # published by the Free Software Foundation
 
 from __future__ import division, print_function, unicode_literals
-from collections import OrderedDict
+from collections import OrderedDict, deque
 import logging
 import numpy as np
 cimport numpy as np
@@ -26,6 +26,7 @@ from cython.operator cimport dereference
 
 from lpdec.mod2la cimport gaussianElimination
 from lpdec.decoders.base cimport Decoder
+from lpdec.decoders import UpperBoundHit, ProblemInfeasible, LimitHit
 from lpdec.utils import Timer
 
 logger = logging.getLogger('alp_gurobi')
@@ -68,15 +69,16 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     """
 
     cdef public bint removeAboveAverageSlack, keepCuts, allZero
-    cdef int nrFixedConstraints,  solveCalls
-    cdef public double maxActiveAngle, minCutoff
+    cdef int solveCalls, objBufSize
+    cdef public double maxActiveAngle, minCutoff, objBufLim
     cdef public int removeInactive, numConstrs, maxRPCrounds
     cdef np.int_t[:,::1] hmat, htilde
     cdef public g.Model model
     cdef double[::1] diffFromHalf, newSolution, setV
     cdef int[::1] Nj, fixes
-    cdef public object timer
-    cdef double chg1, chg2, chg3, _ub
+    cdef public object timer, xlist
+    cdef double[:] objBuff
+
 
     def __init__(self, code,
                  maxRPCrounds=-1,
@@ -86,6 +88,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                  keepCuts=False,
                  maxActiveAngle=1,
                  allZero=False,
+                 objBufSize=8,
+                 objBufLim=0.0,
                  name=None):
         if name is None:
             name = 'ALPDecoderGurobi'
@@ -97,7 +101,12 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.keepCuts = keepCuts
         self.maxActiveAngle=maxActiveAngle
         self.allZero = allZero
-        self.model = None
+        self.model = g.Model('ALP-GUROBIMH')
+        self.model.setParam('OutputFlag', 0)
+        self.xlist = []
+        for i in range(self.code.blocklength):
+            self.xlist.append(self.model.addVar(0, 1, g.GRB_CONTINUOUS))
+        self.model.update()
         # initialize various structures
         self.hmat = code.parityCheckMatrix
         self.htilde = self.hmat.copy() # the copy is used for gaussian elimination
@@ -108,16 +117,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.fixes = -np.ones(code.blocklength, dtype=np.intc)
         self.numConstrs = 0
         self.timer = Timer()
-        self.reset()
-
-    def reset(self):
-        self.model = g.Model('ALP-GUROBIMH')
-        self.model.setParam('OutputFlag', 0)
-        for i in range(self.code.blocklength):
-            self.model.addVar(0, 1, g.GRB_CONTINUOUS)
-        self.model.update()
-        self.nrFixedConstraints = self.model.NumConstrs
-
+        self.objBuff = np.ones(objBufSize, dtype=np.double)
+        self.objBufLim = objBufLim
 
     cdef int cutSearchAlgorithm(self, bint originalHmat) except -3:
         """Runs the cut search algorithm and inserts found cuts. If ``originalHmat`` is True,
@@ -185,7 +186,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         return inserted
 
     def setStats(self, object stats):
-        statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime', 'simplexIters']
+        statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime', 'simplexIters',
+                     'objBufHit']
         for item in statNames:
             if item not in stats:
                 stats[item] = 0
@@ -229,15 +231,14 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         cdef double[::1] solution = self.solution
         cdef double newObjectiveValue
         cdef int i, iteration = 0, rpcrounds = 0
-        self.chg1 = self.chg2 = self.chg3 = 1e6
         if not self.keepCuts:
             self.removeNonfixedConstraints()
         self.foundCodeword = self.mlCertificate = False
         self.objectiveValue = -INFINITY
+        self.objBuff[:] = -INFINITY
         if self.sent is not None and ub == INFINITY:
             # calculate known upper bound on the objective from sent codeword
             ub = np.dot(self.sent, self.llrs) + 2e-6
-        self._ub = ub
         while True:
             iteration += 1
             with self.timer:
@@ -251,14 +252,19 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             self._stats['simplexIters'] += self.model.IterCount
             self.numConstrs = self.model.NumConstrs
             self._stats["totalConstraints"] += self.numConstrs
-            if self.model.Status in (g.GRB_INFEASIBLE, g.GRB_INF_OR_UNBD):
+            if self.model.Status ==  g.GRB_INFEASIBLE:
                 self.objectiveValue = INFINITY
                 self.foundCodeword = self.mlCertificate = False
-                break
+                raise ProblemInfeasible()
             elif self.model.Status == g.GRB_INTERRUPTED and ub < INFINITY:
-                self.objectiveValue = INFINITY
+                self.objectiveValue = ub
                 self.foundCodeword = self.mlCertificate = False
                 self._stats['ubReached'] += 1
+                raise UpperBoundHit()
+            elif self.model.Status == g.GRB_ITERATION_LIMIT:
+                self.model.fastGetX(0, self.code.blocklength, self.newSolution)
+                self.objectiveValue = np.dot(self.llrs, self.newSolution)
+                raise LimitHit()
             elif self.model.Status != g.GRB_OPTIMAL:
                 raise RuntimeError("Unknown Gurobi status {}".format(self.model.Status))
             newObjectiveValue = self.model.ObjVal
@@ -275,18 +281,15 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 self.objectiveValue = INFINITY
                 self._stats["ubReached"] += 1
                 self.foundCodeword = self.mlCertificate = False
-                break
+                raise UpperBoundHit()
+            self.objBuff = np.roll(self.objBuff, 1)
+            self.objBuff[0] = self.objectiveValue
+            if self.objectiveValue - self.objBuff[self.objBuff.size - 1] < self.objBufLim:
+                self.mlCertificate = self.foundCodeword = False
+                self._stats['objBufHit'] += 1
+                return
             integral = True
-            self.model.fastGetX(0, self.code.blocklength, self.newSolution)
-            if iteration >= 3:
-                self.chg3 = self.chg2
-            if iteration >= 2:
-                self.chg2 = self.chg1
-            self.chg1 = 0
-            for i in range(solution.size):
-                self.chg1 += fabs(self.newSolution[i] - solution[i])
-            if self.chg1 + self.chg2 + self.chg3 < 1e-6:
-                print('no chg {}'.format(iteration))
+            self.model.fastGetX(0, self.newSolution.size, self.newSolution)
             solution[:] = self.newSolution
             for i in range(self.solution.size):
                 if solution[i] < 1e-6:
@@ -297,7 +300,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     integral = False
                 self.diffFromHalf[i] = fabs(solution[i]-.499999)
             if self.removeInactive != 0 \
-                    and self.numConstrs - self.nrFixedConstraints >= self.removeInactive:
+                    and self.numConstrs >= self.removeInactive:
                 self.removeInactiveConstraints()
             self.foundCodeword = self.mlCertificate = True
             numCuts = self.cutSearchAlgorithm(True)
@@ -318,7 +321,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     self.mlCertificate = self.foundCodeword = False
                     break
                 rpcrounds += 1
-        # self.hint = None
 
     cdef void removeInactiveConstraints(self):
         """Removes constraints which are not active at the current solution."""
@@ -372,5 +374,9 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             params['maxActiveAngle'] = self.maxActiveAngle
         if self.allZero:
             params['allZero'] = True
+        if self.objBufLim != 0.0:
+            if self.objBufSize != 8:
+                params['objBufSize'] = self.objBufSize
+            params['objBufLim'] = self.objBufLim
         params['name'] = self.name
         return params

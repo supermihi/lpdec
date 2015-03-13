@@ -12,6 +12,22 @@ from numpy.math cimport INFINITY
 from lpdec.persistence cimport JSONDecodable
 from lpdec import utils
 
+
+class ProblemInfeasible(Exception):
+    """Exception that should be raised by the solve() implementation of Decoders when the problem
+    is detected to be infeasible."""
+
+
+class UpperBoundHit(Exception):
+    """Exception that should be raised by Decoder.solve() (or subclass implementations) when the
+    upper bound was hit during optimization. In that event, Decoder.objectiveValue should reflect
+    the observed guaranteed objective value above the upper bound.
+    """
+
+class LimitHit(Exception):
+    """Exception raised when solve() hits a limit (e.g. time limit, iteration limit).
+    """
+
 cdef class Decoder(JSONDecodable):
     """
     The base class for all decoders, defining a minimal set of methods.
