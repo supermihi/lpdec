@@ -74,7 +74,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     cdef public int removeInactive, numConstrs, maxRPCrounds
     cdef np.int_t[:,::1] hmat, htilde
     cdef public g.Model model
-    cdef double[::1] diffFromHalf, newSolution, setV
+    cdef double[::1] diffFromHalf, setV
     cdef int[::1] Nj, fixes
     cdef public object timer, xlist
     cdef double[:] objBuff
@@ -110,7 +110,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         # initialize various structures
         self.hmat = code.parityCheckMatrix
         self.htilde = self.hmat.copy() # the copy is used for gaussian elimination
-        self.newSolution = np.empty(code.blocklength)
         self.diffFromHalf = np.empty(code.blocklength)
         self.setV = np.empty(code.blocklength, dtype=np.double)
         self.Nj = np.empty(code.blocklength, dtype=np.intc)
@@ -229,7 +228,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
 
     cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef double[::1] solution = self.solution
-        cdef double newObjectiveValue
         cdef int i, iteration = 0, rpcrounds = 0
         if not self.keepCuts:
             self.removeNonfixedConstraints()
@@ -251,46 +249,38 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             self._stats["totalLPs"] += 1
             self._stats['simplexIters'] += self.model.IterCount
             self.numConstrs = self.model.NumConstrs
-            self._stats["totalConstraints"] += self.numConstrs
+            self._stats['totalConstraints'] += self.numConstrs
+            self.model.fastGetX(0, self.solution.size, self.solution)
             if self.model.Status ==  g.GRB_INFEASIBLE:
                 self.objectiveValue = INFINITY
                 self.foundCodeword = self.mlCertificate = False
                 raise ProblemInfeasible()
             elif self.model.Status == g.GRB_INTERRUPTED and ub < INFINITY:
                 self.objectiveValue = ub
-                self.foundCodeword = self.mlCertificate = False
                 self._stats['ubReached'] += 1
+                self.foundCodeword = self.mlCertificate = (self.solution in self.code)
                 raise UpperBoundHit()
             elif self.model.Status == g.GRB_ITERATION_LIMIT:
-                self.model.fastGetX(0, self.code.blocklength, self.newSolution)
-                self.objectiveValue = np.dot(self.llrs, self.newSolution)
+                self.objectiveValue = np.dot(self.llrs, self.solution)
+                self.foundCodeword = self.mlCertificate = (self.solution in self.code)
                 raise LimitHit()
             elif self.model.Status != g.GRB_OPTIMAL:
                 raise RuntimeError("Unknown Gurobi status {}".format(self.model.Status))
-            newObjectiveValue = self.model.ObjVal
-            # if newObjectiveValue <= self.objectiveValue:
-            #     print(newObjectiveValue, self.objectiveValue, iteration)
-            #     if iteration > self.code.blocklength:
-            #         # prevent infinite loops in some rare cases where numerical issues cause
-            #         # non-increasing objective value after cut generation
-            #         print('cga: no improvement in iteration {}'.format(iteration))
-            #         break
-            self.objectiveValue = newObjectiveValue
+            self.objectiveValue = self.model.ObjVal
+
             if self.objectiveValue >= ub - 1e-6:
                 # lower bound from the LP is above known upper bound -> no need to proceed
                 self.objectiveValue = INFINITY
                 self._stats["ubReached"] += 1
-                self.foundCodeword = self.mlCertificate = False
+                self.foundCodeword = self.mlCertificate = (self.solution in self.code)
                 raise UpperBoundHit()
             self.objBuff = np.roll(self.objBuff, 1)
             self.objBuff[0] = self.objectiveValue
             if self.objectiveValue - self.objBuff[self.objBuff.size - 1] < self.objBufLim:
-                self.mlCertificate = self.foundCodeword = False
+                self.mlCertificate = self.foundCodeword = (self.solution in self.code)
                 self._stats['objBufHit'] += 1
                 return
             integral = True
-            self.model.fastGetX(0, self.newSolution.size, self.newSolution)
-            solution[:] = self.newSolution
             for i in range(self.solution.size):
                 if solution[i] < 1e-6:
                     solution[i] = 0
@@ -308,6 +298,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 # found cuts from original H matrix
                 continue
             elif integral:
+                self.foundCodeword = self.mlCertificate = self.solution in self.code
                 break
             elif rpcrounds >= self.maxRPCrounds and self.maxRPCrounds != -1:
                 self.foundCodeword = self.mlCertificate = False

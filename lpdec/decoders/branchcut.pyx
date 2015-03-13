@@ -443,6 +443,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 if branchIndex < 0:
                     print('BAA', branchIndex)
                     print([i for i in range(self.code.blocklength) if self.fixed(i)])
+                    print(np.asarray(self.lbProvider.solution))
                     raise RuntimeError()
                 newNode0 = Node(parent=node, branchIndex=branchIndex, branchValue=0)
                 newNode1 = Node(parent=node, branchIndex=branchIndex, branchValue=1)
