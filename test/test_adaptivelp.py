@@ -46,4 +46,4 @@ class TestAdaptiveLPDecoder(unittest.TestCase):
             for decoder in decoders:
                 decoder.decode(llr)
         for decoder in decoders[1:]:
-            self.assert_(np.allclose(decoder.solution, decoders[0].solution))
+            self.assertTrue(np.allclose(decoder.solution, decoders[0].solution))

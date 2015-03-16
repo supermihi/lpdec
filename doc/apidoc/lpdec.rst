@@ -14,7 +14,7 @@ Matrix Input and Output
 
 Handing of Binary (GF(2)) Matrices
 ----------------------------------
-.. automodule:: lpdec.mod2la
+.. automodule:: lpdec.gfqla
    :members:
 
 Various Utilities

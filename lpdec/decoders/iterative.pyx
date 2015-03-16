@@ -13,7 +13,7 @@ import numpy as np
 from numpy.math cimport INFINITY
 from libc.math cimport tanh, atanh, fmin, fmax, fabs, isnan
 from lpdec.decoders.base cimport Decoder
-from lpdec.mod2la cimport gaussianElimination
+from lpdec.gfqla cimport gaussianElimination
 
 
 cdef double almostInf = 1e5

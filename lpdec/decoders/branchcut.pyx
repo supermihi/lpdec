@@ -25,8 +25,7 @@ from lpdec.decoders.base cimport Decoder
 from lpdec.decoders import ProblemInfeasible, UpperBoundHit, LimitHit
 from lpdec.decoders.adaptivelp_glpk import AdaptiveLPDecoder
 from lpdec.decoders.iterative import IterativeDecoder
-from lpdec.utils import Timer
-from lpdec.persistence import classByName
+from lpdec import gfqla, utils, persistence
 
 logger = logging.getLogger(name='branchcut')
 
@@ -186,10 +185,10 @@ cdef class BranchAndCutDecoder(Decoder):
         if iterParams is None:
             iterParams = {}
         if isinstance(lpClass, basestring):
-            lpClass = classByName(lpClass)
+            lpClass = persistence.classByName(lpClass)
         self.lbProvider = lpClass(code, **lpParams)
         if isinstance(iterClass, basestring):
-            iterClass = classByName(iterClass)
+            iterClass = persistence.classByName(iterClass)
         self.ubProvider = iterClass(code, **iterParams)
         self.highSNR = highSNR
         if branchMethod == 'mostFractional':
@@ -227,7 +226,7 @@ cdef class BranchAndCutDecoder(Decoder):
         else:
             assert selectionMethod == "bbs", str(selectionMethod)
             self.selectionMethod = bbs
-        self.timer = Timer()
+        self.timer = utils.Timer()
         Decoder.__init__(self, code, name=name)
 
 
@@ -298,6 +297,10 @@ cdef class BranchAndCutDecoder(Decoder):
                     maxScore = score
                     itersSinceBest = 0
                 itersSinceBest += 1
+            elif maxIndex == -1 and not self.fixed(i):
+                # it may occur that the solution is integral but not a codeword -> return first
+                # non-fixed branch index then
+                maxIndex = i
         if self.branchMethod == strong:
             self.lbProvider.maxRPCrounds = currentRPC
             self.lbProvider.objBufLim = origObjBuf
@@ -444,6 +447,11 @@ cdef class BranchAndCutDecoder(Decoder):
                     print('BAA', branchIndex)
                     print([i for i in range(self.code.blocklength) if self.fixed(i)])
                     print(np.asarray(self.lbProvider.solution))
+                    print(np.around(np.dot(self.code.parityCheckMatrix, self.lbProvider.solution), 6) % 2)
+                    print(self.lbProvider.solution in self.code)
+                    print(np.allclose(np.mod(self.lbProvider.solution, 1), 0))
+                    print(np.mod(self.lbProvider.solution, 1))
+                    print(gfqla.inKernel(self.code.parityCheckMatrix, np.rint(self.lbProvider.solution).astype(np.int)))
                     raise RuntimeError()
                 newNode0 = Node(parent=node, branchIndex=branchIndex, branchValue=0)
                 newNode1 = Node(parent=node, branchIndex=branchIndex, branchValue=1)

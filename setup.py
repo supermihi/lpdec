@@ -56,7 +56,7 @@ with io.open(join('lpdec', '__init__.py'), 'r', encoding='UTF-8') as f:
     version = version_match.group(1)
 
 
-scriptName = 'lpdec3' if sys.version_info.major == 3 else 'lpdec'
+scriptName = 'lpdec'
 
 setup(
     name='lpdec',

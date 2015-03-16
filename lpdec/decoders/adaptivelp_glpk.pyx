@@ -20,7 +20,7 @@ from libc.math cimport fabs, sqrt
 
 from lpdec.decoders cimport glpk
 
-from lpdec.mod2la cimport gaussianElimination
+from lpdec.gfqla cimport gaussianElimination
 from lpdec.decoders.base cimport Decoder
 from lpdec.utils import Timer
 

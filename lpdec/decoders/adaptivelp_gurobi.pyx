@@ -24,7 +24,7 @@ cimport gurobimh as g
 from cython.operator cimport dereference
 
 
-from lpdec.mod2la cimport gaussianElimination
+from lpdec.gfqla cimport gaussianElimination
 from lpdec.decoders.base cimport Decoder
 from lpdec.decoders import UpperBoundHit, ProblemInfeasible, LimitHit
 from lpdec.utils import Timer
@@ -174,11 +174,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 # inequality violated -> insert
                 inserted += 1
                 self.model.fastAddConstr2(setV[:Njsize], Nj[:Njsize], g.GRB_LESS_EQUAL, setVsize - 1)
-            elif originalHmat and vSum < 1-1e-5:
-                #  in this case, we are in the "original matrix" phase and would have a cut for
-                #  insertion which is declined because of minCutoff. This implies that we don't
-                #  have a codeword although this method may return 0
-                self.foundCodeword = self.mlCertificate = False
         if inserted > 0:
             self._stats['cuts'] += inserted
             self.model.update()
@@ -256,6 +251,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 self.foundCodeword = self.mlCertificate = False
                 raise ProblemInfeasible()
             elif self.model.Status == g.GRB_INTERRUPTED and ub < INFINITY:
+                # interrupted by callback
                 self.objectiveValue = ub
                 self._stats['ubReached'] += 1
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)

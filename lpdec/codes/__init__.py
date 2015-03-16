@@ -11,7 +11,7 @@ from collections import OrderedDict
 import numpy as np
 
 from lpdec.persistence import JSONDecodable
-from lpdec import matrices, mod2la, utils
+from lpdec import matrices, gfqla, utils
 
 
 class LinearBlockCode(JSONDecodable):
@@ -26,7 +26,12 @@ class LinearBlockCode(JSONDecodable):
     def __contains__(self, codeword):
         """Check if the given word is a codeword of this code.
         """
-        return np.all(self.parityCheckMatrix.dot(codeword) % self.q == 0)
+        if np.asarray(codeword).dtype == np.int:
+            return gfqla.inKernel(self.parityCheckMatrix, codeword, self.q)
+        # double array must be almost integral
+        rounded = np.around(codeword, 10)
+        return np.all(np.mod(rounded, 1) == 0) and \
+               gfqla.inKernel(self.parityCheckMatrix, rounded.astype(np.int), self.q)
 
     @property
     def parityCheckMatrix(self):
@@ -82,7 +87,7 @@ class BinaryLinearBlockCode(LinearBlockCode):
                 hmatrix = parityCheckMatrix
             self._parityCheckMatrix = hmatrix
             cols = hmatrix.shape[1]
-            rank = mod2la.rank(hmatrix)
+            rank = gfqla.rank(hmatrix)
             self.blocklength = cols
             self.infolength = cols - rank
         LinearBlockCode.__init__(self, 2,  name)
@@ -104,14 +109,14 @@ class BinaryLinearBlockCode(LinearBlockCode):
             else:
                 cols = np.hstack((np.arange(self.infolength, self.blocklength),
                                   np.arange(self.infolength))).astype(np.intp)
-                self._generatorMatrix = mod2la.orthogonalComplement(self._parityCheckMatrix, cols)
+                self._generatorMatrix = gfqla.orthogonalComplement(self._parityCheckMatrix, cols)
         return self._generatorMatrix
 
     @property
     def parityCheckMatrix(self):
         """The parity-check matrix, calculated on first access if not given a priori."""
         if self._parityCheckMatrix is None:
-            self._parityCheckMatrix = mod2la.orthogonalComplement(self.generatorMatrix)
+            self._parityCheckMatrix = gfqla.orthogonalComplement(self.generatorMatrix)
         return self._parityCheckMatrix
 
     def params(self):

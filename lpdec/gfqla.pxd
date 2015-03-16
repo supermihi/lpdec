@@ -5,4 +5,8 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 cimport numpy as np
-cpdef gaussianElimination(np.int_t[:,:] matrix, Py_ssize_t[:] columns=?, bint diagonalize=?)
+
+cpdef gaussianElimination(np.int_t[:,:] matrix, Py_ssize_t[:] columns=?, bint diagonalize=?,
+                          int q=?)
+
+cpdef inKernel(np.int_t[:, :] matrix, np.int_t[:] vector, int q=?)

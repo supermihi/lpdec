@@ -7,7 +7,7 @@
 
 from unittest import TestCase
 import numpy as np
-from lpdec.mod2la import orthogonalComplement
+from lpdec.gfqla import orthogonalComplement
 
 
 class TestOrthogonalComplement(TestCase):

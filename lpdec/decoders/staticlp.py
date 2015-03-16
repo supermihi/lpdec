@@ -6,11 +6,12 @@
 # published by the Free Software Foundation
 
 from __future__ import division, print_function
-import numpy as np
-from lpdec.utils import Timer
-from lpdec.decoders.gurobihelpers import GurobiDecoder
 import itertools
-from lpdec.codes import nonbinary
+
+import numpy as np
+
+from lpdec import utils, gfqla
+from lpdec.decoders.gurobihelpers import GurobiDecoder
 import gurobimh as gu
 
 
@@ -24,7 +25,7 @@ class ExplicitLPDecoder(GurobiDecoder):
             name = 'Explicit{}Decoder'.format('ML' if ml else 'LP')
         self.ml = ml
         GurobiDecoder.__init__(self, code, name, gurobiParams, gurobiVersion, integer=ml)
-        self.timer = Timer()
+        self.timer = utils.Timer()
         assert code.q == 2, 'only binary codes are supported'
         from lpdec.polytopes import feldmanInequalities
         A, b = feldmanInequalities(code.parityCheckMatrix)
@@ -123,7 +124,7 @@ class StaticLPDecoder(GurobiDecoder):
         for i, localword in enumerate(itertools.product(list(range(q)),
                                       repeat=d-1)):
             modq = np.dot(localword, h[:-1]) % q
-            localword += (-modq * nonbinary.inv(h[-1], q) % q,)
+            localword += (-modq * gfqla.inv(h[-1], q) % q,)
             codewords.append(localword)
             var = self.model.addVar(0, 1, name='w_{},{}'.format(jname, i))
             auxVars.append(var)

@@ -51,8 +51,8 @@ class TestBSC(unittest.TestCase):
         channel2 = channels.BSC(self.p, self.channelSeed)
         input = np.ones(100)
         for _ in range(100):
-            self.assert_(np.all(self.channel(input) == channel2(input)))
+            self.assertTrue(np.all(self.channel(input) == channel2(input)))
         self.channel.resetSeed()
         channel2.resetSeed()
         for _ in range(100):
-            self.assert_(np.all(self.channel(input) == channel2(input)))
+            self.assertTrue(np.all(self.channel(input) == channel2(input)))
