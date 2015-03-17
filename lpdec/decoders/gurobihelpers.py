@@ -14,6 +14,20 @@ import numpy as np
 from lpdec.decoders import Decoder
 
 
+def createModel(name, version, **params):
+    from gurobimh import Model, gurobi
+    model = Model(name)
+    model.setParam('OutputFlag', 0)
+    if version:
+        installedVersion = '.'.join(str(v) for v in gurobi.version())
+        if version != installedVersion:
+            raise RuntimeError('Installed Gurobi version {} does not match requested {}'
+                               .format(installedVersion, version))
+    for param, value in params.items():
+        model.setParam(param, value)
+    return model
+
+
 class GurobiDecoder(Decoder):
     """Generic base class for Gurobi based LP/IP decoders.
     """
@@ -22,7 +36,8 @@ class GurobiDecoder(Decoder):
         Decoder.__init__(self, code, name)
         if gurobiParams is None:
             gurobiParams = {}
-        self.model = self.createModel(gurobiVersion, **gurobiParams)
+        self.model = createModel(name, gurobiVersion, **gurobiParams)
+        self.grbParams = gurobiParams.copy()
         from gurobimh import GRB
         vt = GRB.BINARY if integer else GRB.CONTINUOUS
         self.x = OrderedDict()
@@ -31,23 +46,6 @@ class GurobiDecoder(Decoder):
                 self.x[i, k] = self.model.addVar(0, 1, vtype=vt, name='x{},{}'.format(i, k))
         self.xlist = list(self.x.values())
         self.model.update()
-
-    def createModel(self, version, **params):
-        """Create and return a gurobi Model instance with disabled debugging output. Keyword
-        args are used to set parameters.
-        """
-        from gurobimh import Model, gurobi
-        model = Model(self.name)
-        model.setParam('OutputFlag', 0)
-        if version:
-            installedVersion = '.'.join(str(v) for v in gurobi.version())
-            if version != installedVersion:
-                raise RuntimeError('Installed Gurobi version {} does not match requested {}'
-                                   .format(installedVersion, version))
-        for param, value in params.items():
-            model.setParam(param, value)
-        self.grbParams = params
-        return model
 
     def setLLRs(self, llrs, sent=None):
         from gurobimh import LinExpr

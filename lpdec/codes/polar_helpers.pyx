@@ -153,16 +153,17 @@ cdef class BMSChannel:
 
     @cython.wraparound(True)
     @staticmethod
-    def AWGNC(SNR, nu):
+    def AWGNC(SNR, nu, rate=1):
         """Computes a degraded version of the AWGN channel, discretized to :math:`2\cdot \\nu`
-        values, for given *SNR*.
+        values, for given *SNR* in dB. The SNR value is interpreted wrt. channel symbols; if you
+        want to supply SNR_b value (SNR per information bit), you.ll also have to specify *rate*.
         """
         import sympy
         from scipy.optimize import newton
         from scipy.stats import norm
         y = sympy.symbols('y')
         SNR = 10 ** (SNR / 10) # SNR is specified in dB
-        lamb = sympy.exp(4*y*SNR)  # likelihood ratio as function of y
+        lamb = sympy.exp(4*rate*y*SNR)  # likelihood ratio as function of y
         C = 1 - lamb/(1+lamb)*sympy.log(1+1/lamb, 2) - 1/(lamb+1)*sympy.log(lamb+1, 2)
         lC = sympy.lambdify(y, C, 'numpy')
         Cprime = sympy.simplify(sympy.diff(C, y))

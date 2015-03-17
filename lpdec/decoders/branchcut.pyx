@@ -165,7 +165,7 @@ cdef class BranchAndCutDecoder(Decoder):
         BranchMethod branchMethod
         public Decoder lbProvider, ubProvider
         int mixParam, maxRPCspecial, maxRPCnormal, maxRPCorig
-        double mixGap, sentObjective
+        double mixGap, sentObjective, objBufLimOrig, cutoffOrig
         int selectCnt
         Node root
 
@@ -219,6 +219,7 @@ cdef class BranchAndCutDecoder(Decoder):
             self.maxRPCnormal = int(c)
             self.mixGap = float(d)
             self.maxRPCorig = self.lbProvider.maxRPCrounds
+            self.cutoffOrig = self.lbProvider.minCutoff
         elif selectionMethod == 'bfs':
             self.selectionMethod = bfs
         elif selectionMethod == 'dfs':
@@ -227,23 +228,23 @@ cdef class BranchAndCutDecoder(Decoder):
             assert selectionMethod == "bbs", str(selectionMethod)
             self.selectionMethod = bbs
         self.timer = utils.Timer()
+        self.objBufLimOrig = self.lbProvider.objBufLim
+        print(self.objBufLimOrig)
         Decoder.__init__(self, code, name=name)
 
 
     optimizedOptions=dict(name='B&C[mixed-/30/100/5/2;llr;cut.2;M-100;iter100-o2]',
                           selectionMethod='mixed-/30/100/5/2', childOrder='llr',
                           lpParams=dict(removeInactive=100, keepCuts=True,
-                                        maxRPCrounds=100, minCutoff=.2),
+                                        maxRPCrounds=-1, minCutoff=.2),
                           iterParams=dict(iterations=100, reencodeOrder=2,
                                           reencodeIfCodeword=False))
 
     def setStats(self, stats):
         for item in 'nodes', 'prBd1', 'prBd2', 'prInf', 'prOpt', 'termEx', 'termGap', 'lpTime', \
-                    'iterTime':
+                    'iterTime', 'maxDepth':
             if item not in stats:
                 stats[item] = 0
-        if 'nodesPerDepth' not in stats:
-            stats['nodesPerDepth'] = {}
         if 'lpStats' in stats:
             self.lbProvider.setStats(stats['lpStats'])
             del stats['lpStats']
@@ -273,10 +274,9 @@ cdef class BranchAndCutDecoder(Decoder):
             double[::1] solution = self.lbProvider.solution
             double current = self.lbProvider.objectiveValue
             int currentRPC = self.lbProvider.maxRPCrounds
-            double origObjBuf = self.lbProvider.objBufLim
         if self.branchMethod == strong:
             self.lbProvider.maxRPCrounds = 10
-            self.lbProvider.objBufLim = .1
+            self.lbProvider.objBufLim = .25
             self.lbProvider.model.setParam('IterationLimit', 40)
         for i in range(self.code.blocklength):
             if fabs(solution[i] - .5) < .499:
@@ -289,7 +289,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 elif self.branchMethod == branchRandom:
                     score = np.random.random_sample()
                 else:
-                    if itersSinceBest >= 7:
+                    if itersSinceBest >= 8:
                         break
                     score = self.strongBranchScore(i, current, ub)
                 if score > maxScore:
@@ -303,7 +303,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 maxIndex = i
         if self.branchMethod == strong:
             self.lbProvider.maxRPCrounds = currentRPC
-            self.lbProvider.objBufLim = origObjBuf
+            self.lbProvider.objBufLim = self.objBufLimOrig
             self.lbProvider.model.setParam('IterationLimit', INFINITY)
         return maxIndex
 
@@ -388,11 +388,8 @@ cdef class BranchAndCutDecoder(Decoder):
 
         for i in itertools.count(start=1):
 
-            # statistic collection and debug output
-            depthStr = str(node.depth)
-            if depthStr not in self._stats['nodesPerDepth']:
-                self._stats['nodesPerDepth'][depthStr] = 0
-            self._stats['nodesPerDepth'][depthStr] += 1
+            if node.depth > self._stats['maxDepth']:
+                self._stats['maxDepth'] = node.depth
             if i % 100 == 0:
                 logger.debug('{}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(
                     self.root.lb, ub, node.depth,len(activeNodes), self.lbProvider.model.NumConstrs,
@@ -415,6 +412,11 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
             else:
                 self.lbProvider.hint = None
+            if node.depth == 0:
+                # special root node treatment
+                self.lbProvider.maxRPCrounds = -1
+                self.lbProvider.objBufLim = 0.01
+                self.lbProvider.minCutoff = 1e-4
             try:
                 self.lbProvider.solve(-INFINITY, ub)
                 if self.lbProvider.objectiveValue > node.lb:
@@ -427,7 +429,9 @@ cdef class BranchAndCutDecoder(Decoder):
                 self._stats['prInf'] += 1
             finally:
                 self._stats['lpTime'] += self.timer.stop()
-
+            self.lbProvider.objBufLim = self.objBufLimOrig
+            self.lbProvider.maxRPCrounds = self.maxRPCorig
+            self.lbProvider.minCutoff = self.cutoffOrig
             # pruning or branching
             if self.lbProvider.foundCodeword:
                 # solution is integral
@@ -512,9 +516,6 @@ cdef class BranchAndCutDecoder(Decoder):
                 logger.info('MD {}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(
                     self.root.lb,ub, node.depth,len(activeNodes), self.lbProvider.numConstrs, iteration,
                     self._stats["lpTime"], self._stats['iterTime']))
-            if depthStr not in self._stats['nodesPerDepth']:
-                self._stats['nodesPerDepth'][depthStr] = 0
-            self._stats["nodesPerDepth"][depthStr] += 1
             pruned = False # store if current node can be pruned
             if node.lb >= ub-1+delta:
                 node.lb = INFINITY
@@ -611,11 +612,13 @@ cdef class BranchAndCutDecoder(Decoder):
                     self.calcUb = True
                 return newNode
             else:
+                newNode = activeNodes.pop()
                 self.lbProvider.maxRPCrounds = self.maxRPCnormal
                 self.selectCnt += 1
                 if self.ubBB:
                     self.calcUb = False
-                return activeNodes.pop()
+
+                return newNode
         elif self.selectionMethod == dfs:
             return activeNodes.pop()
         elif self.selectionMethod == bbs:
@@ -645,10 +648,10 @@ cdef class BranchAndCutDecoder(Decoder):
         if self.childOrder != '01':
             parms['childOrder'] = self.childOrder
         if type(self.lbProvider) is not AdaptiveLPDecoder:
-            parms['lpClass'] = str(type(self.lbProvider))
+            parms['lpClass'] = type(self.lbProvider).__name__
         parms['lpParams'] = self.lbProvider.params()
         if type(self.ubProvider) is not IterativeDecoder:
-            parms['iterClass'] = str(type(self.ubProvider))
+            parms['iterClass'] = type(self.ubProvider).__name__
         parms['iterParams'] = self.ubProvider.params()
         if self.highSNR:
             parms['highSNR'] = True

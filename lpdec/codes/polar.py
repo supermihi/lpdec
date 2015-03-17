@@ -36,13 +36,15 @@ class PolarCode(BinaryLinearBlockCode):
                 mu = kwargs['mu']
                 SNR = kwargs['SNR']
                 rate = kwargs['rate']
+                SNR_is_SNRb = kwargs.get('SNR_is_SNRb', False)
             except KeyError:
                 raise ValueError('Either frozen bits or all of (SNR, mu, rate) must be specified')
             assert mu % 2 == 0
-            chan = BMSChannel.AWGNC(SNR, mu // 2)
+            chan = BMSChannel.AWGNC(SNR, mu // 2, rate=(rate if SNR_is_SNRb else 1))
             frozen = computeFrozenIndices(chan, n, mu, rate=rate)
             if name is None:
-                name = 'PolarCode(n={}, SNR={}, mu={}, rate={})'.format(n, SNR, mu, rate)
+                name = 'PolarCode(n={}, SNR{}={}, mu={}, rate={})'.format(
+                    n, 'b' if SNR_is_SNRb else '', SNR, mu, rate)
         frozen = sorted(frozen)
         if name is None:
             name = 'PolarCode(n={}, frozen={})'.format(n, repr(frozen))

@@ -26,6 +26,7 @@ from cython.operator cimport dereference
 
 from lpdec.gfqla cimport gaussianElimination
 from lpdec.decoders.base cimport Decoder
+from lpdec.decoders import gurobihelpers
 from lpdec.decoders import UpperBoundHit, ProblemInfeasible, LimitHit
 from lpdec.utils import Timer
 
@@ -69,14 +70,15 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     """
 
     cdef public bint removeAboveAverageSlack, keepCuts, allZero
-    cdef int solveCalls, objBufSize
+    cdef int objBufSize
     cdef public double maxActiveAngle, minCutoff, objBufLim
     cdef public int removeInactive, numConstrs, maxRPCrounds
     cdef np.int_t[:,::1] hmat, htilde
     cdef public g.Model model
     cdef double[::1] diffFromHalf, setV
     cdef int[::1] Nj, fixes
-    cdef public object timer, xlist
+    cdef public object xlist
+    cdef object timer, grbParams
     cdef double[:] objBuff
 
 
@@ -90,10 +92,14 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                  allZero=False,
                  objBufSize=8,
                  objBufLim=0.0,
+                 gurobiParams=None,
+                 gurobiVersion=None,
                  name=None):
         if name is None:
-            name = 'ALPDecoderGurobi'
+            name = 'ALPDecoder(Gurobi {})'.format('.'.join(str(v) for v in g.gurobi.version()))
         Decoder.__init__(self, code=code, name=name)
+        if gurobiParams is None:
+            gurobiParams = {}
         self.maxRPCrounds = maxRPCrounds
         self.minCutoff = minCutoff
         self.removeInactive = removeInactive
@@ -101,7 +107,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.keepCuts = keepCuts
         self.maxActiveAngle=maxActiveAngle
         self.allZero = allZero
-        self.model = g.Model('ALP-GUROBIMH')
+        self.model = gurobihelpers.createModel(name, gurobiVersion, **gurobiParams)
+        self.grbParams = gurobiParams.copy()
         self.model.setParam('OutputFlag', 0)
         self.xlist = []
         for i in range(self.code.blocklength):
@@ -117,6 +124,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.numConstrs = 0
         self.timer = Timer()
         self.objBuff = np.ones(objBufSize, dtype=np.double)
+        self.objBufSize = objBufSize
         self.objBufLim = objBufLim
 
     cdef int cutSearchAlgorithm(self, bint originalHmat) except -3:
@@ -174,6 +182,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 # inequality violated -> insert
                 inserted += 1
                 self.model.fastAddConstr2(setV[:Njsize], Nj[:Njsize], g.GRB_LESS_EQUAL, setVsize - 1)
+            elif vSum < 1 - 1e-5:
+                self._stats['minCutoffFailed'] += 1
         if inserted > 0:
             self._stats['cuts'] += inserted
             self.model.update()
@@ -181,7 +191,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
 
     def setStats(self, object stats):
         statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime', 'simplexIters',
-                     'objBufHit']
+                     'objBufHit', 'infeasible', 'iterLimitHit', 'minCutoffFailed']
         for item in statNames:
             if item not in stats:
                 stats[item] = 0
@@ -249,6 +259,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             if self.model.Status ==  g.GRB_INFEASIBLE:
                 self.objectiveValue = INFINITY
                 self.foundCodeword = self.mlCertificate = False
+                self._stats['infeasible'] += 1
                 raise ProblemInfeasible()
             elif self.model.Status == g.GRB_INTERRUPTED and ub < INFINITY:
                 # interrupted by callback
@@ -259,6 +270,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             elif self.model.Status == g.GRB_ITERATION_LIMIT:
                 self.objectiveValue = np.dot(self.llrs, self.solution)
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)
+                self._stats['iterLimitHit'] += 1
                 raise LimitHit()
             elif self.model.Status != g.GRB_OPTIMAL:
                 raise RuntimeError("Unknown Gurobi status {}".format(self.model.Status))
@@ -270,12 +282,13 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 self._stats["ubReached"] += 1
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)
                 raise UpperBoundHit()
-            self.objBuff = np.roll(self.objBuff, 1)
-            self.objBuff[0] = self.objectiveValue
-            if self.objectiveValue - self.objBuff[self.objBuff.size - 1] < self.objBufLim:
-                self.mlCertificate = self.foundCodeword = (self.solution in self.code)
-                self._stats['objBufHit'] += 1
-                return
+            if self.objBufSize > 1:
+                self.objBuff = np.roll(self.objBuff, 1)
+                self.objBuff[0] = self.objectiveValue
+                if self.objectiveValue - self.objBuff[self.objBuff.size - 1] < self.objBufLim:
+                    self.mlCertificate = self.foundCodeword = (self.solution in self.code)
+                    self._stats['objBufHit'] += 1
+                    return
             integral = True
             for i in range(self.solution.size):
                 if solution[i] < 1e-6:
@@ -365,5 +378,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             if self.objBufSize != 8:
                 params['objBufSize'] = self.objBufSize
             params['objBufLim'] = self.objBufLim
+        if len(self.grbParams):
+            params['gurobiParams'] = self.grbParams
+        params['gurobiVersion'] = '.'.join(str(v) for v in g.gurobi.version())
         params['name'] = self.name
         return params

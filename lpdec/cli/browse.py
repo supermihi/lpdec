@@ -44,6 +44,8 @@ def formatStats(point):
                 stats["{}.{}".format(key, kkey)] = vval
         else:
             stats[key] = val
+    if len(stats) == 0:
+        return ''
     maxLen = max(len(s) for s in stats)
     for stat, val in stats.items():
         import numbers

@@ -64,14 +64,18 @@ cpdef gaussianElimination(np.int_t[:,:] matrix, Py_ssize_t[:] columns=None, bint
             # do the actual pivoting
             if matrix[curRow, curCol] > 1:
                 # "divide" by pivot element to set it to 1
-                factor = cachedInvs[q, matrix[curRow, curCol]]
-                for i in range(ncols):
-                    matrix[curRow, i] = (matrix[curRow, i] * factor) % q
+                if q > 2:
+                    factor = cachedInvs[q, matrix[curRow, curCol]]
+                    for i in range(ncols):
+                        matrix[curRow, i] = (matrix[curRow, i] * factor) % q
             for row in range(curRow + 1, nrows):
                 val = matrix[row, curCol]
                 if val != 0:
                     for i in range(ncols):
-                        matrix[row, i] =  (matrix[row, i] -val*matrix[curRow, i]) % q
+                        if q == 2:
+                            matrix[row, i] ^= matrix[curRow, i]
+                        else:
+                            matrix[row, i] =  (matrix[row, i] -val*matrix[curRow, i]) % q
             successfulCols[numSuccessfulCols] = curCol
             numSuccessfulCols += 1
             if numSuccessfulCols == nrows:
@@ -85,7 +89,10 @@ cpdef gaussianElimination(np.int_t[:,:] matrix, Py_ssize_t[:] columns=None, bint
                     val = matrix[row, curCol]
                     if val != 0:
                         for i in range(ncols):
-                            matrix[row, i] = (matrix[row, i] - val*matrix[colIndex, i]) % q
+                            if q == 2:
+                                matrix[row, i] ^= matrix[colIndex, i]
+                            else:
+                                matrix[row, i] = (matrix[row, i] - val*matrix[colIndex, i]) % q
         return successfulCols[:numSuccessfulCols]
 
 

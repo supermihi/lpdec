@@ -15,6 +15,11 @@ def clock():
     tmp = os.times()
     return tmp[0] + tmp[2]
 
+if sys.version_info >= (3, 3):
+    import time
+    def clock():
+        return time.clock_gettime(time.CLOCK_THREAD_CPUTIME_ID)
+
 
 class Timer(object):
     """Class for time measurement. Has the attributes :attr:`startTime`, :attr:`endTime` and
