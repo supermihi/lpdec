@@ -179,7 +179,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
 
     def setStats(self, object stats):
         statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime', 'simplexIters',
-                     'objBufHit', 'infeasible', 'iterLimitHit', 'minCutoffFailed']
+                     'objBufHit', 'infeasible', 'iterLimitHit', 'minCutoffFailed', 'rpcRounds']
         for item in statNames:
             if item not in stats:
                 stats[item] = 0
@@ -309,6 +309,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 break
             else:
                 # search for RPC cuts
+                self._stats['rpcRounds'] += 1
                 xindices = np.argsort(self.diffFromHalf)
                 gaussianElimination(self.htilde, xindices, True)
                 numCuts = self.cutSearchAlgorithm(False)

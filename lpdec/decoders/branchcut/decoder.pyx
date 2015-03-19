@@ -254,6 +254,8 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.maxRPCrounds = -1
                 self.lbProvider.objBufLim = 0.01
                 self.lbProvider.minCutoff = 1e-4
+                rounds = self.lbProvider._stats['rpcRounds']
+                iters = self.lbProvider._stats['simplexIters']
 
             self.timer.start()
             self.lbProvider.solve(-INFINITY, ub)
@@ -272,6 +274,8 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.objBufLim = self.objBufLimOrig
                 self.lbProvider.maxRPCrounds = self.maxRPCorig
                 self.lbProvider.minCutoff = self.cutoffOrig
+                print('rounds', rounds - self.lbProvider._stats['rpcRounds'])
+                print('iters', iters - self.lbProvider._stats['simplexIters'])
             # pruning or branching
             if self.lbProvider.foundCodeword:
                 # solution is integral
@@ -483,7 +487,8 @@ cdef class BranchAndCutDecoder(Decoder):
             selectionMethodNames = { dfs: "dfs", bfs: "bfs", bbs: "bbs"}
             method = selectionMethodNames[self.selectionMethod]
         parms = OrderedDict()
-        raise NotImplementedError() # branch method
+        parms['branchClass'] = type(self.branchRule).__name__
+        parms['branchParams'] = self.branchRule.params()
         parms['selectionMethod'] = method
         if self.childOrder != '01':
             parms['childOrder'] = self.childOrder

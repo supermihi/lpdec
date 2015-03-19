@@ -6,14 +6,17 @@
 # published by the Free Software Foundation
 from __future__ import division
 
+from collections import OrderedDict
 from numpy.math cimport INFINITY
 cimport numpy as np
 import numpy as np
 from libc.math cimport fabs, fmax, fmin
+from lpdec.persistence cimport JSONDecodable
 from lpdec.decoders.base cimport Decoder
 from lpdec.decoders.branchcut.node cimport Node
 
-cdef class BranchingRule:
+
+cdef class BranchingRule(JSONDecodable):
 
     def __init__(self, code, Decoder bcDecoder, lamb=None, mu=1./6):
         self.code = code
@@ -78,6 +81,11 @@ cdef class BranchingRule:
         """Subclasses can put cleanup operations after score computations in here."""
         pass
 
+    def params(self):
+        ret = OrderedDict(lamb=self.lamb)
+        ret['mu'] = self.mu
+        return ret
+
 
 cdef class MostFractional(BranchingRule):
 
@@ -113,77 +121,117 @@ cdef class FirstFractional(BranchingRule):
 cdef class ReliabilityBranching(BranchingRule):
 
     cdef int rpcRounds, etaRel
-    cdef double iterLimit, objBufLim
-    cdef double[::1] PsiMinus, PsiPlus
+    cdef double iterLimit, objBufLim, minCutoff
+    cdef double[::1] sigmaPlus, sigmaMinus, psiPlus, psiMinus
     cdef int[::1] etaPlus, etaMinus
-    cdef double[::1] scores
+    cdef bint sort
 
-    def __init__(self, code, Decoder bcDecoder, lamb=4, mu=1./6, etaRel=4, **kwargs):
+    def __init__(self, code, Decoder bcDecoder, lamb=4, mu=1./6, etaRel=4, sort=False, **kwargs):
         BranchingRule.__init__(self, code, bcDecoder, lamb, mu)
         self.rpcRounds = kwargs.get('rpcRounds', 10)
         self.objBufLim = kwargs.get('objBufLim', .3)
         self.iterLimit = kwargs.get('iterLimit', 25)
-        self.PsiMinus = 10*np.ones(code.blocklength, dtype=np.double)
-        self.PsiPlus = 10*np.ones(code.blocklength, dtype=np.double)
+        self.minCutoff = kwargs.get('minCutoff', .2)
+        self.sigmaMinus = np.empty(code.blocklength, dtype=np.double)
+        self.sigmaPlus = np.empty(code.blocklength, dtype=np.double)
+        self.psiMinus = np.empty(code.blocklength, dtype=np.double)
+        self.psiPlus = np.empty(code.blocklength, dtype=np.double)
         self.etaPlus = np.zeros(code.blocklength, dtype=np.intc)
         self.etaMinus = np.zeros(code.blocklength, dtype=np.intc)
-        self.scores = np.zeros(code.blocklength, dtype=np.double)
         self.etaRel = etaRel
+        self.sort = sort
 
-    def reset(self):
+    cdef int reset(self) except -1:
         self.etaPlus[:] = 0
         self.etaMinus[:] = 0
-        self.PsiMinus[:] = 10
-        self.PsiPlus[:] = 10
+        self.psiPlus[:] = 1
+        self.psiMinus[:] = 1
+        self.sigmaMinus[:] = 0
+        self.sigmaPlus[:] = 0
+        for stat in 'deltaNeg', 'deltaPos', 'strongCount':
+            if stat not in self.bcDecoder._stats:
+                self.bcDecoder._stats[stat] = 0
 
-
-    cdef void updatePsi(self, int i, bint branch, double value):
-        if branch:
-            self.PsiPlus[i] = (self.PsiPlus[i]*self.etaPlus[i] + value) / (self.etaPlus[i] + 1)
-            self.etaPlus[i] += 1
-        else:
-            self.PsiMinus[i] = (self.PsiMinus[i]*self.etaMinus[i] + value) / (self.etaMinus[i] + 1)
-            self.etaMinus[i] += 1
+    cdef void updatePsiPlus(self, int index, double sigmaLast):
+        cdef int i, num = 0
+        cdef double avg = 0
+        self.sigmaPlus[index] += sigmaLast
+        self.etaPlus[index] += 1
+        self.psiPlus[index] = self.sigmaPlus[index] / self.etaPlus[index]
+        for i in range(self.sigmaPlus.size):
+            if self.etaPlus[i] != 0:
+                num += 1
+                avg += self.psiPlus[i]
+        if num < self.sigmaPlus.size:
+            avg /= num
+            # there are uninitialized pseudocosts -> set them to average psi plus
+            for i in range(self.sigmaPlus.size):
+                if self.etaPlus[i] == 0:
+                    self.psiPlus[i] = avg
+                    
+    cdef void updatePsiMinus(self, int index, double sigmaLast):
+        cdef int i, num = 0
+        cdef double avg = 0
+        self.sigmaMinus[index] += sigmaLast
+        self.etaMinus[index] += 1
+        self.psiMinus[index] = self.sigmaMinus[index] / self.etaMinus[index]
+        for i in range(self.sigmaMinus.size):
+            if self.etaMinus[i] != 0:
+                num += 1
+                avg += self.psiMinus[i]
+        if num < self.sigmaMinus.size:
+            avg /= num
+            # there are uninitialized pseudocosts -> set them to average psi plus
+            for i in range(self.sigmaMinus.size):
+                if self.etaMinus[i] == 0:
+                    self.psiMinus[i] = avg
 
     cdef int branchIndex(self, Node node, double ub, double[::1] solution) except -1:
         self.ub = ub
         self.node = node
         origLim = self.bcDecoder.lbProvider.objBufLim
         origRPC = self.bcDecoder.lbProvider.maxRPCrounds
+        origCut = self.bcDecoder.lbProvider.minCutoff
         self.bcDecoder.lbProvider.objBufLim = self.objBufLim
         self.bcDecoder.lbProvider.maxRPCrounds = self.rpcRounds
         self.bcDecoder.lbProvider.model.setParam('IterationLimit', self.iterLimit)
+        self.bcDecoder.lbProvider.minCutoff = self.minCutoff
         candidates = np.array([i for i in range(solution.size) if solution[i] > 1e-6 and solution[i] < 1-1e-6])
-        for i in range(candidates.size):
-            index = candidates[i]
-            xi = solution[index]
-            self.scores[i] = self.score(xi*self.PsiMinus[index], (1-xi)*self.PsiPlus[index])
-        sortedByScore = np.argsort(self.scores[:candidates.size])[::-1]
-        maxScore = -INFINITY # self.scores[sortedByScore[0]]
-        maxIndex = -1 #candidates[sortedByScore[0]]
+        scores = np.array([self.score(solution[i]*self.psiMinus[i], (1-solution[i])*self.psiPlus[i])
+                          for i in candidates])
+        if self.sort:
+            sortedByScore = np.argsort(scores)[::-1]
+            candidates = candidates[sortedByScore]
+            scores = scores[sortedByScore]
+        maxIndex = candidates[0]
+        maxScore = scores[0]
         itersSinceChange = 0
-        for index in candidates:
-            #xi = solution[index]
-            #if min(self.etaPlus[index], self.etaMinus[index]) < self.etaRel:
+        for i in range(len(candidates)):
+            index = candidates[i]
+            if min(self.etaPlus[index], self.etaMinus[index]) < self.etaRel:
                 # unreliable score -> strong branch!
-            deltaMinus, deltaPlus = self.strongBranchScore(index)
-            # self.scores[i] = self.score(deltaMinus, deltaPlus)
-            # self.updatePsi(index, 1, deltaPlus/(1-xi) if xi < .9999 else 0)  #TODO: perhaps don't update eta?
-            # self.updatePsi(index, 0, deltaMinus/xi if xi > .0001 else 0)
-            score = self.score(deltaMinus, deltaPlus)
-            if score > maxScore:
+                deltaMinus, deltaPlus = self.strongBranchScore(index)
+                # self.updatePsiPlus(index, deltaPlus / (1 - solution[index]))
+                # self.updatePsiMinus(index, deltaMinus/solution[index])
+                # self.sigmaPlus[index] += deltaPlus/(1-xi)
+                # self.etaPlus[index] += 1
+                # self.sigmaMinus[index] += deltaMinus/xi
+                # self.etaMinus[index] += 1
+                score = self.score(deltaMinus, deltaPlus)
+                scores[i] = score
+            if scores[i] > maxScore:
                 maxIndex = index
-                maxScore = score
+                maxScore = scores[i]
                 itersSinceChange = 0
             else:
                 itersSinceChange += 1
-                if itersSinceChange >= self.lamb:
-                    break
-
+            if itersSinceChange >= self.lamb:
+                break
         self.bcDecoder.lbProvider.objBufLim = origLim
         self.bcDecoder.lbProvider.maxRPCrounds = origRPC
         self.bcDecoder.lbProvider.model.setParam('IterationLimit', INFINITY)
-        node.fractionalPart = solution[maxIndex]
+        self.bcDecoder.lbProvider.minCutoff = origCut
+        node.fractionalPart = solution[maxIndex]  # record f_i^+
         if maxIndex == -1:
             raise ValueError()
         return maxIndex
@@ -211,17 +259,29 @@ cdef class ReliabilityBranching(BranchingRule):
             self.node.lb = fmin(objMinus, objPlus)
             if self.node.parent is not None:
                 self.node.parent.updateBound(self.node.lb, self.node.branchValue)
+        self.bcDecoder._stats['strongCount'] += 1
         return deltaMinus, deltaPlus
 
     cdef int callback(self, Node node) except -1:
+        cdef double Delta
         if node.parent is not None:
-            if self.bcDecoder.lbProvider.objectiveValue < node.parent.lpObj:
-                return 0
-            f = node.parent.fractionalPart
-            if node.branchValue:
-                f = 1 - f
-            if f == 0:
-                self.updatePsi(node.branchIndex, node.branchValue, 0)
+            Delta = self.bcDecoder.lbProvider.objectiveValue - node.parent.lpObj
+            if Delta < 0:
+                self.bcDecoder._stats['deltaNeg'] += 1
             else:
-                self.updatePsi(node.branchIndex, node.branchValue,
-                               (self.bcDecoder.lbProvider.objectiveValue - node.parent.lpObj) / f)
+                self.bcDecoder._stats['deltaPos'] += 1
+            #     print('omg', Delta)
+            #     return 0
+            if node.branchValue:
+                self.updatePsiPlus(node.branchIndex, Delta / (1 - node.parent.fractionalPart))
+            else:
+                self.updatePsiMinus(node.branchIndex, Delta / node.parent.fractionalPart)
+
+    cpdef params(self):
+        ret = BranchingRule.params(self)
+        ret['etaRel'] = self.etaRel
+        ret['sort'] = self.sort
+        ret['rpcRounds'] = self.rpcRounds
+        ret['objBufLim'] = self.objBufLim
+        ret['iterLimit'] = self.iterLimit
+        ret['minCutoff'] = self.minCutoff

@@ -1,8 +1,8 @@
 from lpdec.decoders.base cimport Decoder
 from lpdec.decoders.branchcut.node cimport Node
+from lpdec.persistence cimport JSONDecodable
 
-
-cdef class BranchingRule:
+cdef class BranchingRule(JSONDecodable):
 
     cdef:
         object code

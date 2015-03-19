@@ -288,7 +288,14 @@ cdef class PolarSCListDecoder(Decoder):
             if pp < P[self.m, point, 0, C[self.m, point, 0, 1]]:
                 lp = l
                 pp = P[self.m, point, 0, C[self.m, point, 0, 1]]
-        assert lp != -1
+        if lp == -1:
+            assert not all([self.fixes[i] == -1 for i in range(self.code.blocklength)])
+            self.objectiveValue = INFINITY
+            self.status = Decoder.INFEASIBLE
+            self.foundCodeword = False
+            self.solution[:] = .5
+            return
+        self.status = Decoder.OPTIMAL
         C0 = self.getArrayPointer(0, lp)
         for beta in range(n):
             self.solution[beta] = C[0, C0, beta, 0]
@@ -302,4 +309,4 @@ cdef class PolarSCListDecoder(Decoder):
         self.fixes[index] = val
 
     def params(self):
-        return OrderedDict(L=self.L, name=self.name)
+        return OrderedDict([('L', self.L), ('name', self.name)])
