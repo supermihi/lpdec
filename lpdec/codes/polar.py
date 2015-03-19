@@ -40,7 +40,7 @@ class PolarCode(BinaryLinearBlockCode):
             except KeyError:
                 raise ValueError('Either frozen bits or all of (SNR, mu, rate) must be specified')
             assert mu % 2 == 0
-            chan = BMSChannel.AWGNC(SNR, mu // 2, rate=(rate if SNR_is_SNRb else 1))
+            chan = BMSChannel.AWGNC(SNR, 1000, rate=(rate if SNR_is_SNRb else 1))
             frozen = computeFrozenIndices(chan, n, mu, rate=rate)
             if name is None:
                 name = 'PolarCode(n={}, SNR{}={}, mu={}, rate={})'.format(
@@ -99,30 +99,39 @@ def computeFrozenIndices(BMSC, n, mu, threshold=None, rate=None):
         the target rate is achieved.
     """
     def bitChannelDegrading(i):
-        """Bit-Channel degrading function to compute degraded version of *i*-th bit channel."""
+        """Bit-Channel degrading function to compute degraded version of *i*-th bit channel.
+        Note that this is actually Algorithm D of the paper which additionally employs the
+        Bhattacharyya parameter for improved approximation.
+        """
         assert mu % 2 == 0
+        Z = BMSC.bhattacharyya()
         Q = BMSC.degradingMerge(mu)
         i_binary = np.binary_repr(i, n)
         for j in range(n):
             if i_binary[j] == '0':
-                W = Q.arikanTransform1()
+                Q = Q.arikanTransform1(mu)
+                Z = min(Q.bhattacharyya(), 2*Z-Z*Z)
             else:
                 assert i_binary[j] == '1'
-                W = Q.arikanTransform2()
-            Q = W.degradingMerge(mu)
-        return Q
+                Q = Q.arikanTransform2(mu)
+                Z = Z*Z
+        PeQ = Q.errorProbability()
+        if Z < PeQ:
+            return Z
+        return PeQ
     N = 2**n
     P = np.zeros(N)
     for i in range(N):
         print('computing channel {} of {}'.format(i, N))
-        channel = bitChannelDegrading(i)
-        P[i] = channel.errorProbability()
+        P[i] = bitChannelDegrading(i)
+        #P[i] = channel.errorProbability()
     if threshold:
         ind = [i for i in range(N) if P[i] > threshold]
     else:
         sortedP = np.argsort(P)
         targetLength = (1-rate)*N
         ind = sortedP[-targetLength:].tolist()
+        print(sum(P[sortedP[:-targetLength]]))
     return ind
 
 

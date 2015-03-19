@@ -13,21 +13,6 @@ from lpdec.persistence cimport JSONDecodable
 from lpdec import utils
 
 
-class ProblemInfeasible(Exception):
-    """Exception that should be raised by the solve() implementation of Decoders when the problem
-    is detected to be infeasible."""
-
-
-class UpperBoundHit(Exception):
-    """Exception that should be raised by Decoder.solve() (or subclass implementations) when the
-    upper bound was hit during optimization. In that event, Decoder.objectiveValue should reflect
-    the observed guaranteed objective value above the upper bound.
-    """
-
-class LimitHit(Exception):
-    """Exception raised when solve() hits a limit (e.g. time limit, iteration limit).
-    """
-
 cdef class Decoder(JSONDecodable):
     """
     The base class for all decoders, defining a minimal set of methods.
@@ -56,6 +41,11 @@ cdef class Decoder(JSONDecodable):
         Name of the code. If used in a database, the name must uniquely map to this code.
     """
 
+    OPTIMAL = 0
+    INFEASIBLE = 1
+    UPPER_BOUND_HIT = 2
+    LIMIT_HIT = 3
+
     def __init__(self, code, name):
         self.code = code
         if name is None:
@@ -65,6 +55,7 @@ cdef class Decoder(JSONDecodable):
         self.name = name
         self.hint = None
         self.mlCertificate = self.foundCodeword = False
+        self.status = 0
         self.setStats(OrderedDict())
 
 

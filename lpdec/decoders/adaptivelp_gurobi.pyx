@@ -27,7 +27,6 @@ from cython.operator cimport dereference
 from lpdec.gfqla cimport gaussianElimination
 from lpdec.decoders.base cimport Decoder
 from lpdec.decoders import gurobihelpers
-from lpdec.decoders import UpperBoundHit, ProblemInfeasible, LimitHit
 from lpdec.utils import Timer
 
 logger = logging.getLogger('alp_gurobi')
@@ -57,22 +56,14 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
       constraints are indeed removed.
     :param bool keepCuts: If set to ``True``, inserted cuts are not remove after decoding one
       frame.
-    :param double maxActiveAngle: Maximum angle between LLR vector and an active inequality for
-      it to be inserted during the "insert active" step.
     :param bool allZero: If set to ``True``, constraints that are active at the all-zero codeword
       are inserted into the model prior to any decoding and stay there all the time.
-
-    .. attribute:: hint
-
-        An optional "hint" codeword that is somehow believed to be near-optimal. For example,
-        this might be the output of an iterative decoder. The adaptive LP decoder can use that
-        hint to insert active constraints.
     """
 
     cdef public bint removeAboveAverageSlack, keepCuts, allZero
     cdef int objBufSize
-    cdef public double maxActiveAngle, minCutoff, objBufLim
-    cdef public int removeInactive, numConstrs, maxRPCrounds
+    cdef public double minCutoff, objBufLim
+    cdef public int removeInactive, maxRPCrounds
     cdef np.int_t[:,::1] hmat, htilde
     cdef public g.Model model
     cdef double[::1] diffFromHalf, setV
@@ -88,7 +79,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                  removeInactive=0,
                  removeAboveAverageSlack=False,
                  keepCuts=False,
-                 maxActiveAngle=1,
                  allZero=False,
                  objBufSize=8,
                  objBufLim=0.0,
@@ -105,7 +95,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.removeInactive = removeInactive
         self.removeAboveAverageSlack = removeAboveAverageSlack
         self.keepCuts = keepCuts
-        self.maxActiveAngle=maxActiveAngle
         self.allZero = allZero
         self.model = gurobihelpers.createModel(name, gurobiVersion, **gurobiParams)
         self.grbParams = gurobiParams.copy()
@@ -121,7 +110,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.setV = np.empty(code.blocklength, dtype=np.double)
         self.Nj = np.empty(code.blocklength, dtype=np.intc)
         self.fixes = -np.ones(code.blocklength, dtype=np.intc)
-        self.numConstrs = 0
         self.timer = Timer()
         self.objBuff = np.ones(objBufSize, dtype=np.double)
         self.objBufSize = objBufSize
@@ -207,6 +195,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.fixes[i] = val
 
     cpdef release(self, int i):
+        if self.fixes[i] == -1:
+            return
         self.model.setElementDblAttr(b'LB', i, 0)
         self.model.setElementDblAttr(b'UB', i, 1)
         self.fixes[i] = -1
@@ -219,6 +209,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.model.fastSetObjective(0, llrs.size, llrs)
         Decoder.setLLRs(self, llrs, sent)
         self.removeNonfixedConstraints()
+        #self.htilde[:, :] = self.hmat[:, :]
         self.model.update()
 
     @staticmethod
@@ -228,7 +219,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         cdef double value
         if where == g.GRB_CB_SIMPLEX:
             g.GRBcbget(cbdata, where, g.GRB_CB_SPX_OBJVAL, <void*> &value)
-            if value > ub + 1e-6:
+            if value > ub - 1e-6:
                 g.GRBterminate(model)
 
     cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
@@ -239,6 +230,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.foundCodeword = self.mlCertificate = False
         self.objectiveValue = -INFINITY
         self.objBuff[:] = -INFINITY
+        self.status = Decoder.OPTIMAL
         if self.sent is not None and ub == INFINITY:
             # calculate known upper bound on the objective from sent codeword
             ub = np.dot(self.sent, self.llrs) + 2e-6
@@ -253,35 +245,38 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             self._stats['lpTime'] += self.timer.duration
             self._stats["totalLPs"] += 1
             self._stats['simplexIters'] += self.model.IterCount
-            self.numConstrs = self.model.NumConstrs
-            self._stats['totalConstraints'] += self.numConstrs
+            self._stats['totalConstraints'] += self.model.NumConstrs
             self.model.fastGetX(0, self.solution.size, self.solution)
             if self.model.Status ==  g.GRB_INFEASIBLE:
                 self.objectiveValue = INFINITY
                 self.foundCodeword = self.mlCertificate = False
                 self._stats['infeasible'] += 1
-                raise ProblemInfeasible()
+                self.status = Decoder.INFEASIBLE
+                return
             elif self.model.Status == g.GRB_INTERRUPTED and ub < INFINITY:
                 # interrupted by callback
                 self.objectiveValue = ub
                 self._stats['ubReached'] += 1
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)
-                raise UpperBoundHit()
+                self.status = Decoder.UPPER_BOUND_HIT
+                return
             elif self.model.Status == g.GRB_ITERATION_LIMIT:
                 self.objectiveValue = np.dot(self.llrs, self.solution)
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)
                 self._stats['iterLimitHit'] += 1
-                raise LimitHit()
+                self.status = Decoder.LIMIT_HIT
+                return
             elif self.model.Status != g.GRB_OPTIMAL:
                 raise RuntimeError("Unknown Gurobi status {}".format(self.model.Status))
             self.objectiveValue = self.model.ObjVal
 
-            if self.objectiveValue >= ub - 1e-6:
+            if self.objectiveValue > ub - 1e-6:
                 # lower bound from the LP is above known upper bound -> no need to proceed
-                self.objectiveValue = INFINITY
+                self.objectiveValue = ub
                 self._stats["ubReached"] += 1
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)
-                raise UpperBoundHit()
+                self.status = Decoder.UPPER_BOUND_HIT
+                return
             if self.objBufSize > 1:
                 self.objBuff = np.roll(self.objBuff, 1)
                 self.objBuff[0] = self.objectiveValue
@@ -299,7 +294,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     integral = False
                 self.diffFromHalf[i] = fabs(solution[i]-.499999)
             if self.removeInactive != 0 \
-                    and self.numConstrs >= self.removeInactive:
+                    and self.model.NumConstrs >= self.removeInactive:
                 self.removeInactiveConstraints()
             self.foundCodeword = self.mlCertificate = True
             numCuts = self.cutSearchAlgorithm(True)
@@ -330,7 +325,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         # slack should be removed
         if self.removeAboveAverageSlack:
             slacks = self.model.get('Slack', self.model.getConstrs())
-            if self.numConstrs == 0:
+            if self.model.NumConstrs == 0:
                 avgSlack = 1e-5
             else:
                 avgSlack = np.mean(slacks)
@@ -340,10 +335,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             if constr.Slack > avgSlack:
                 removed += 1
                 self.model.remove(constr)
-                self.numConstrs -= 1
         if removed:
             self.model.update()
-        assert self.numConstrs == self.model.numConstrs
 
 
     cdef void removeNonfixedConstraints(self):
@@ -356,7 +349,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         for constr in self.model.getConstrs():
             self.model.remove(constr)
         self.model.update()
-        self.numConstrs = 0
+        assert self.model.NumConstrs == 0
                    
     def params(self):
         params = OrderedDict(name=self.name)
@@ -370,8 +363,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             params['removeAboveAverageSlack'] = True
         if self.keepCuts:
             params['keepCuts'] = True
-        if self.maxActiveAngle != 1:
-            params['maxActiveAngle'] = self.maxActiveAngle
         if self.allZero:
             params['allZero'] = True
         if self.objBufLim != 0.0:

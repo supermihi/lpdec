@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright 2015 Michael Helmling
-# cython: boundscheck=False, nonecheck=False, initializedcheck=False, wraparound=False
+# cython: boundscheck=False, nonecheck=False, initializedcheck=False, wraparound=False, cdivision=True
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
@@ -14,8 +14,6 @@ from numpy.math cimport INFINITY
 from lpdec.decoders.base cimport Decoder
 from lpdec.decoders.base import Decoder
 from lpdec.codes.polar import PolarCode
-from lpdec.codes import BinaryLinearBlockCode
-from lpdec import utils
 
 
 class PolarSCDecoder(Decoder):
@@ -101,15 +99,15 @@ cdef class PolarSCListDecoder(Decoder):
         assert isinstance(code, PolarCode)
         self.m = m = code.n # ok this isn't great, but it's called m in the decoding paper ...
         self.L = L
-        self.activePath = np.zeros(L, dtype=np.intc)
-        self.P = np.empty((m+1, L, 2**m, 2), dtype=np.double)
-        self.C = np.empty((m+1, L, 2**m, 2), dtype=np.intc)
-        self.pathIndexToArrayIndex = np.empty((m+1, L), dtype=np.intp)
-        self.arrayReferenceCount = np.empty((m+1, L), dtype=np.intc)
-        self.solution = np.empty(code.blocklength)
-        self.probForks = np.empty((L, 2), np.double)
-        self.contForks = np.empty((L, 2), np.intc)
+        self.activePath = -100*np.ones(L, dtype=np.intc)
+        self.P = -100*np.ones((m+1, L, 2**m, 2), dtype=np.double)
+        self.C = -100*np.ones((m+1, L, 2**m, 2), dtype=np.intc)
+        self.pathIndexToArrayIndex = -100*np.ones((m+1, L), dtype=np.intp)
+        self.arrayReferenceCount = np.zeros((m+1, L), dtype=np.intc)
+        self.probForks = -100*np.ones((L, 2), np.double)
+        self.contForks = -100*np.ones((L, 2), np.intc)
         self.fixes = -np.ones(code.blocklength, dtype=np.intc)
+        self.inactivePathIndices = self.inactiveArrayIndices = None
 
 
     cdef int clonePath(self, int l):
@@ -194,7 +192,7 @@ cdef class PolarSCListDecoder(Decoder):
         if psi % 2 == 1:
             self.recursivelyUpdateC(lam-1, psi)
 
-    cdef void continuePaths(self, int phi):
+    cdef int continuePaths(self, int phi) except -1:
         """Implementation of continuePaths_UnfrozenBit (Algorithm 18)"""
         cdef int l, lp, Pm, Cm, rho, i = 0
         cdef np.ndarray[ndim=2, dtype=double] probForks = self.probForks
@@ -238,29 +236,26 @@ cdef class PolarSCListDecoder(Decoder):
     cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef:
             int n = self.code.blocklength
-            int m = self.code.n
-            int L = self.L
             int phi, lp, l, lam, s
             double pp
             double[:,:,:,::1] P = self.P
             int[:,:,:,::1] C = self.C
             np.intp_t[:, ::1] pathIndexToArrayIndex = self.pathIndexToArrayIndex
-            int[:, ::1] arrayReferenceCount = self.arrayReferenceCount
-            list inactivePathIndices = list(range(L))
-            list inactiveArrayIndices = [list(range(L)) for _ in range(m+1)]
             int[::1] activePath = self.activePath
-        self.inactivePathIndices = inactivePathIndices
-        self.inactiveArrayIndices = inactiveArrayIndices
 
-        activePath[:] = 0
+        # initialize data structures
+        self.arrayReferenceCount[:, :] = 0
+        self.activePath[:] = 0
+        self.inactivePathIndices = list(range(self.L))
+        self.inactiveArrayIndices = [list(range(self.L)) for _ in range(self.m+1)]
 
         # assign initial path
         l = self.inactivePathIndices.pop()
         self.activePath[l] = True
-        for lam in range(m + 1):
+        for lam in range(self.m + 1):
             s = self.inactiveArrayIndices[lam].pop()
             pathIndexToArrayIndex[lam, l] = s
-            arrayReferenceCount[lam, s] = 1
+            self.arrayReferenceCount[lam, s] = 1
 
         p0 = self.getArrayPointer(0, l)
         for beta in range(n):
@@ -270,30 +265,31 @@ cdef class PolarSCListDecoder(Decoder):
             else:
                 P[0, p0, beta, 0] = 1 - self.fixes[beta]
                 P[0, p0, beta, 1] = self.fixes[beta]
-
+        # main loop
         for phi in range(n):
-            self.recursivelyCalcP(m, phi)
+            self.recursivelyCalcP(self.m, phi)
             if phi in self.code.frozen:
-                for l in range(L):
+                # continuePaths_FrozenBit (inlined)
+                for l in range(self.L):
                     if self.activePath[l]:
-                        Cm = self.getArrayPointer(m, l)
-                        C[m, Cm, 0, phi % 2] = 0
+                        Cm = self.getArrayPointer(self.m, l)
+                        C[self.m, Cm, 0, phi % 2] = 0
             else:
                 self.continuePaths(phi)
             if phi % 2 == 1:
-                self.recursivelyUpdateC(m, phi)
+                self.recursivelyUpdateC(self.m, phi)
         # find most probable path
         lp = -1
         pp = 0
         for l in range(self.L):
             if not self.activePath[l]:
                 continue
-            point = self.getArrayPointer(m, l)
-            if pp < P[m, point, 0, C[m, point, 0, 1]]:
+            point = self.getArrayPointer(self.m, l)
+            if pp < P[self.m, point, 0, C[self.m, point, 0, 1]]:
                 lp = l
-                pp = P[m, point, 0, C[m, point, 0, 1]]
-        l = lp
-        C0 = self.getArrayPointer(0, l)
+                pp = P[self.m, point, 0, C[self.m, point, 0, 1]]
+        assert lp != -1
+        C0 = self.getArrayPointer(0, lp)
         for beta in range(n):
             self.solution[beta] = C[0, C0, beta, 0]
         self.objectiveValue = np.dot(self.solution, self.llrs)
@@ -306,4 +302,4 @@ cdef class PolarSCListDecoder(Decoder):
         self.fixes[index] = val
 
     def params(self):
-        return OrderedDict(name=self.name)
+        return OrderedDict(L=self.L, name=self.name)

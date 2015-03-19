@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 # Copyright 2014-2015 Michael Helmling
-# cython: boundscheck=False
-# cython: nonecheck=False
-# cython: cdivision=True
-# cython: wraparound=False
+# cython: boundscheck=True
+# cython: nonecheck=True
+# cython: cdivision=False
+# cython: wraparound=True
+# cython: initializedcheck=True
+# cython: language_level=3
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
-
-from __future__ import division, print_function, unicode_literals
 
 import logging
 import itertools
@@ -22,104 +22,18 @@ cimport numpy as np
 from numpy.math cimport INFINITY
 
 from lpdec.decoders.base cimport Decoder
-from lpdec.decoders import ProblemInfeasible, UpperBoundHit, LimitHit
 from lpdec.decoders.adaptivelp_glpk import AdaptiveLPDecoder
 from lpdec.decoders.iterative import IterativeDecoder
+from lpdec.decoders.branchcut.node cimport Node, move
+from lpdec.decoders.branchcut.branching cimport BranchingRule
+from lpdec.decoders.branchcut.branching import MostFractional, FirstFractional, LeastReliable, ReliabilityBranching
 from lpdec import gfqla, utils, persistence
 
-logger = logging.getLogger(name='branchcut')
-
-cdef enum BranchMethod:
-    mostFractional, leastReliable, firstFractional, strong, branchRandom
+logger = logging.getLogger(name='branchcut-decoder')
 
 
 cdef enum SelectionMethod:
     mixed, dfs, bbs, bfs
-
-
-cdef int move(Decoder lbProv, Decoder ubProv, Node node, Node newNode) except -1:
-    """Moves from one brach-and-bound node to another, updating variable fixes in the upper and
-    lower bound providers on the fly.
-    """
-    cdef list fix = []
-    while node.depth > newNode.depth:
-        lbProv.release(node.branchIndex)
-        ubProv.release(node.branchIndex)
-        node = node.parent
-
-    while newNode.depth > node.depth:
-        fix.append( (newNode.branchIndex, newNode.branchValue) )
-        newNode = newNode.parent
-    while node is not newNode:
-        lbProv.release(node.branchIndex)
-        ubProv.release(node.branchIndex)
-        fix.append( (newNode.branchIndex, newNode.branchValue) )
-        node = node.parent
-        newNode = newNode.parent
-    for var, value in fix:
-        lbProv.fix(var, value)
-        ubProv.fix(var, value)
-
-
-cdef class Node:
-    """
-    A node in the branch-and-bound tree.
-
-    .. attribute:: parent
-
-      pointer to the parent node
-
-    .. attribute:: branchIndex
-
-      index of the variable on which is branched
-
-    .. attribute:: branchValue
-
-      value of the branched variable (0 or 1)
-
-    .. attribute:: depth
-
-      depth in the tree (root has depth=0)
-
-    .. attribute:: lb
-
-      current local lower bound of the tree below this node
-
-    .. attribute:: lbChild0, lbChild1
-
-      lower bounds from left and right child, respectively. Used for bound updates.
-    """
-    def __init__(self, **kwargs):
-        self.parent = kwargs.get("parent", None)
-        self.branchIndex = kwargs.get("branchIndex", -1)
-        self.branchValue = kwargs.get("branchValue", -1)
-        if self.parent is not None:
-            self.depth = self.parent.depth + 1
-            self.lb = self.parent.lb
-        else:
-            self.depth = 0
-            self.lb = -INFINITY
-        self.lbChild0 = self.lbChild1 = -INFINITY
-
-    cpdef updateBound(self, double lbChild, int childValue):
-        cdef double newLb, oldChild = self.lbChild0 if childValue == 0 else self.lbChild1
-        if lbChild > oldChild:
-            if childValue == 0:
-                self.lbChild0 = lbChild
-            else:
-                self.lbChild1 = lbChild
-        newLb = fmin(self.lbChild0, self.lbChild1)
-        if newLb > self.lb:
-            self.lb = newLb
-            if self.parent is not None:
-                self.parent.updateBound(newLb, self.branchValue)
-
-    def printFixes(self):
-        cdef Node node = self
-        while node is not None:
-            print('x{}={}, '.format(node.branchIndex, node.branchValue), end='')
-            node = node.parent
-        print()
 
 
 cdef class BranchAndCutDecoder(Decoder):
@@ -162,7 +76,7 @@ cdef class BranchAndCutDecoder(Decoder):
         object childOrder
         object timer
         SelectionMethod selectionMethod
-        BranchMethod branchMethod
+        BranchingRule branchRule
         public Decoder lbProvider, ubProvider
         int mixParam, maxRPCspecial, maxRPCnormal, maxRPCorig
         double mixGap, sentObjective, objBufLimOrig, cutoffOrig
@@ -170,7 +84,8 @@ cdef class BranchAndCutDecoder(Decoder):
         Node root
 
     def __init__(self, code,
-                 branchMethod='mostFractional',
+                 branchClass=MostFractional,
+                 branchParams=None,
                  selectionMethod='dfs',
                  childOrder='01',
                  highSNR=False,
@@ -191,20 +106,12 @@ cdef class BranchAndCutDecoder(Decoder):
             iterClass = persistence.classByName(iterClass)
         self.ubProvider = iterClass(code, **iterParams)
         self.highSNR = highSNR
-        if branchMethod == 'mostFractional':
-            self.branchMethod = mostFractional
-        elif branchMethod == 'leastReliable':
-            self.branchMethod = leastReliable
-        elif branchMethod == 'firstFractional':
-            self.branchMethod = firstFractional
-        elif branchMethod == 'strong':
-            self.branchMethod = strong
-        elif branchMethod == 'random':
-            self.branchMethod = branchRandom
-        else:
-            raise ValueError('unknown branch method {}'.format(branchMethod))
+        if branchParams is None:
+            branchParams = {}
+        if isinstance(branchClass, basestring):
+            branchClass = eval(branchClass)
+        self.branchRule = branchClass(code, self, **branchParams)
         self.childOrder = childOrder
-        self.calcUb = True
         if selectionMethod.startswith('mixed'):
             self.selectionMethod = mixed
             if selectionMethod[5] == '-':
@@ -229,7 +136,6 @@ cdef class BranchAndCutDecoder(Decoder):
             self.selectionMethod = bbs
         self.timer = utils.Timer()
         self.objBufLimOrig = self.lbProvider.objBufLim
-        print(self.objBufLimOrig)
         Decoder.__init__(self, code, name=name)
 
 
@@ -245,6 +151,8 @@ cdef class BranchAndCutDecoder(Decoder):
                     'iterTime', 'maxDepth':
             if item not in stats:
                 stats[item] = 0
+        if 'branchCounts' not in stats:
+            stats['branchCounts'] = {}
         if 'lpStats' in stats:
             self.lbProvider.setStats(stats['lpStats'])
             del stats['lpStats']
@@ -264,74 +172,6 @@ cdef class BranchAndCutDecoder(Decoder):
         stats['iterStats'] = self.ubProvider.stats().copy()
         return stats
 
-
-    cdef int branchIndex(self, double ub) except -3:
-        """Determines the index of the current branching variable, according to the selected
-        branch method."""
-        cdef:
-            int i, maxIndex = -1, itersSinceBest = 0
-            double maxScore = -INFINITY, score
-            double[::1] solution = self.lbProvider.solution
-            double current = self.lbProvider.objectiveValue
-            int currentRPC = self.lbProvider.maxRPCrounds
-        if self.branchMethod == strong:
-            self.lbProvider.maxRPCrounds = 10
-            self.lbProvider.objBufLim = .25
-            self.lbProvider.model.setParam('IterationLimit', 40)
-        for i in range(self.code.blocklength):
-            if fabs(solution[i] - .5) < .499:
-                if self.branchMethod == leastReliable:
-                    score = 1./fmax(1e-8, fabs(self.llrs[i]))
-                elif self.branchMethod == mostFractional:
-                    score = 1./fmax(1e-8, fabs(solution[i] - .5))
-                elif self.branchMethod == firstFractional:
-                    score = maxIndex == -1
-                elif self.branchMethod == branchRandom:
-                    score = np.random.random_sample()
-                else:
-                    if itersSinceBest >= 8:
-                        break
-                    score = self.strongBranchScore(i, current, ub)
-                if score > maxScore:
-                    maxIndex = i
-                    maxScore = score
-                    itersSinceBest = 0
-                itersSinceBest += 1
-            elif maxIndex == -1 and not self.fixed(i):
-                # it may occur that the solution is integral but not a codeword -> return first
-                # non-fixed branch index then
-                maxIndex = i
-        if self.branchMethod == strong:
-            self.lbProvider.maxRPCrounds = currentRPC
-            self.lbProvider.objBufLim = self.objBufLimOrig
-            self.lbProvider.model.setParam('IterationLimit', INFINITY)
-        return maxIndex
-
-    cdef double strongBranchScore(self, int i, double origObj, double ub) except -12345.67:
-        cdef double deltaMinus, deltaPlus
-        self.lbProvider.fix(i, 0)
-        try:
-            self.lbProvider.solve(-INFINITY, ub)
-        except (UpperBoundHit, ProblemInfeasible):
-            return INFINITY
-        except LimitHit:
-            pass
-        finally:
-            self.lbProvider.release(i)
-        deltaMinus = self.lbProvider.objectiveValue - origObj
-        self.lbProvider.fix(i, 1)
-        try:
-            self.lbProvider.solve(-INFINITY, ub)
-        except (UpperBoundHit, ProblemInfeasible):
-            return INFINITY
-        except LimitHit:
-            pass
-        finally:
-            self.lbProvider.release(i)
-        deltaPlus = self.lbProvider.objectiveValue - origObj
-        return 5./6*fmin(deltaMinus, deltaPlus) + 1./6*fmax(deltaMinus, deltaPlus)
-        
-
     cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
         self.ubProvider.setLLRs(llrs, sent)
         if sent is not None:
@@ -346,7 +186,6 @@ cdef class BranchAndCutDecoder(Decoder):
             self._stats['iterTime'] += self.timer.stop()
             if self.ubProvider.foundCodeword:
                 self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
-                logger.debug('init ub={}'.format(self.ubProvider.objectiveValue))
                 # codeword will be used in first iteration of main algorithm; no need to copy it
                 # here
         self.lbProvider.setLLRs(llrs, sent)
@@ -355,7 +194,7 @@ cdef class BranchAndCutDecoder(Decoder):
 
     cpdef fix(self, int index, int value):
         self.lbProvider.fix(index, value)
-        self.ubProvider.fix(index,value)
+        self.ubProvider.fix(index, value)
 
 
     cpdef release(self, int index):
@@ -371,45 +210,43 @@ cdef class BranchAndCutDecoder(Decoder):
         cdef:
             Node node, newNode0, newNode1, newNode
             list activeNodes = []
-            double[::1] candidate = np.zeros(self.code.blocklength, dtype=np.double)
-            int i, branchIndex
+            int iteration = 0, branchIndex, i
             str depthStr
         ub = 0
+        self.branchRule.reset()
         #  ensure there are no leftover fixes from previous decodings
-        for i in range(self.code.blocklength):
-            self.lbProvider.release(i)
-            self.ubProvider.release(i)
         self.foundCodeword = self.mlCertificate = True
-        self.root = node = Node() #  root node
+        self.root = node = Node()
+        self.calcUb = True
         self.selectCnt = 0 #  parameter used for the mixed node selection strategy
         self._stats['nodes'] += 1
         if self.selectionMethod == mixed:
             self.lbProvider.maxRPCrounds = self.maxRPCspecial
 
-        for i in itertools.count(start=1):
-
+        while True:
+            iteration += 1
             if node.depth > self._stats['maxDepth']:
                 self._stats['maxDepth'] = node.depth
-            if i % 100 == 0:
-                logger.debug('{}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(
-                    self.root.lb, ub, node.depth,len(activeNodes), self.lbProvider.model.NumConstrs,
-                    i, self._stats["lpTime"], self._stats['iterTime']))
+            # if i % 100 == 0:
+            #     logger.debug('{}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(
+            #         self.root.lb, ub, node.depth,len(activeNodes), self.lbProvider.model.NumConstrs,
+            #         i, self._stats["lpTime"], self._stats['iterTime']))
             # upper bound calculation
-            if i > 1 and self.calcUb: # for first iteration this was done in setLLR
+            if iteration > 1 and self.calcUb: # for first iteration this was done in setLLR
                 self.timer.start()
                 self.ubProvider.solve()
                 self._stats["iterTime"] += self.timer.stop()
             if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
-                candidate = self.ubProvider.solution.copy()
+                self.solution[:] = self.ubProvider.solution[:]
                 ub = self.ubProvider.objectiveValue
                 if ub < self.sentObjective  - 1e-5:
                     self.mlCertificate = False
                     break
 
             # lower bound calculation
-            self.timer.start()
-            if (i == 1 or self.calcUb) and self.ubProvider.foundCodeword:
-                self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
+            if (iteration == 1 or self.calcUb) and self.ubProvider.foundCodeword:
+                # self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
+                pass #TODO hint not used
             else:
                 self.lbProvider.hint = None
             if node.depth == 0:
@@ -417,57 +254,65 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.maxRPCrounds = -1
                 self.lbProvider.objBufLim = 0.01
                 self.lbProvider.minCutoff = 1e-4
-            try:
-                self.lbProvider.solve(-INFINITY, ub)
-                if self.lbProvider.objectiveValue > node.lb:
-                    node.lb = self.lbProvider.objectiveValue
-            except UpperBoundHit:
+
+            self.timer.start()
+            self.lbProvider.solve(-INFINITY, ub)
+            node.lpObj = self.lbProvider.objectiveValue
+            self._stats['lpTime'] += self.timer.stop()
+            if self.lbProvider.status == Decoder.UPPER_BOUND_HIT:
                 node.lb = INFINITY
                 self._stats['prBd2'] += 1
-            except ProblemInfeasible:
+            elif self.lbProvider.status == Decoder.INFEASIBLE:
                 node.lb = INFINITY
                 self._stats['prInf'] += 1
-            finally:
-                self._stats['lpTime'] += self.timer.stop()
-            self.lbProvider.objBufLim = self.objBufLimOrig
-            self.lbProvider.maxRPCrounds = self.maxRPCorig
-            self.lbProvider.minCutoff = self.cutoffOrig
+            elif self.lbProvider.objectiveValue > node.lb:
+                node.lb = self.lbProvider.objectiveValue
+            self.branchRule.callback(node)
+            if node.depth == 0:
+                self.lbProvider.objBufLim = self.objBufLimOrig
+                self.lbProvider.maxRPCrounds = self.maxRPCorig
+                self.lbProvider.minCutoff = self.cutoffOrig
             # pruning or branching
             if self.lbProvider.foundCodeword:
                 # solution is integral
-                logger.debug("node pruned by integrality")
                 if self.lbProvider.objectiveValue < ub:
-                    candidate = self.lbProvider.solution.copy()
+                    self.solution[:] = self.lbProvider.solution[:]
                     ub = self.lbProvider.objectiveValue
-                    logger.debug("ub improved to {}".format(ub))
                     self._stats['prOpt'] += 1
                     if ub < self.sentObjective - 1e-5:
                         self.mlCertificate = False
                         break
             elif node.lb < ub-1e-6:
                 # branch
-                branchIndex = self.branchIndex(ub)
-                if branchIndex < 0:
-                    print('BAA', branchIndex)
-                    print([i for i in range(self.code.blocklength) if self.fixed(i)])
-                    print(np.asarray(self.lbProvider.solution))
-                    print(np.around(np.dot(self.code.parityCheckMatrix, self.lbProvider.solution), 6) % 2)
-                    print(self.lbProvider.solution in self.code)
-                    print(np.allclose(np.mod(self.lbProvider.solution, 1), 0))
-                    print(np.mod(self.lbProvider.solution, 1))
-                    print(gfqla.inKernel(self.code.parityCheckMatrix, np.rint(self.lbProvider.solution).astype(np.int)))
-                    raise RuntimeError()
-                newNode0 = Node(parent=node, branchIndex=branchIndex, branchValue=0)
-                newNode1 = Node(parent=node, branchIndex=branchIndex, branchValue=1)
-                if (self.childOrder == '10') or \
-                   (self.childOrder == 'llr' and self.llrs[branchIndex] < 0) or \
-                   (self.childOrder == 'random' and np.random.randint(0, 2) == 0):
-                    activeNodes.append(newNode1)
-                    activeNodes.append(newNode0)
+                branchIndex = self.branchRule.branchIndex(node, ub, self.lbProvider.solution.copy())
+                if branchIndex not in self._stats['branchCounts']:
+                    self._stats['branchCounts'][branchIndex] = 1
                 else:
-                    activeNodes.append(newNode0)
-                    activeNodes.append(newNode1)
-                self._stats['nodes'] += 2
+                    self._stats['branchCounts'][branchIndex] += 1
+                if node.lb >= ub-1e-6:
+                    pass  # happens if branching rule has improved lower bound
+                else:
+                    if branchIndex < 0:
+                        print('BAA', branchIndex)
+                        print([i for i in range(self.code.blocklength) if self.fixed(i)])
+                        print(np.asarray(self.lbProvider.solution))
+                        print(np.around(np.dot(self.code.parityCheckMatrix, self.lbProvider.solution), 6) % 2)
+                        print(self.lbProvider.solution in self.code)
+                        print(np.allclose(np.mod(self.lbProvider.solution, 1), 0))
+                        print(np.mod(self.lbProvider.solution, 1))
+                        print(gfqla.inKernel(self.code.parityCheckMatrix, np.rint(self.lbProvider.solution).astype(np.int)))
+                        raise RuntimeError()
+                    newNode0 = Node(node, branchIndex, 0)
+                    newNode1 = Node(node, branchIndex, 1)
+                    if (self.childOrder == '10') or \
+                       (self.childOrder == 'llr' and self.llrs[branchIndex] < 0) or \
+                       (self.childOrder == 'random' and np.random.randint(0, 2) == 0):
+                        activeNodes.append(newNode1)
+                        activeNodes.append(newNode0)
+                    else:
+                        activeNodes.append(newNode0)
+                        activeNodes.append(newNode1)
+                    self._stats['nodes'] += 2
             if node.parent is not None:
                 node.parent.updateBound(node.lb, node.branchValue)
                 if self.root.lb >= ub - 1e-6:
@@ -481,8 +326,10 @@ cdef class BranchAndCutDecoder(Decoder):
             node = newNode
         if self.selectionMethod == mixed:
             self.lbProvider.maxRPCrounds = self.maxRPCorig
-        self.solution = candidate
         self.objectiveValue = ub
+        for i in range(self.code.blocklength):
+            self.lbProvider.release(i)
+            self.ubProvider.release(i)
 
 
     def minimumDistance(self, randomized=True, cyclic=False):
@@ -506,7 +353,7 @@ cdef class BranchAndCutDecoder(Decoder):
         self.root = node = Node()
         self.root.lb = 1
         activeNodes = []
-        candidate = None
+
         ub = INFINITY
         self._stats['nodes'] += 1
         for iteration in itertools.count(start=1):
@@ -561,8 +408,7 @@ cdef class BranchAndCutDecoder(Decoder):
                         node.lb = INFINITY
                         print('********** PRUNE 000000 ***************')
                     else:
-                        newNodes = [Node(parent=node, branchIndex=branchIndex, branchValue=i) for
-                                    i in (0,1) ]
+                        newNodes = [Node(node, branchIndex, i) for i in (0,1) ]
                         if self.childOrder == 'random':
                             random.shuffle(newNodes)
                         elif (self.childOrder == 'llr' and self.llrs[branchIndex] < 0) or self.childOrder == '10':
@@ -636,14 +482,8 @@ cdef class BranchAndCutDecoder(Decoder):
         else:
             selectionMethodNames = { dfs: "dfs", bfs: "bfs", bbs: "bbs"}
             method = selectionMethodNames[self.selectionMethod]
-        branchMethodNames = {mostFractional: "mostFractional",
-                             leastReliable: "leastReliable",
-                             firstFractional: 'firstFractional',
-                             strong: 'strong',
-                             branchRandom: 'random'}
         parms = OrderedDict()
-        if self.branchMethod != mostFractional:
-            parms['branchMethod'] = branchMethodNames[self.branchMethod]
+        raise NotImplementedError() # branch method
         parms['selectionMethod'] = method
         if self.childOrder != '01':
             parms['childOrder'] = self.childOrder

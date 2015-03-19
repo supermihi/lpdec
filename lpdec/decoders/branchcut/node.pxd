@@ -5,6 +5,8 @@
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
+from lpdec.decoders.base cimport Decoder
+
 cdef class Node:
     cdef public int    branchIndex
     cdef public int    branchValue
@@ -12,5 +14,8 @@ cdef class Node:
     cdef public Node   parent
     cdef public int    depth
     cdef double lbChild0, lbChild1
+    cdef double fractionalPart, lpObj
 
-    cpdef updateBound(self, double lbChild, int childValue)
+    cdef void updateBound(self, double lbChild, int childValue)
+
+cdef int move(Decoder lbProv, Decoder ubProv, Node node, Node newNode) except -1

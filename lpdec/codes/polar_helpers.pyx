@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# cython: boundscheck=False, wraparound=False, nonecheck=False, cdivision=True
+# cython: boundscheck=False, wraparound=False, nonecheck=False, cdivision=True, initializedcheck=False
 #  Copyright 2014-2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -10,13 +10,14 @@
 Vardy. Because the construction is time-consuming, it is a compiled Cython module."""
 
 from __future__ import division
-from libc.math cimport log2
+from libc.math cimport log2, sqrt
 import numpy as np
 cimport numpy as np
 from numpy.math cimport INFINITY
 cimport cython
+import weakref
 
-@cython.profile(False)
+
 cdef double C(double x, double y) nogil:
     """C function needed to calculate deltaI in degrading-merge.
     """
@@ -45,7 +46,6 @@ cdef class DataElement:
         self.calcDeltaI()
         self.left = self.right = None
 
-    @cython.profile(False)
     cdef void calcDeltaI(self):
         self.deltaI = C(self.a, self.b) + C(self.aprime, self.bprime) \
                         - C(self.a+self.aprime, self.b+self.bprime)
@@ -56,36 +56,34 @@ cdef class DataElement:
     __repr__ = __str__
 
 
-cdef void heapify(np.ndarray[object, ndim=1] data, int heapSize, int index):
+cdef void heapify(DataElement[:] data, int heapSize, int index):
     """Heapifies a C array of DataElements for given heapSize and index."""
     cdef:
         int left = 2*index+1
         int right= 2*index+2
         int smallest = index
-    if left < heapSize and (<DataElement>(data[left])).deltaI < (<DataElement>(data[index])).deltaI:
+    if left < heapSize and data[left].deltaI < data[index].deltaI:
         smallest = left
-    if right < heapSize and \
-            (<DataElement>(data[right])).deltaI < (<DataElement>(data[smallest])).deltaI:
+    if right < heapSize and data[right].deltaI < data[smallest].deltaI:
         smallest = right
     if smallest != index:
         data[index], data[smallest] = data[smallest], data[index]
-        (<DataElement>(data[index])).h = index
-        (<DataElement>(data[smallest])).h = smallest
+        data[index].h = index
+        data[smallest].h = smallest
         heapify(data, heapSize, smallest)
 
-cdef void update(np.ndarray[object, ndim=1] data, int heapSize, int index):
+cdef void update(DataElement[:] data, int heapSize, int index):
     """Restore heap property if element with index *index* has changed its value."""
     cdef int parent
     # first case: value decreased -> swap with parents, if necessary
-    while index > 0 and \
-          (<DataElement>(data[index])).deltaI < (<DataElement>(data[(index-1)//2])).deltaI:
+    while index > 0 and data[index].deltaI < data[(index-1)//2].deltaI:
         parent = (index-1)//2
         # tmp = data[index]
         # data[index] = data[parent]
         # data[parent] = tmp
         data[parent], data[index] = data[index], data[parent]
-        (<DataElement>(data[parent])).h = parent
-        (<DataElement>(data[index])).h = index
+        data[parent].h = parent
+        data[index].h = index
     # second case: value increased -> call heapify
     heapify(data, heapSize, index)
 
@@ -97,6 +95,7 @@ cdef class BMSChannel:
 
     The elements are ordered in such a way that conjugate elements are adjacent, i.e.,
     for an index i, the elements y_i and y_{i^1} are adjacent (^ is bit-wise XOR)."""
+
 
     cdef double[:] Wgiven0
     cdef int length
@@ -175,7 +174,7 @@ cdef class BMSChannel:
         for i in range(1, nu):
             # we find the next breakpoint using Newton's method
             lCi = sympy.lambdify(y, C-i/nu, 'numpy')
-            Ai[i] = newton(lCi, x0=Ai[i-1] + .1, fprime=lCprime, fprime2=lCprimeprime)
+            Ai[i] = newton(lCi, x0=Ai[i-1] + .5/nu, fprime=lCprime, fprime2=lCprimeprime)
         Ai[-1] = INFINITY
         chan = BMSChannel(2*nu)
         rv0 = norm(loc=1, scale=np.sqrt(1 / (2 * SNR))) # f(y|0)
@@ -185,11 +184,15 @@ cdef class BMSChannel:
             chan.Wgiven0[2*i+1] = rv1.cdf(Ai[i+1]) - rv1.cdf(Ai[i])
         return chan
 
-    def arikanTransform1(self):
+    def arikanTransform1(self, int mu=0):
         """Output the channel W[*]W, i.e. Arikan's first channel transformation fed with two copies
-        of *self*."""
+        of *self*.
+
+        If *mu* is provided and not 0, the resulting channel will be degrading-merged with parameter
+        *mu* before being returend.
+        """
         cdef int y1, y2
-        if self.ari1 is None:
+        if not self.ari1:
             output = BMSChannel(self.length**2)
             for y1 in range(self.length):
                 for y2 in range(self.length):
@@ -197,14 +200,19 @@ cdef class BMSChannel:
                     # s.t. \bar{y1, y2} = y1, \bar y1. Therefore, we order the elements of W[*]W as:
                     # (0,0) (0,1) (0,2) ... (0,l-1) (1,0) (1,1) .... such that conjugates are adjacent.
                     output[y1*self.length+y2, 0] = 0.5*sum(self[y1, x2]*self[y2, x2] for x2 in (0, 1))
+            if mu != 0:
+                output = output.degradingMerge(mu)
             self.ari1 = output
         return self.ari1
 
-    def arikanTransform2(self):
+    def arikanTransform2(self, int mu=0):
         """Output the channel :math:`W\circledast W`, i.e. Arikan's second channel transformation.
+
+        If *mu* is provided and not 0, the resulting channel will be degrading-merged with parameter
+        *mu* before being returend.
         """
         cdef int u1, y1, y2
-        if self.ari2 is None:
+        if not self.ari2:
             output = BMSChannel(2*self.length**2)
             i = 0
             for u1 in (0, 1):
@@ -227,6 +235,8 @@ cdef class BMSChannel:
                         output[i+2, 0] = .5*self[y1+1,u1]*self[y2,0]
                         output[i+3, 0] = .5*self[y1, u1]*self[y2+1,0]
                         i += 4
+            if mu != 0:
+                output = output.degradingMerge(mu)
             self.ari2 = output
         return self.ari2
 
@@ -242,6 +252,7 @@ cdef class BMSChannel:
         """
         # 1. swap elements such that LR(y) ≥ 1 for representatives
         y = np.asarray(self.Wgiven0)
+        yc = y.copy()
         for i in range(0, self.length, 2):
             if y[i] < y[i+1]:
                 y[i], y[i+1] = y[i+1], y[i]
@@ -252,7 +263,7 @@ cdef class BMSChannel:
 
     def degradingMerge(self, int mu):
         """The degrading-merge function, as described in the paper."""
-        if self.degraded is not None:
+        if self.degraded:
             return self.degraded
         cdef DataElement dLeft, dRight, d
         cdef double aplus, bplus
@@ -260,7 +271,7 @@ cdef class BMSChannel:
         cdef BMSChannel chan
         #cdef list data
         L = self.length // 2
-        cdef np.ndarray[object, ndim=1] data = np.empty(L, dtype=object)
+        cdef DataElement[:] data = np.empty(L, dtype=object)
         if self.length <= mu:
             return self
         self.sortAndChoose()
@@ -268,19 +279,19 @@ cdef class BMSChannel:
         for j in range(L-1):
             d = DataElement(*self.Wgiven0[2*j:2*j+4])
             if j > 0:
-                (<DataElement>(data[j-1])).right = d
+                data[j-1].right = d
                 d.left = data[j-1]
             data[j] = d
         heapSize = L-1
         for i in range(L//2-1, -1, -1):
             heapify(data, heapSize, i)
         for i in range(heapSize):
-            (<DataElement>(data[i])).h = i
+            data[i].h = i
         while heapSize > nu - 1:
-            d = <DataElement>data[0] # pop min element in the heap
+            d = data[0] # pop min element in the heap
             # restore heap property
             data[0] = data[heapSize-1]
-            (<DataElement>(data[0])).h = 0
+            data[0].h = 0
             heapSize -= 1
             heapify(data, heapSize, 0)
             aplus = d.a + d.aprime
@@ -305,7 +316,7 @@ cdef class BMSChannel:
         i = 0
         foundRightmost = False
         for j in range(heapSize):
-            d = <DataElement>(data[j])
+            d = data[j]
             chan.Wgiven0[i] = d.a
             chan.Wgiven0[i+1] = d.b
             i += 2
@@ -316,6 +327,10 @@ cdef class BMSChannel:
                 foundRightmost = True
         self.degraded = chan
         return chan
+
+    def bhattacharyya(self):
+        """Compute and return the Bhattacharyya parameter of this channel."""
+        return sum(sqrt(self[i, 0]*self[i, 1]) for i in range(self.length))
 
     def __str__(self):
         return self.__class__.__name__+'(' + ','.join('W({}|0)={}'.format(y,self[y,0])

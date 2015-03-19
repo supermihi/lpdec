@@ -19,6 +19,7 @@ cdef class Decoder(JSONDecodable):
     cdef public object code
     cdef public bint mlCertificate, foundCodeword
     cdef public object _stats
+    cdef public int status
     cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=?)
     cpdef solve(self, double lb=?, double ub=?)
     cpdef fix(self, int index, int value)
