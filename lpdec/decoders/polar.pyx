@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright 2015 Michael Helmling
 # cython: boundscheck=False, nonecheck=False, initializedcheck=False, wraparound=False, cdivision=True
+# cython: language_level=3
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
@@ -24,7 +25,7 @@ class PolarSCDecoder(Decoder):
         assert isinstance(code, PolarCode)
         Decoder.__init__(self, code=code, name=name)
         m = code.n # ok this isn't great, but it's called m in the decoding paper ...
-        self.P = np.empty((m+1, 2**m, 2))
+        self.P = np.empty((m+1, 2**m, 2), dtype=np.double)
         self.C = np.empty((m+1, 2**m, 2), dtype=np.int)
         self.solution = np.zeros(code.blocklength)
 
@@ -34,13 +35,14 @@ class PolarSCDecoder(Decoder):
         P = self.P
         C = self.C
         for beta in range(n):
-            P[0,beta,1] = 1/(np.exp(self.llrs[beta])+1)
+            P[0,beta,1] = 1./(np.exp(self.llrs[beta])+1)
             P[0,beta,0] = 1 - P[0,beta,1]
 
         def recursivelyCalcP(lam, phi):
             if lam == 0:
                 return
             psi = phi // 2
+            sigma = 0
             if phi % 2 == 0:
                 recursivelyCalcP(lam - 1, psi)
             for beta in range(2**(m-lam)):
@@ -48,10 +50,13 @@ class PolarSCDecoder(Decoder):
                     for u in (0,1):
                         P[lam,beta,u] = sum(.5*P[lam-1,2*beta,u^upp]*P[lam-1,2*beta+1,upp]
                                             for upp in (0,1))
+                        sigma = max(sigma, P[lam, beta, u])
                 else:
                     u = C[lam,beta,0]
                     for upp in (0,1):
                         P[lam,beta,upp] = .5*P[lam-1,2*beta,u^upp]*P[lam-1,2*beta+1,upp]
+                        sigma = max(sigma, P[lam, beta, upp])
+            P[lam, :2**(m-lam), :] /= sigma
 
         def recursivelyUpdateC(lam, phi):
             psi = phi // 2
@@ -145,13 +150,13 @@ cdef class PolarSCListDecoder(Decoder):
         return sprime
 
     cdef void recursivelyCalcP(self, int lam, int phi):
-        cdef int psi = phi // 2
-        cdef int beta, u, pLam, upp, l
+        #cdef int psi = phi // 2
+        cdef int beta, u, pLam, pLam_, upp, l
         cdef double sigma = 0
         if lam == 0:
             return
         if phi % 2 == 0:
-            self.recursivelyCalcP(lam - 1, psi)
+            self.recursivelyCalcP(lam - 1, phi // 2)
 
         for l in range(self.L):
             if not self.activePath[l]:

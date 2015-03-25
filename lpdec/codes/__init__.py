@@ -7,6 +7,7 @@
 
 from __future__ import division
 import os
+import itertools
 from collections import OrderedDict
 import numpy as np
 
@@ -33,6 +34,11 @@ class LinearBlockCode(JSONDecodable):
         return np.all(np.mod(rounded, 1) == 0) and \
                gfqla.inKernel(self.parityCheckMatrix, rounded.astype(np.int), self.q)
 
+
+    def allCodewords(self):
+        for infoword in itertools.product(list(range(self.q)), repeat=self.infolength):
+            yield self.encode(infoword)
+
     @property
     def parityCheckMatrix(self):
         raise NotImplementedError()
@@ -55,7 +61,12 @@ class LinearBlockCode(JSONDecodable):
         :returns: The resulting codeword.
         :rtype: numpy.ndarray of dimension one and type numpy.int_t.
         """
-        return infoword.dot(self.generatorMatrix) % self.q
+        return np.dot(infoword, self.generatorMatrix) % self.q
+
+    def params(self):
+        matrix = self.parityCheckMatrix
+        pcm = matrix.tolist()
+        return OrderedDict([('parityCheckMatrix', pcm), ('name', self.name), ('q', self.q)])
 
 
 class BinaryLinearBlockCode(LinearBlockCode):
@@ -72,24 +83,26 @@ class BinaryLinearBlockCode(LinearBlockCode):
 
     """
 
-    def __init__(self, name=None, parityCheckMatrix=None):
+    def __init__(self, name=None, parityCheckMatrix=None, generatorMatrix=None):
 
         self._parityCheckMatrix = self._generatorMatrix = None
         if parityCheckMatrix is not None:
-            if utils.isStr(parityCheckMatrix):
-                filename = os.path.expanduser(parityCheckMatrix)
-                hmatrix = matrices.getBinaryMatrix(filename)
-                if name is None:
-                    name = os.path.basename(filename)
-            elif not isinstance(parityCheckMatrix, np.ndarray):
-                hmatrix = matrices.getBinaryMatrix(parityCheckMatrix)
-            else:
-                hmatrix = parityCheckMatrix
+            assert generatorMatrix is None
+            if utils.isStr(parityCheckMatrix) and name is None:
+                name = os.path.basename(parityCheckMatrix)
+            hmatrix = matrices.getBinaryMatrix(parityCheckMatrix)
             self._parityCheckMatrix = hmatrix
             cols = hmatrix.shape[1]
             rank = gfqla.rank(hmatrix)
             self.blocklength = cols
             self.infolength = cols - rank
+        elif generatorMatrix is not None:
+            assert name is not None
+            gmatrix = matrices.getBinaryMatrix(generatorMatrix)
+            self._generatorMatrix = gmatrix
+            self.blocklength = gmatrix.shape[1]
+            self.infolength = gmatrix.shape[0]
+            assert gfqla.rank(gmatrix, 2) == self.infolength
         LinearBlockCode.__init__(self, 2,  name)
 
 

@@ -12,13 +12,12 @@ the contents are not well integrated with the rest of the lpdec package.
 from __future__ import division, unicode_literals, print_function
 import os.path
 from collections import OrderedDict
-import itertools
 import numpy as np
-from lpdec.persistence import JSONDecodable
+from lpdec.codes import LinearBlockCode
 from lpdec import matrices, utils, gfqla
 
 
-class NonbinaryLinearBlockCode(JSONDecodable):
+class NonbinaryLinearBlockCode(LinearBlockCode):
     """Base class for non-binary linear block codes over GF(q).
 
     `name` is a string uniquely describing the code. When storing results into a database, there
@@ -32,7 +31,6 @@ class NonbinaryLinearBlockCode(JSONDecodable):
     """
 
     def __init__(self, name=None, parityCheckMatrix=None, q=None):
-        JSONDecodable.__init__(self)
         if parityCheckMatrix is not None:
             if utils.isStr(parityCheckMatrix):
                 self.filename = os.path.expanduser(parityCheckMatrix)
@@ -52,27 +50,7 @@ class NonbinaryLinearBlockCode(JSONDecodable):
             cols = np.hstack((np.arange(self.infolength, self.blocklength),
                                   np.arange(self.infolength)))
             self.generatorMatrix = gfqla.orthogonalComplement(q, self.parityCheckMatrix, cols, q=q)
-        self.q = q
-        if name is None:
-            raise ValueError("A code must have a name.")
-        self.name = name
-
-    def __contains__(self, item):
-        """Check if the given word is a codeword of this code.
-        """
-        return np.all(self.parityCheckMatrix.dot(item) % self.q == 0)
-
-    def encode(self, infoword):
-        return np.dot(infoword, self.generatorMatrix) % self.q
-
-    def allCodewords(self):
-        for infoword in itertools.product(list(range(self.q)), repeat=self.infolength):
-            yield self.encode(infoword)
-
-    def params(self):
-        matrix = self.parityCheckMatrix
-        pcm = matrix.tolist()
-        return OrderedDict([('parityCheckMatrix', pcm), ('name', self.name), ('q', self.q)])
+        LinearBlockCode.__init__(self, q, name)
 
 
 def binaryEmbedding(vector, q):

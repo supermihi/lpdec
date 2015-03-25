@@ -31,6 +31,7 @@ def initParser(parser):
                         help='minimum number of errors for plotting a value')
     parser.add_argument('--min-points', type=int, default=0,
                         help='minimum number of SNR values in a range for plotting')
+    parser.add_argument('--time', action='store_true', help='plot decoding time instead of error rate')
     parser.set_defaults(func=browse)
 
 
@@ -129,26 +130,39 @@ def browse(args):
 
 
 def plotSimulation(args, runs):
+    import matplotlib
+    matplotlib.use('Qt4Agg')
     import matplotlib.pyplot as plt
-    plt.yscale('log')
+
+    if not args.time:
+        plt.yscale('log')
     codes = set(run.code.name for run in runs)
     decoders = set(run.decoder.name for run in runs)
     markers = itertools.cycle('os^p8>D+|')
+    if len(decoders) > 1 and len(codes) > 1:
+        fmt = '{c}/{d}'
+    elif len(decoders) > 1:
+        fmt = '{d}'
+    else:
+        fmt = '{c}'
     for run in runs:
-        if len(run) < args.min_points:
+        if not args.time and len(run) < args.min_points:
             continue
-        vals = [(point.snr, point.frameErrorRate)
-                 for point in run if point.errors > args.min_errors]
+        if args.time:
+            vals = [(point.snr, point.avgTime) for point in run]
+        else:
+            vals = [(point.snr, point.frameErrorRate)
+                    for point in run if point.errors > args.min_errors]
         if len(vals) == 0:
             continue
         x, y = zip(*vals)
-        label = str(run.decoder) if len(decoders) >= len(codes) else str(run.code)
+        label = fmt.format(c=run.code, d=run.decoder)
         plt.plot(x, y, marker=next(markers), label=label)
     plt.legend(loc='upper right')
     plt.grid(True, which='minor')
     plt.grid(True, which='major')
     plt.xlabel("SNR$_b$ [dB]")
-    plt.ylabel("FER")
+    plt.ylabel('cpu time' if args.time else 'FER')
     plt.title("Decoding results")
     plt.show()
 

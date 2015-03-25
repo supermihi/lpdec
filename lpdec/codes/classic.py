@@ -51,6 +51,48 @@ class HammingCode(BinaryLinearBlockCode):
         return ans
 
 
+class ReedMullerCode(BinaryLinearBlockCode):
+    """Reed-Muller code using the "polar code like" construction with :math:`F^{\otimes 2}` as
+    generator matrix.
+
+    Args:
+      - r: order of the RM code
+      - m: 2-logarithm of the code's length.
+
+    Returns:
+      Reed-Muller code of length :math:`2^m`.
+    """
+
+    def __init__(self, m, r=None, infolength=None):
+        F = np.array([[1, 0], [1, 1]]) # polar kernel matrix
+        Fkron = np.ones((1, 1))
+        self.m = m
+        self.r = r
+        # take Kronecker product m times
+        for i in range(m):
+            Fkron = np.kron(Fkron, F)
+        assert Fkron.shape == (2**m, 2**m)
+        # filter rows that have weight < 2**(m-r)
+        if r is not None:
+            assert r <= m
+            assert infolength is None
+            Fkron = Fkron[Fkron.sum(1) >= 2**(m-r)]
+        else:
+            weight = 2
+            while Fkron.shape[0] > infolength:
+                Fkron = Fkron[Fkron.sum(1) >= weight]
+                weight *= 2
+            cutIndices = (Fkron.sum(1) == weight)[:(Fkron.shape[0] - infolength)]
+            Fkron = Fkron[[i for i in range(Fkron.shape[0]) if i not in cutIndices]]
+
+        BinaryLinearBlockCode.__init__(self, generatorMatrix=Fkron, name='RM({},{})'.format(r, m))
+
+    def params(self):
+        ans = OrderedDict(r=self.r)
+        ans['m'] = self.m
+        return ans
+
+
 class TernaryGolayCode(NonbinaryLinearBlockCode):
 
     def __init__(self):

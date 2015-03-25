@@ -13,12 +13,12 @@
 # published by the Free Software Foundation
 
 from __future__ import division, print_function, unicode_literals
-from collections import OrderedDict, deque
+from collections import OrderedDict
 import logging
 import numpy as np
 cimport numpy as np
 from numpy.math cimport INFINITY
-from libc.math cimport fabs
+from libc.math cimport fabs, sqrt
 import gurobimh as g
 cimport gurobimh as g
 from cython.operator cimport dereference
@@ -56,14 +56,12 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
       constraints are indeed removed.
     :param bool keepCuts: If set to ``True``, inserted cuts are not remove after decoding one
       frame.
-    :param bool allZero: If set to ``True``, constraints that are active at the all-zero codeword
-      are inserted into the model prior to any decoding and stay there all the time.
     """
 
-    cdef public bint removeAboveAverageSlack, keepCuts, allZero
+    cdef public bint removeAboveAverageSlack, keepCuts
     cdef int objBufSize
-    cdef public double minCutoff, objBufLim
-    cdef public int removeInactive, maxRPCrounds
+    cdef public double minCutoff, objBufLim, iterationLimit
+    cdef public int removeInactive, maxRPCrounds, maxCutsPerRound
     cdef np.int_t[:,::1] hmat, htilde
     cdef public g.Model model
     cdef double[::1] diffFromHalf, setV
@@ -77,9 +75,9 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                  maxRPCrounds=-1,
                  minCutoff=1e-5,
                  removeInactive=0,
+                 maxCutsPerRound=-1,
                  removeAboveAverageSlack=False,
                  keepCuts=False,
-                 allZero=False,
                  objBufSize=8,
                  objBufLim=0.0,
                  gurobiParams=None,
@@ -95,7 +93,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.removeInactive = removeInactive
         self.removeAboveAverageSlack = removeAboveAverageSlack
         self.keepCuts = keepCuts
-        self.allZero = allZero
+        self.maxCutsPerRound = maxCutsPerRound
         self.model = gurobihelpers.createModel(name, gurobiVersion, **gurobiParams)
         self.grbParams = gurobiParams.copy()
         self.model.setParam('OutputFlag', 0)
@@ -114,6 +112,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.objBuff = np.ones(objBufSize, dtype=np.double)
         self.objBufSize = objBufSize
         self.objBufLim = objBufLim
+        self.iterationLimit = INFINITY
 
     cdef int cutSearchAlgorithm(self, bint originalHmat) except -3:
         """Runs the cut search algorithm and inserts found cuts. If ``originalHmat`` is True,
@@ -124,11 +123,9 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         """
         cdef:
             double[::1] setV = self.setV
-            int[::1] Nj = self.Nj
-            double[::1] solution = self.solution
             np.int_t[:,::1] matrix
             int inserted = 0, row, j, ind, setVsize, minDistIndex, Njsize
-            double minDistFromHalf, dist, vSum
+            double minDistFromHalf, vSum, cutoff
         matrix = self.hmat if originalHmat else self.htilde
         for row in range(matrix.shape[0]):
             #  for each row, we build the set Nj = { j: matrix[row,j] == 1}
@@ -141,8 +138,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             minDistIndex = -1
             for j in range(matrix.shape[1]):
                 if matrix[row, j] == 1:
-                    Nj[Njsize] = j
-                    if solution[j] > .5:
+                    self.Nj[Njsize] = j
+                    if self.solution[j] > .5:
                         setV[Njsize] = 1
                         setVsize += 1
                     else:
@@ -163,22 +160,29 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             vSum = 0 # left hand side of the induced Feldman inequality
             for ind in range(Njsize):
                 if setV[ind] == 1:
-                    vSum += 1 - solution[Nj[ind]]
+                    vSum += 1 - self.solution[self.Nj[ind]]
                 elif setV[ind] == -1:
-                    vSum += solution[Nj[ind]]
-            if vSum < 1 - self.minCutoff:
+                    vSum += self.solution[self.Nj[ind]]
+            # if vSum < 1:
+                # print('cutoff old', 1 - vSum)
+                # print('cutoff new', (1 - vSum) / sqrt(Njsize))
+            cutoff = (1 - vSum) / sqrt(Njsize)
+            #if vSum < 1 - self.minCutoff:
+            if cutoff > self.minCutoff:
                 # inequality violated -> insert
                 inserted += 1
-                self.model.fastAddConstr2(setV[:Njsize], Nj[:Njsize], g.GRB_LESS_EQUAL, setVsize - 1)
-            elif vSum < 1 - 1e-5:
+                self.model.fastAddConstr2(setV[:Njsize], self.Nj[:Njsize], g.GRB_LESS_EQUAL, setVsize - 1)
+            elif cutoff > 1e-5: #vSum < 1 - 1e-5:
                 self._stats['minCutoffFailed'] += 1
+            if self.maxCutsPerRound > 0 and inserted > self.maxCutsPerRound:
+                break
         if inserted > 0:
             self._stats['cuts'] += inserted
             self.model.update()
         return inserted
 
     def setStats(self, object stats):
-        statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime', 'simplexIters',
+        statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'ubReachedC', 'lpTime', 'simplexIters',
                      'objBufHit', 'infeasible', 'iterLimitHit', 'minCutoffFailed', 'rpcRounds']
         for item in statNames:
             if item not in stats:
@@ -224,6 +228,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
 
     cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef double[::1] solution = self.solution
+        cdef double spxIters = 0
         cdef int i, iteration = 0, rpcrounds = 0
         if not self.keepCuts:
             self.removeNonfixedConstraints()
@@ -233,20 +238,26 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.status = Decoder.OPTIMAL
         if self.sent is not None and ub == INFINITY:
             # calculate known upper bound on the objective from sent codeword
-            ub = np.dot(self.sent, self.llrs) + 2e-6
+            ub = np.dot(self.sent, self.llrs) + 1e-6
         while True:
             iteration += 1
             with self.timer:
                 if ub < INFINITY:
                     g.GRBsetcallbackfunc(self.model.model, self.callbackFunction, <void*>&ub)
-                self.model.optimize() #self.callback if ub < INFINITY else None)
+                self.model.optimize()
                 if ub < INFINITY:
                     g.GRBsetcallbackfunc(self.model.model, NULL, NULL)
             self._stats['lpTime'] += self.timer.duration
             self._stats["totalLPs"] += 1
             self._stats['simplexIters'] += self.model.IterCount
+            spxIters += self.model.IterCount
             self._stats['totalConstraints'] += self.model.NumConstrs
             self.model.fastGetX(0, self.solution.size, self.solution)
+            if spxIters > self.iterationLimit:
+                self.foundCodeword = self.mlCertificate = (self.solution in self.code)
+                self._stats['iterLimitHit'] += 1
+                self.status = Decoder.LIMIT_HIT
+                return
             if self.model.Status ==  g.GRB_INFEASIBLE:
                 self.objectiveValue = INFINITY
                 self.foundCodeword = self.mlCertificate = False
@@ -256,23 +267,24 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             elif self.model.Status == g.GRB_INTERRUPTED and ub < INFINITY:
                 # interrupted by callback
                 self.objectiveValue = ub
-                self._stats['ubReached'] += 1
+                self._stats['ubReachedC'] += 1
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)
                 self.status = Decoder.UPPER_BOUND_HIT
                 return
             elif self.model.Status == g.GRB_ITERATION_LIMIT:
                 self.objectiveValue = np.dot(self.llrs, self.solution)
-                self.foundCodeword = self.mlCertificate = (self.solution in self.code)
-                self._stats['iterLimitHit'] += 1
-                self.status = Decoder.LIMIT_HIT
-                return
-            elif self.model.Status != g.GRB_OPTIMAL:
+                # self.foundCodeword = self.mlCertificate = (self.solution in self.code)
+                # self._stats['iterLimitHit'] += 1
+                # self.status = Decoder.LIMIT_HIT
+                # return
+            elif self.model.Status == g.GRB_OPTIMAL:
+                self.objectiveValue = self.model.ObjVal
+            else:
                 raise RuntimeError("Unknown Gurobi status {}".format(self.model.Status))
-            self.objectiveValue = self.model.ObjVal
 
             if self.objectiveValue > ub - 1e-6:
                 # lower bound from the LP is above known upper bound -> no need to proceed
-                self.objectiveValue = ub
+                #self.objectiveValue = ub
                 self._stats["ubReached"] += 1
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)
                 self.status = Decoder.UPPER_BOUND_HIT
@@ -322,6 +334,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         """Removes constraints which are not active at the current solution."""
         cdef int i, removed = 0
         cdef double avgSlack, slack
+        cdef g.Constr constr
         #  compute average slack of constraints all constraints, if only those above the average
         # slack should be removed
         if self.removeAboveAverageSlack:
@@ -333,7 +346,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         else:
             avgSlack = 1e-5  # some tolerance to avoid removing active constraints
         for constr in self.model.getConstrs():
-            if constr.Slack > avgSlack:
+            if self.model.getElementDblAttr(b'Slack', constr.index) > avgSlack:
                 removed += 1
                 self.model.remove(constr)
         if removed:
@@ -364,8 +377,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             params['removeAboveAverageSlack'] = True
         if self.keepCuts:
             params['keepCuts'] = True
-        if self.allZero:
-            params['allZero'] = True
+        if self.maxCutsPerRound != -1:
+            params['maxCutsPerRound'] = self.maxCutsPerRound
         if self.objBufLim != 0.0:
             if self.objBufSize != 8:
                 params['objBufSize'] = self.objBufSize

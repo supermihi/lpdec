@@ -56,6 +56,12 @@ class DataPoint:
         return self.errors / self.samples
 
     @property
+    def avgTime(self):
+        if self.samples == 0:
+            return 0
+        return self.cputime / self.samples
+
+    @property
     def snr(self):
         return self.channel.snr
 
@@ -355,7 +361,7 @@ class Simulator(object):
                 error = not np.allclose(decoder.solution, signaller.codeword, 1e-7)
                 obj = decoder.objectiveValue
                 ml = decoder.mlCertificate
-                if ml and obj > signaller.correctObjectiveValue() + 1e-6:
+                if ml and obj > signaller.correctObjectiveValue() + 1e-5:
                     print(obj, signaller.correctObjectiveValue())
                     raise AssertionError('Decoder {} reports ML certificate but has larger'
                                          'objective value than sent codeword!')

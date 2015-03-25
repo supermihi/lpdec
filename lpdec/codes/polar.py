@@ -248,7 +248,7 @@ class PolarFactorGraph(FactorGraph):
                     check.isolate()
                 v.isolate()
         # remove isolated nodes and restore indices
-        self.varNodes   = [v for v in self.varNodes   if v.degree > 0]
+        self.varNodes   = [v for v in self.varNodes   if v.degree > 0 or v in self.x]
         self.checkNodes = [c for c in self.checkNodes if c.degree > 0]
         for i, v in enumerate(self.varNodes):
             v.index = i

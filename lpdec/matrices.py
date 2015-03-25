@@ -6,6 +6,7 @@
 # published by the Free Software Foundation
 
 from __future__ import unicode_literals, print_function
+import os.path
 import numpy as np
 from lpdec import utils
 
@@ -22,10 +23,12 @@ def getBinaryMatrix(source):
     :returns: A numpy ndarray representation of the matrix.
     """
     if utils.isStr(source):
-        with open(source, 'rt') as f:
+        with open(os.path.expanduser(source), 'rt') as f:
             lines = [[int(x) for x in l.strip().split()]
                      for l in f.readlines()
                      if len(l.strip()) > 0]
+    elif isinstance(source, np.ndarray):
+        return source.astype(np.int)
     else:
         assert hasattr(source, '__iter__') and hasattr(source[0], '__iter__')
         import copy
@@ -89,7 +92,7 @@ def formatMatrix(matrix, format='plain', width=2, filename=None):
         if matrix.ndim == 2:
             mstring = '\n'.join(formatMatrix(row, width=width) for row in matrix)
         else:
-            mstring = ''.join(('{:' + str(width) + 'd}').format(k) for k in matrix)
+            mstring = ''.join(('{:<' + str(width) + 'd}').format(k) for k in matrix)
     else:
         assert format == 'alist'
         import cStringIO

@@ -20,7 +20,7 @@ def initParser(parser):
     sub = parser.add_subparsers(title='actions', dest='action')
     printParser = sub.add_parser('print', help='print a code')
     printParser.add_argument('--alist', action='store_true', help='output in alist format')
-    printParser.add_argument('-w', '--width', help='output width for matrix elements', default='2')
+    printParser.add_argument('-w', '--width', type=int, help='output width for matrix elements', default=2)
     compareParser = sub.add_parser('compare', help='compare with another code')
     compareParser.add_argument('other', help='input file for second code')
 

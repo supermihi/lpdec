@@ -59,16 +59,22 @@ def boxInequalities(mat):
         b[2*i+1] = 1
     return A,b
 
+
 class Polytope:
     def __init__(self, vertices):
         self.vertices = vertices
         self._facets = None
 
+
+    def computeFacets(self, program='cddf+'):
+        A, b = convexHull(self.vertices, program)
+        self._facets = list(zip(A, b))
+        return self._facets
+
     @property
     def facets(self):
         if not self._facets:
-            A, b = convexHull(self.vertices)
-            self._facets = list(zip(A, b))
+            self.computeFacets()
         return self._facets
 
     def adjacentVertices(self, a, b):
@@ -92,8 +98,23 @@ class Polytope:
                 return False
         return True
 
+    @staticmethod
+    def isFeldmanType(a, b):
+        """Return True iff a^Tx <= b represents a Feldman-type or box constraint inequality."""
+        nz = np.flatnonzero(a)
+        # test box
+        if b == 1 and len(nz) == 1 and np.sum(a) == 1:
+            # x_i <= 1
+            return True
+        if b == 0 and len(nz) == 1 and np.sum(a) == -1:
+            # x_i >= 0
+            return True
+        if np.sum(a == 1) + np.sum(a == -1) != len(nz):
+            return False
+        return b == np.sum(a == 1) - 1
 
-def convexHull(points):
+
+def convexHull(points, program='cddf+'):
     """Use lrs to compute the convex hull (by means of facet-defining inequalities) of the given
     set of points.
 
@@ -113,7 +134,7 @@ def convexHull(points):
             tmp.write('end\n')
 
         with open(os.devnull, 'w') as devnull:
-            subprocess.check_call(['cddf+', tmpExt], stdout=devnull, stderr=subprocess.STDOUT)
+            subprocess.check_call([program, tmpExt], stdout=devnull, stderr=subprocess.STDOUT)
         tmpIne = tmpExt[:-3] + 'ine'
         with open(tmpIne, 'rt') as ine:
             hrep = ine.read().splitlines()
@@ -125,7 +146,7 @@ def convexHull(points):
         rows = int(rows)
         cols = int(cols) - 1
         A = np.zeros((rows, cols), dtype=np.int)
-        b = np.zeros((rows, 1), dtype=np.int)
+        b = np.zeros((rows), dtype=np.int)
 
         for i, row in enumerate(hrep[1:]):
             aTmp = []
