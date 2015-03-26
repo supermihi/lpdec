@@ -208,6 +208,8 @@ cdef class ReliabilityBranching(BranchingRule):
                 if not self.bcDecoder.fixed(i):
                     self.index = i
                     return 0
+            self.canPrune = True
+            return 0
         itersSinceChange = 0
         origLim = self.bcDecoder.lbProvider.objBufLim
         origRPC = self.bcDecoder.lbProvider.maxRPCrounds
@@ -325,6 +327,8 @@ cdef class ReliabilityBranching(BranchingRule):
             # if self.bcDecoder.lbProvider.objectiveValue > self.ub - 1e-6:
             #     print('ua')
             #     return 0
+            if node.parent.fractionalPart == 0 or node.parent.fractionalPart == 1:
+                return 0
             Delta = self.bcDecoder.lbProvider.objectiveValue - node.parent.lpObj
             if Delta < 0:
                 self.bcDecoder._stats['deltaNeg'] += 1

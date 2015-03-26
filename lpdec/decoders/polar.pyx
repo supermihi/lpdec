@@ -96,6 +96,7 @@ cdef class PolarSCListDecoder(Decoder):
         double[:, :, :, ::1] P
         int[:, :, :, ::1] C
         np.ndarray probForks, contForks
+        public bint excludeZero
 
     def __init__(self, code, L=4, name=None):
         if name is None:
@@ -104,15 +105,16 @@ cdef class PolarSCListDecoder(Decoder):
         assert isinstance(code, PolarCode)
         self.m = m = code.n # ok this isn't great, but it's called m in the decoding paper ...
         self.L = L
-        self.activePath = -100*np.ones(L, dtype=np.intc)
-        self.P = -100*np.ones((m+1, L, 2**m, 2), dtype=np.double)
-        self.C = -100*np.ones((m+1, L, 2**m, 2), dtype=np.intc)
-        self.pathIndexToArrayIndex = -100*np.ones((m+1, L), dtype=np.intp)
+        self.activePath = np.empty(L, dtype=np.intc)
+        self.P = np.empty((m+1, L, 2**m, 2), dtype=np.double)
+        self.C = np.empty((m+1, L, 2**m, 2), dtype=np.intc)
+        self.pathIndexToArrayIndex = np.empty((m+1, L), dtype=np.intp)
         self.arrayReferenceCount = np.zeros((m+1, L), dtype=np.intc)
-        self.probForks = -100*np.ones((L, 2), np.double)
-        self.contForks = -100*np.ones((L, 2), np.intc)
+        self.probForks = np.empty((L, 2), np.double)
+        self.contForks = np.empty((L, 2), np.intc)
         self.fixes = -np.ones(code.blocklength, dtype=np.intc)
         self.inactivePathIndices = self.inactiveArrayIndices = None
+        self.excludeZero = False
 
 
     cdef int clonePath(self, int l):
@@ -291,10 +293,13 @@ cdef class PolarSCListDecoder(Decoder):
                 continue
             point = self.getArrayPointer(self.m, l)
             if pp < P[self.m, point, 0, C[self.m, point, 0, 1]]:
+                if self.excludeZero:
+                    C0 = self.getArrayPointer(0, l)
+                    if np.all(np.equal(C[0, C0, :, 0], 0)):
+                        continue
                 lp = l
                 pp = P[self.m, point, 0, C[self.m, point, 0, 1]]
         if lp == -1:
-            assert not all([self.fixes[i] == -1 for i in range(self.code.blocklength)])
             self.objectiveValue = INFINITY
             self.status = Decoder.INFEASIBLE
             self.foundCodeword = False

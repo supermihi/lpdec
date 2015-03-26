@@ -245,8 +245,9 @@ class Simulator(object):
         from lpdec.database import simulation as dbsim
         self.dataPoints = OrderedDict()  # maps decoders to DataPoint instances
         #  check for problems with the decoders before time is spent on computations
-        for decoder in self.decoders:
-            db.checkDecoder(decoder, insert=False)
+        if DEBUG_SAMPLE is None:
+            for decoder in self.decoders:
+                db.checkDecoder(decoder, insert=False)
         outputFormat = {}
         for decoder in self.decoders:
             point = dbsim.dataPoint(self.code, self.channel, self.wordSeed, decoder,

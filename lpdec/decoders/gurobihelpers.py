@@ -47,6 +47,21 @@ class GurobiDecoder(Decoder):
         self.xlist = list(self.x.values())
         self.model.update()
 
+    def fix(self, index, value):
+        if value == 0:
+            for k in range(1, self.code.q):
+                self.x[index, k].ub = 0
+                self.x[index, k].lb = 0
+        else:
+            for k in range(1, self.code.q):
+                self.x[index, k].lb = value == k
+                self.x[index, k].ub = value == k
+
+    def release(self, index):
+        for k in range(1, self.code.q):
+            self.x[index, k].lb = 0
+            self.x[index, k].ub = 1
+
     def setLLRs(self, llrs, sent=None):
         from gurobimh import LinExpr
         self.model.setObjective(LinExpr(llrs, self.xlist))

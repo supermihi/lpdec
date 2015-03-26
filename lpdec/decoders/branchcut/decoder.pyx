@@ -33,7 +33,7 @@ logger = logging.getLogger(name='branchcut-decoder')
 
 
 cdef enum SelectionMethod:
-    mixed, dfs, bbs, bfs
+    mixed, dfs, bbs
 
 
 cdef class BranchAndCutDecoder(Decoder):
@@ -50,7 +50,6 @@ cdef class BranchAndCutDecoder(Decoder):
     :param str selectionMethod: Method to determine the next node from the set of active nodes.
         Possible values:
 
-        * `"bfs"`: Breadth-first search
         * `"dfs"`: Depth-first search
         * `"bbs"`: Best-bound search
         * `"mixed[-]/<a>/<b>/<c>/<d>"`: Mixed strategy. Uses depth-first search in general but
@@ -127,8 +126,6 @@ cdef class BranchAndCutDecoder(Decoder):
             self.mixGap = float(d)
             self.maxRPCorig = self.lbProvider.maxRPCrounds
             self.cutoffOrig = self.lbProvider.minCutoff
-        elif selectionMethod == 'bfs':
-            self.selectionMethod = bfs
         elif selectionMethod == 'dfs':
             self.selectionMethod = dfs
         else:
@@ -368,22 +365,22 @@ cdef class BranchAndCutDecoder(Decoder):
             llrs += epsilon*np.random.random_sample(self.code.blocklength)
         else:
             delta = 1e-5
-        for iteration in range(cyclic): # fix bits to one for cyclic codes (or other symmetries)
-            self.fix(iteration, 1)
+        for i in range(cyclic): # fix bits to one for cyclic codes (or other symmetries)
+            self.fix(i, 1)
         self.setLLRs(llrs)
         self.selectCnt = 1
         self.root = node = Node()
         self.root.lb = 1
         activeNodes = []
-
+        self.branchRule.reset()
         ub = INFINITY
         self._stats['nodes'] += 1
         for iteration in itertools.count(start=1):
             # statistic collection and debug output
             depthStr = str(node.depth)
-            if iteration % 1000 == 0:
-                logger.info('MD {}/{}, d {}, n {}, c {}, it {}, lp {}, spa {}'.format(
-                    self.root.lb,ub, node.depth,len(activeNodes), self.lbProvider.numConstrs, iteration,
+            if iteration % 100 == 0:
+                logger.info('MD {}/{}, d {}, n {}, it {}, lp {}, spa {}'.format(
+                    self.root.lb,ub, node.depth,len(activeNodes), iteration,
                     self._stats["lpTime"], self._stats['iterTime']))
             pruned = False # store if current node can be pruned
             if node.lb >= ub-1+delta:
@@ -409,13 +406,13 @@ cdef class BranchAndCutDecoder(Decoder):
                     self.lbProvider.hint = None
                 self.lbProvider.solve(-INFINITY, ub - 1 + delta)
                 self._stats['lpTime'] += self.timer.stop()
+                self.branchRule.callback(node)
                 if self.lbProvider.objectiveValue > node.lb:
                     node.lb = self.lbProvider.objectiveValue
                 if node.lb == INFINITY:
                     self._stats['prInf'] += 1
                 elif self.lbProvider.foundCodeword and self.lbProvider.objectiveValue > .5:
                     # solution is integral
-                    logger.debug('node pruned by integrality')
                     if self.lbProvider.objectiveValue < ub:
                         candidate = self.lbProvider.solution.copy()
                         print('new candidate from LP with weight {}'.format(
@@ -425,20 +422,23 @@ cdef class BranchAndCutDecoder(Decoder):
                         self._stats['prOpt'] += 1
                 elif node.lb < ub-1+delta:
                     # branch
-                    branchIndex = self.branchIndex(ub)
-                    if branchIndex == -1:
-                        node.lb = INFINITY
-                        print('********** PRUNE 000000 ***************')
+                    self.branchRule.computeBranchIndex(node, ub, self.lbProvider.solution.copy())
+                    if self.branchRule.canPrune or node.lb >= ub - 1e-6:
+                        self._stats['prBranch'] += 1
                     else:
-                        newNodes = [Node(node, branchIndex, i) for i in (0,1) ]
-                        if self.childOrder == 'random':
-                            random.shuffle(newNodes)
-                        elif (self.childOrder == 'llr' and self.llrs[branchIndex] < 0) or self.childOrder == '10':
-                            newNodes.reverse()
-                        activeNodes.extend(newNodes)
-                        self._stats['nodes'] += 2
+                        branchIndex = self.branchRule.index
+                        if branchIndex == -1:
+                            node.lb = INFINITY
+                            print('********** PRUNE 000000 ***************')
+                        else:
+                            newNodes = [Node(node, branchIndex, i) for i in (0,1) ]
+                            if self.childOrder == 'random':
+                                random.shuffle(newNodes)
+                            elif (self.childOrder == 'llr' and self.llrs[branchIndex] < 0) or self.childOrder == '10':
+                                newNodes.reverse()
+                            activeNodes.extend(newNodes)
+                            self._stats['nodes'] += 2
                 else:
-                    logger.debug("node pruned by bound 2")
                     self._stats["prBd2"] += 1
             if node.parent is not None:
                 node.parent.updateBound(node.lb, node.branchValue)
@@ -452,7 +452,7 @@ cdef class BranchAndCutDecoder(Decoder):
             move(self.lbProvider, self.ubProvider, node, newNode)
             node = newNode
         self.solution = candidate
-        print(candidate)
+        print(np.asarray(candidate))
         assert self.solution in self.code
         self.objectiveValue = np.rint(ub)
         # restore normal (decoding) mode
@@ -491,8 +491,6 @@ cdef class BranchAndCutDecoder(Decoder):
             return activeNodes.pop()
         elif self.selectionMethod == bbs:
             return self.popMinNode(activeNodes)
-        elif self.selectionMethod == bfs:
-            return activeNodes.pop(0)
 
     def params(self):
         if self.selectionMethod == mixed:
@@ -502,7 +500,7 @@ cdef class BranchAndCutDecoder(Decoder):
                                                    self.maxRPCnormal,
                                                    self.mixGap)
         else:
-            selectionMethodNames = { dfs: "dfs", bfs: "bfs", bbs: "bbs"}
+            selectionMethodNames = { dfs: "dfs", bbs: "bbs"}
             method = selectionMethodNames[self.selectionMethod]
         parms = OrderedDict()
         parms['branchClass'] = type(self.branchRule).__name__
