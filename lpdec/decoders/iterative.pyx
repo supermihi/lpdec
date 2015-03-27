@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# cython: boundscheck=False, nonecheck=False, cdivision=True, wraparound=False
+# cython: boundscheck=False, nonecheck=False, cdivision=True, wraparound=False, initializedcheck=False
 # Copyright 2014-2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -98,7 +98,7 @@ cdef class IterativeDecoder(Decoder):
             int[:]      varHardBits = self.varHardBits
             int[:]      varNodeDegree = self.varNodeDegree
             int[:]      checkNodeDegree = self.checkNodeDegree
-            Py_ssize_t[:,:]    varNeighbors = self.varNeighbors, checkNeighbors = self.checkNeighbors
+            np.intp_t[:,:]    varNeighbors = self.varNeighbors, checkNeighbors = self.checkNeighbors
             double[:,:] varToChecks = self.varToChecks, checkToVars = self.checkToVars
             double[:]   varSoftBits = self.varSoftBits, bP = self.bP, fP = self.fP
             double[:]   llrs = self.llrs, solution = self.solution
@@ -194,15 +194,15 @@ cdef class IterativeDecoder(Decoder):
         """
         cdef int mod2sum, i, j, index, order, poolSize = 0, poolRange
         cdef double objVal
-        cdef Py_ssize_t[:] sorted = np.argsort(np.abs(self.varSoftBits))
-        cdef Py_ssize_t[:] indices = self.indices, pool = self.pool
+        cdef np.intp_t[:] sorted = np.argsort(np.abs(self.varSoftBits))
+        cdef np.intp_t[:] indices = self.indices, pool = self.pool
         cdef int[:] candidate = self.candidate, syndrome = self.syndrome, fixSyndrome = \
             self.fixSyndrome
         cdef int[:] varHardBits = self.varHardBits, varDeg = self.varDeg2
         cdef np.int_t[:,::1] matrix = self.matrix
-        cdef Py_ssize_t[:,:] varNeigh = self.varNeigh2
+        cdef np.intp_t[:,:] varNeigh = self.varNeigh2
         cdef double[:] fixes = self.fixes, solution = self.solution, llrs = self.llrs
-        cdef Py_ssize_t[:] unit = gaussianElimination(matrix, sorted, True)
+        cdef np.intp_t[:] unit = gaussianElimination(matrix, sorted, True)
 
         for j in unit:
             if fixes[j] != 0:

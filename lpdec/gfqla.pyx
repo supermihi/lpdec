@@ -14,7 +14,7 @@ cimport numpy as np
 from libc.math cimport round
 
 
-cpdef gaussianElimination(np.int_t[:,:] matrix, Py_ssize_t[:] columns=None, bint diagonalize=True,
+cpdef gaussianElimination(np.int_t[:,:] matrix, np.intp_t[:] columns=None, bint diagonalize=True,
                           int q=2):
         """The Gaussian elimination algorithm in GF(q) arithmetics.
 
@@ -34,7 +34,7 @@ cpdef gaussianElimination(np.int_t[:,:] matrix, Py_ssize_t[:] columns=None, bint
             int ncols = matrix.shape[1]
             int curRow = 0, row, curCol, colIndex = 0
             int pivotRow, val, i, factor
-            Py_ssize_t[:] successfulCols = np.empty(nrows, dtype=np.intp)
+            np.intp_t[::1] successfulCols = np.empty(nrows, dtype=np.intp)
             int numSuccessfulCols = 0
         assert q < cachedInvs.shape[0]
         if columns is None:

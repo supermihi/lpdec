@@ -323,7 +323,7 @@ cdef class ReliabilityBranching(BranchingRule):
         cdef double Delta
         if not self.updateInCallback:
             return 0
-        if node.parent is not None:
+        if node.depth > 0:
             # if self.bcDecoder.lbProvider.objectiveValue > self.ub - 1e-6:
             #     print('ua')
             #     return 0
@@ -332,6 +332,7 @@ cdef class ReliabilityBranching(BranchingRule):
             Delta = self.bcDecoder.lbProvider.objectiveValue - node.parent.lpObj
             if Delta < 0:
                 self.bcDecoder._stats['deltaNeg'] += 1
+                #delta = 0
             else:
                 self.bcDecoder._stats['deltaPos'] += 1
             if node.branchValue:

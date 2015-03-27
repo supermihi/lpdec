@@ -79,7 +79,7 @@ cdef class BranchAndCutDecoder(Decoder):
         public Decoder lbProvider, ubProvider
         int mixParam, maxRPCspecial, maxRPCnormal, maxRPCorig
         double mixGap, sentObjective, objBufLimOrig, cutoffOrig
-        int selectCnt
+        public int selectCnt
         Node root
 
     def __init__(self, code,
@@ -148,8 +148,6 @@ cdef class BranchAndCutDecoder(Decoder):
                     'iterTime', 'maxDepth', 'branchTime':
             if item not in stats:
                 stats[item] = 0
-        if 'branchCounts' not in stats:
-            stats['branchCounts'] = {}
         if 'lpStats' in stats:
             self.lbProvider.setStats(stats['lpStats'])
             del stats['lpStats']
@@ -298,10 +296,6 @@ cdef class BranchAndCutDecoder(Decoder):
                     self._stats['prBranch'] += 1
                 else:
                     branchIndex = self.branchRule.index
-                    if branchIndex not in self._stats['branchCounts']:
-                        self._stats['branchCounts'][branchIndex] = 1
-                    else:
-                        self._stats['branchCounts'][branchIndex] += 1
                     if branchIndex < 0:
                         print('BAA', branchIndex)
                         print([i for i in range(self.code.blocklength) if self.fixed(i)])
@@ -379,9 +373,9 @@ cdef class BranchAndCutDecoder(Decoder):
             # statistic collection and debug output
             depthStr = str(node.depth)
             if iteration % 100 == 0:
-                logger.info('MD {}/{}, d {}, n {}, it {}, lp {}, spa {}'.format(
+                logger.info('MD {}/{}, d {}, n {}, it {}, lp {}, heu {} bra {}'.format(
                     self.root.lb,ub, node.depth,len(activeNodes), iteration,
-                    self._stats["lpTime"], self._stats['iterTime']))
+                    self._stats["lpTime"], self._stats['iterTime'], self._stats['branchTime']))
             pruned = False # store if current node can be pruned
             if node.lb >= ub-1+delta:
                 node.lb = INFINITY
@@ -405,6 +399,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 else:
                     self.lbProvider.hint = None
                 self.lbProvider.solve(-INFINITY, ub - 1 + delta)
+                node.lpObj = self.lbProvider.objectiveValue
                 self._stats['lpTime'] += self.timer.stop()
                 self.branchRule.callback(node)
                 if self.lbProvider.objectiveValue > node.lb:
@@ -417,6 +412,7 @@ cdef class BranchAndCutDecoder(Decoder):
                         candidate = self.lbProvider.solution.copy()
                         print('new candidate from LP with weight {}'.format(
                             self.lbProvider.objectiveValue))
+                        print(np.asarray(candidate))
                         ub = self.lbProvider.objectiveValue
                         logger.debug('ub improved to {}'.format(ub))
                         self._stats['prOpt'] += 1
@@ -475,13 +471,18 @@ cdef class BranchAndCutDecoder(Decoder):
                 # best bound step
                 newNode = self.popMinNode(activeNodes)
                 self.selectCnt = 1
-                self.lbProvider.maxRPCrounds = self.maxRPCspecial #np.rint(ub-newNode.lb)
+                self.lbProvider.maxRPCrounds = self.maxRPCspecial
+                # self.lbProvider.objBufLim = self.objBufLimOrig / 3
+                # self.lbProvider.minCutoff = self.cutoffOrig / 3
                 if self.ubBB:
                     self.calcUb = True
+                newNode.special = True
                 return newNode
             else:
                 newNode = activeNodes.pop()
                 self.lbProvider.maxRPCrounds = self.maxRPCnormal
+                # self.lbProvider.objBufLim = self.objBufLimOrig
+                # self.lbProvider.minCutoff = self.cutoffOrig
                 self.selectCnt += 1
                 if self.ubBB:
                     self.calcUb = False

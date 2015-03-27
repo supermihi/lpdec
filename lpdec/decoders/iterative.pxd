@@ -16,8 +16,8 @@ cdef class IterativeDecoder(Decoder):
         int[:]    varHardBits
         int[:]    varNodeDegree
         int[:]    checkNodeDegree
-        Py_ssize_t[:,:]  varNeighbors
-        Py_ssize_t[:,:]  checkNeighbors
+        np.intp_t[:,::1]  varNeighbors
+        np.intp_t[:,::1]  checkNeighbors
         double[:,:]  varToChecks
         double[:,:]  checkToVars
         double[:] fP, bP
@@ -28,8 +28,8 @@ cdef class IterativeDecoder(Decoder):
         public bint    excludeZero
         # helpers for the order-i reprocessing
         int[:]    syndrome, candidate, varDeg2, fixSyndrome
-        Py_ssize_t[:]   indices, pool
-        Py_ssize_t[:,:] varNeigh2
+        np.intp_t[:]   indices, pool
+        np.intp_t[:,:] varNeigh2
         int            maxRange
         double         reencodeRange
         np.int_t  [:,::1] matrix

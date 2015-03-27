@@ -123,6 +123,8 @@ class BinaryLinearBlockCode(LinearBlockCode):
                 cols = np.hstack((np.arange(self.infolength, self.blocklength),
                                   np.arange(self.infolength))).astype(np.intp)
                 self._generatorMatrix = gfqla.orthogonalComplement(self._parityCheckMatrix, cols)
+            assert np.all(np.dot(self._generatorMatrix, self._parityCheckMatrix.T) % 2 == 0)
+            assert np.all(np.dot(self._parityCheckMatrix, self.generatorMatrix.T) % 2 == 0)
         return self._generatorMatrix
 
     @property
