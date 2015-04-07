@@ -250,10 +250,13 @@ class Simulator(object):
                 db.checkDecoder(decoder, insert=False)
         outputFormat = {}
         for decoder in self.decoders:
-            point = dbsim.dataPoint(self.code, self.channel, self.wordSeed, decoder,
-                                    self.identifier)
-            if point.samples >= self.maxSamples or point.errors >= self.maxErrors:
-                continue
+            if DEBUG_SAMPLE is None:
+                point = dbsim.dataPoint(self.code, self.channel, self.wordSeed, decoder,
+                                        self.identifier)
+                if point.samples >= self.maxSamples or point.errors >= self.maxErrors:
+                    continue
+            else:
+                point = DataPoint(self.code, self.channel, self.wordSeed, decoder, self.identifier)
             point.checkResume()
             self.dataPoints[decoder] = point
             decoder.setStats(point.stats)
@@ -319,8 +322,7 @@ class Simulator(object):
             # go through decoders. For those not yet finished, start decoding or, in concurrent
             # mode, place item in the queue
             for decoder, point in self.dataPoints.items():
-                if point.errors >= self.maxErrors or point.samples >= self.maxSamples or \
-                        point.samples >= i:
+                if point.errors >= self.maxErrors or point.samples >= self.maxSamples or point.samples >= i:
                     continue
                 if self.concurrent:
                     threads[decoder].jobQueue.put((channelOutput, signaller.codeword))

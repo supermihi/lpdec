@@ -5,7 +5,7 @@
 # cython: cdivision=True
 # cython: wraparound=False
 # cython: initializedcheck=False
-
+# cython: language_level=3
 # Copyright 2014-2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -59,10 +59,11 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
 
     cdef public bint removeAboveAverageSlack, keepCuts, rejected
     cdef int objBufSize
-    cdef public double minCutoff, objBufLim, iterationLimit, sdMin, sdMax
-    cdef public int removeInactive, maxRPCrounds, maxCutsPerRound, superDual
+    cdef public double minCutoff, objBufLim, iterationLimit, sdMin, sdMax, sdX
+    cdef public int removeInactive, maxRPCrounds, superDual, cutLimit
     cdef np.int_t[:,::1] hmat, htilde
     cdef np.int_t[::1] row
+    cdef np.intp_t[::1] successfulCols
     cdef public g.Model model
     cdef double[::1] setV, fractionality
     cdef int[::1] Nj, fixes
@@ -82,7 +83,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.removeInactive = kwargs.get('removeInactive', 0)
         self.removeAboveAverageSlack = kwargs.get('removeAboveAverageSlack', False)
         self.keepCuts = kwargs.get('keepCuts', False)
-        self.maxCutsPerRound = kwargs.get('maxCutsPerRound', -1)
         gurobiParams = kwargs.get('gurobiParams', {})
         self.model = gurobihelpers.createModel(name, kwargs.get('gurobiVersion'), **gurobiParams)
         self.grbParams = gurobiParams.copy()
@@ -90,6 +90,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.superDual = kwargs.get('superDual', 0)
         self.sdMin = kwargs.get('sdMin', .25)
         self.sdMax = kwargs.get('sdMax', .45)
+        self.sdX = kwargs.get('sdX', -1)
         if self.superDual & 2:
             from lpdec.codes import BinaryLinearBlockCode
             from lpdec.decoders.ip import GurobiIPDecoder
@@ -113,6 +114,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.objBufLim = kwargs.get('objBufLim', 0.0)
         self.iterationLimit = INFINITY
         self.row = np.zeros(code.blocklength, dtype=np.int)
+        self.successfulCols = np.empty(code.blocklength, dtype=np.intp)
+        self.cutLimit = kwargs.get('cutLimit', 0)
 
 
     cdef int searchCutFromDualCodeword(self, np.int_t[::1] dual) except -2:
@@ -156,7 +159,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             # inequality violated -> insert
             self.model.fastAddConstr2(self.setV[:Njsize], self.Nj[:Njsize], b'<', setVsize - 1)
             return 1
-        if cutoff > 1e-5:
+        elif cutoff > 1e-5:
             return -1
         return 0
 
@@ -185,7 +188,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     def setStats(self, object stats):
         statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'ubReachedC', 'lpTime', 'simplexIters',
                      'objBufHit', 'infeasible', 'iterLimitHit', 'minCutoffFailed', 'rpcRounds',
-                     'cutsFromOrig']
+                     'cutsFromOrig', 'sdFound', 'sdSearch', 'cutLimitHit']
         for item in statNames:
             if item not in stats:
                 stats[item] = 0
@@ -233,7 +236,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         cdef np.intp_t[::1] unitCols
         cdef np.intp_t[:] xindices
         cdef double spxIters = 0
-        cdef int i, iteration = 0, rpcrounds = 0, numCuts
+        cdef int i, iteration = 0, rpcrounds = 0, numCuts, totalCuts = 0
         if not self.keepCuts:
             self.removeNonfixedConstraints()
         self.foundCodeword = self.mlCertificate = False
@@ -300,6 +303,11 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     self.mlCertificate = self.foundCodeword = (self.solution in self.code)
                     self._stats['objBufHit'] += 1
                     return
+            if self.cutLimit != 0 and totalCuts > self.cutLimit:
+                self._stats['cutLimitHit'] += 1
+                self.foundCodeword = self.mlCertificate = (self.solution in self.code)
+                self.status = Decoder.LIMIT_HIT
+                return
             integral = True
             for i in range(self.solution.shape[0]):
                 if solution[i] < 1e-6:
@@ -317,6 +325,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             numCuts = self.cutSearchAlgorithm(self.hmat, True)
             if numCuts > 0:
                 # found cuts from original H matrix
+                totalCuts += numCuts
                 continue
             elif integral:
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)
@@ -329,12 +338,15 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 self._stats['rpcRounds'] += 1
                 xindices = np.argsort(self.fractionality)[::-1]
 
-                unitCols = gaussianElimination(self.htilde, xindices, True)
+                unitCols = gaussianElimination(self.htilde, xindices, True, self.successfulCols)
                 numCuts = self.cutSearchAlgorithm(self.htilde, False)
+                totalCuts += numCuts
                 if numCuts == 0:
                     #print(np.asarray(self.solution)[unitCols])
                     if self.superDual & 1:
-                        if self.superDualSearch(unitCols, xindices):
+                        numCuts = self.superDualSearch(unitCols, xindices)
+                        if numCuts > 0:
+                            totalCuts += numCuts
                             continue
                     if self.superDual & 2:
                         print('sd2')
@@ -365,42 +377,63 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         cdef int found = 0
         cdef int minInd = -1, maxInd = unitCols.shape[0] - 1
         cdef int i, j, k
-        # cdef double sigma = 0
-        # i = unitCols[unitCols.shape[0] - 1]
-        # for j in range(xindices.shape[0]):
-        #     if xindices[j] == i:
-        #         i = j + 1
-        #         break
-        # for k in range(i, xindices.shape[0]):
-        #     if self.fractionality[xindices[j]] > 1e-6:
-        #         sigma += self.fractionality[xindices[j]]
-        #     else:
-        #         break
-        #print(sigma)
-        #print('sd')
-        for i in range(unitCols.size):
-            if minInd == -1 and fabs(.5 - self.solution[unitCols[i]]) >= self.sdMin:
-                minInd = i
-            if fabs(.5 - self.solution[unitCols[i]]) >= self.sdMax:
-                maxInd = i
-                break
-        #print('inds', minInd, maxInd)
-        for i in range(minInd, maxInd):
-            self.row[:] = self.htilde[i, :]
-            for j in range(i+1, maxInd + 1):
-                for k in range(self.row.shape[0]):
-                    self.row[k] ^= self.htilde[j, k]
-                ans = self.searchCutFromDualCodeword(self.row)
-                if ans == 1:
-                    # print(':-)', i, j, self.solution[unitCols[i]],
-                    #       self.solution[unitCols[j]])
-                    found += 1
-                if j < maxInd:
+        cdef double sigma = 0, estimate
+        if self.sdX != -1:
+            i = unitCols[unitCols.shape[0] - 1]
+            for j in range(xindices.shape[0]):
+                if xindices[j] == i:
+                    i = j + 1
+                    break
+            for k in range(i, xindices.shape[0]):
+                if self.fractionality[xindices[k]] > 1e-6:
+                    sigma += self.fractionality[xindices[k]]
+                else:
+                    break
+            for i in range(unitCols.shape[0] - 1, 0, -1):
+                estimate = sigma * .35 + self.fractionality[unitCols[i]]
+                if estimate > self.sdX:
+                    break
+                self.row[:] = self.htilde[i, :]
+                for j in range(i - 1, -1, -1):
+                    if estimate + self.fractionality[unitCols[j]] > self.sdX:
+                        break
                     for k in range(self.row.shape[0]):
                         self.row[k] ^= self.htilde[j, k]
+                    self._stats['sdSearch'] += 1
+                    ans = self.searchCutFromDualCodeword(self.row)
+                    if ans == 1:
+                        # print(':-)', i, j, self.solution[unitCols[i]],
+                        #       self.solution[unitCols[j]])
+                        found += 1
+                    if j > 0:
+                        for k in range(self.row.shape[0]):
+                            self.row[k] ^= self.htilde[j, k]
+        else:
+            for i in range(unitCols.shape[0]):
+                if minInd == -1 and fabs(.5 - self.solution[unitCols[i]]) >= self.sdMin:
+                    minInd = i
+                if fabs(.5 - self.solution[unitCols[i]]) >= self.sdMax:
+                    maxInd = i
+                    break
+            #print('inds', minInd, maxInd)
+            for i in range(minInd, maxInd):
+                self.row[:] = self.htilde[i, :]
+                for j in range(i+1, maxInd + 1):
+                    for k in range(self.row.shape[0]):
+                        self.row[k] ^= self.htilde[j, k]
+                    self._stats['sdSearch'] += 1
+                    ans = self.searchCutFromDualCodeword(self.row)
+                    if ans == 1:
+                        # print(':-)', i, j, self.solution[unitCols[i]],
+                        #       self.solution[unitCols[j]])
+                        found += 1
+                    if j < maxInd:
+                        for k in range(self.row.shape[0]):
+                            self.row[k] ^= self.htilde[j, k]
         if found:
             #print('found {}'.format(found))
-            self._stats['cuts'] += 1
+            self._stats['cuts'] += found
+            self._stats['sdFound'] += found
             self.model.update()
         return found
 
@@ -425,7 +458,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 removed += 1
                 self.model.remove(constr)
         if removed:
-            self.model.update()
+            self.model.optimize()
 
 
     cdef void removeNonfixedConstraints(self):
@@ -438,7 +471,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         for constr in self.model.getConstrs():
             self.model.remove(constr)
         self.model.update()
-        assert self.model.NumConstrs == 0
                    
     def params(self):
         params = OrderedDict(name=self.name)
@@ -452,18 +484,21 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             params['removeAboveAverageSlack'] = True
         if self.keepCuts:
             params['keepCuts'] = True
-        if self.maxCutsPerRound != -1:
-            params['maxCutsPerRound'] = self.maxCutsPerRound
+        if self.cutLimit != 0:
+            params['cutLimit'] = self.cutLimit
         if self.objBufLim != 0.0:
             if self.objBufSize != 8:
                 params['objBufSize'] = self.objBufSize
             params['objBufLim'] = self.objBufLim
         if self.superDual:
             params['superDual'] = self.superDual
-            if self.sdMin != .25:
-                params['sdMin'] = self.sdMin
-            if self.sdMax != .45:
-                params['sdMax'] = self.sdMax
+            if self.sdX != -1:
+                params['sdX'] = self.sdX
+            else:
+                if self.sdMin != .25:
+                    params['sdMin'] = self.sdMin
+                if self.sdMax != .45:
+                    params['sdMax'] = self.sdMax
         if len(self.grbParams):
             params['gurobiParams'] = self.grbParams
         params['gurobiVersion'] = '.'.join(str(v) for v in g.gurobi.version())

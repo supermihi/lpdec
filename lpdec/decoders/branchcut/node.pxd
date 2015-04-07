@@ -16,7 +16,10 @@ cdef class Node:
     cdef public int    depth
     cdef double lbChild0, lbChild1
     cdef double fractionalPart, lpObj
+    cdef public list implicitFixes
+    cdef public double[:, ::1] branchLb
 
     cdef void updateBound(self, double lbChild, int childValue)
+    cdef list branch(self, int index, bytes childOrder, Decoder decoder, double ub)
 
 cdef int move(Decoder lbProv, Decoder ubProv, Node node, Node newNode) except -1

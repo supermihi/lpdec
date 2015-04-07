@@ -77,6 +77,7 @@ class ReedMullerCode(BinaryLinearBlockCode):
             assert r <= m
             assert infolength is None
             Fkron = Fkron[Fkron.sum(1) >= 2**(m-r)]
+            name = 'RM({},{})'.format(r, m)
         else:
             weight = 2
             while Fkron.shape[0] > infolength:
@@ -84,11 +85,16 @@ class ReedMullerCode(BinaryLinearBlockCode):
                 weight *= 2
             cutIndices = (Fkron.sum(1) == weight)[:(Fkron.shape[0] - infolength)]
             Fkron = Fkron[[i for i in range(Fkron.shape[0]) if i not in cutIndices]]
+            name = '({},{}) RM'.format(2**m, infolength)
 
-        BinaryLinearBlockCode.__init__(self, generatorMatrix=Fkron, name='RM({},{})'.format(r, m))
+        BinaryLinearBlockCode.__init__(self, generatorMatrix=Fkron, name=name)
 
     def params(self):
-        ans = OrderedDict(r=self.r)
+        ans = OrderedDict()
+        if self.r:
+            ans['r'] = self.r
+        else:
+            ans['infolength'] = self.infolength
         ans['m'] = self.m
         return ans
 

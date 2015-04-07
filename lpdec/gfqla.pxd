@@ -6,7 +6,7 @@
 # published by the Free Software Foundation
 cimport numpy as np
 
-cpdef gaussianElimination(np.int_t[:,:] matrix, np.intp_t[:] columns=?, bint diagonalize=?,
-                          int q=?)
+cpdef gaussianElimination(np.int_t[:,::1] matrix, np.intp_t[:] columns=?, bint diagonalize=?,
+                          np.intp_t[::1] successfulCols=?, int q=?)
 
 cpdef inKernel(np.int_t[:, :] matrix, np.int_t[:] vector, int q=?)

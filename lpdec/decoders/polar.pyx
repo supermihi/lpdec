@@ -310,6 +310,9 @@ cdef class PolarSCListDecoder(Decoder):
         for beta in range(n):
             self.solution[beta] = C[0, C0, beta, 0]
         self.objectiveValue = np.dot(self.solution, self.llrs)
+        if self.excludeZero:
+            assert np.sum(self.solution) > 0
+            assert self.objectiveValue > 0
         self.foundCodeword = self.solution in self.code
 
     cpdef release(self, int index):

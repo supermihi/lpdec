@@ -15,7 +15,7 @@ cdef class BranchingRule(JSONDecodable):
         int lamb
         double ub, mu
         Node node
-        public int childInfeasible, index, preference
+        public int index
         public bint canPrune
         int[:] candInds
 

@@ -131,7 +131,7 @@ def browse(args):
 
 def plotSimulation(args, runs):
     import matplotlib
-    matplotlib.use('Qt4Agg')
+    matplotlib.use('Qt5Agg')
     import matplotlib.pyplot as plt
 
     if not args.time:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# cython: boundscheck=False, nonecheck=False, cdivision=False, wraparound=False
+# cython: boundscheck=False, nonecheck=False, cdivision=False, wraparound=False, initializedcheck=False
 # Copyright 2014-2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -14,8 +14,8 @@ cimport numpy as np
 from libc.math cimport round
 
 
-cpdef gaussianElimination(np.int_t[:,:] matrix, np.intp_t[:] columns=None, bint diagonalize=True,
-                          int q=2):
+cpdef gaussianElimination(np.int_t[:,::1] matrix, np.intp_t[:] columns=None, bint diagonalize=True,
+                          np.intp_t[::1] successfulCols=None, int q=2):
         """The Gaussian elimination algorithm in GF(q) arithmetics.
 
         When called on a `(k × n)` matrix, the algorithm performs Gaussian elimination,
@@ -34,9 +34,10 @@ cpdef gaussianElimination(np.int_t[:,:] matrix, np.intp_t[:] columns=None, bint 
             int ncols = matrix.shape[1]
             int curRow = 0, row, curCol, colIndex = 0
             int pivotRow, val, i, factor
-            np.intp_t[::1] successfulCols = np.empty(nrows, dtype=np.intp)
             int numSuccessfulCols = 0
-        assert q < cachedInvs.shape[0]
+        # assert q < cachedInvs.shape[0]
+        if successfulCols is None:
+            successfulCols = np.empty(nrows, dtype=np.intp)
         if columns is None:
             columns = np.arange(ncols, dtype=np.intp)
         while True:
