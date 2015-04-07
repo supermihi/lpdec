@@ -75,13 +75,11 @@ cdef class Node:
             decoder._stats['nodes'] += 1
         else:
             self.lbChild0 = INFINITY
-            print('prune0')
         if self.branchLb is None or self.branchLb[index, 1] <= ub - 1e-6:
             node1 = Node(self, index, 1)
             decoder._stats['nodes'] += 1
         else:
             self.lbChild1 = INFINITY
-            print('prune1')
         if node0 is None:
             if node1 is None:
                 return []

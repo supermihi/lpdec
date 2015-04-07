@@ -299,7 +299,6 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.branchRule.computeBranchIndex(node, ub, self.lbProvider.solution.copy())
                 self._stats['branchTime'] += self.timer.stop()
                 if self.branchRule.canPrune or node.lb >= ub - 1e-6:
-                    print('prune')
                     self._stats['prBranch'] += 1
                 else:
                     branchIndex = self.branchRule.index

@@ -251,7 +251,7 @@ cdef class ReliabilityBranching(BranchingRule):
         #factorB = factorA
         self.bcDecoder.lbProvider.objBufLim = self.objBufLim/factorB
         self.bcDecoder.lbProvider.iterationLimit = self.iterLimit*factorA
-        self.bcDecoder.lbProvider.minCutoff = self.minCutoff#/factorB
+        self.bcDecoder.lbProvider.minCutoff = self.minCutoff/factorB
         self.bcDecoder.lbProvider.sdX = origSdX*factorB
         #self.bcDecoder.lbProvider.cutLimit = <int>(self.cutLimit*factorC)
         if not self.canPrune:
