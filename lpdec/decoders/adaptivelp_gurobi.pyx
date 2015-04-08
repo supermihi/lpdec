@@ -57,8 +57,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
       frame.
     """
 
-    cdef public bint removeAboveAverageSlack, keepCuts, rejected
-    cdef int objBufSize
+    cdef public bint removeAboveAverageSlack, keepCuts, rejected, lbCut
+    cdef int objBufSize, fixedConstrs
     cdef public double minCutoff, objBufLim, iterationLimit, sdMin, sdMax, sdX
     cdef public int removeInactive, maxRPCrounds, superDual, cutLimit
     cdef np.int_t[:,::1] hmat, htilde
@@ -70,6 +70,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     cdef public object xlist, dualDecoder
     cdef object timer, grbParams
     cdef double[:] objBuff
+    cdef g.Constr lbConstr
 
 
     def __init__(self, code,
@@ -91,6 +92,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.sdMin = kwargs.get('sdMin', .25)
         self.sdMax = kwargs.get('sdMax', .45)
         self.sdX = kwargs.get('sdX', -1)
+        self.lbCut = kwargs.get('lowerBoundCut', False)
         if self.superDual & 2:
             from lpdec.codes import BinaryLinearBlockCode
             from lpdec.decoders.ip import GurobiIPDecoder
@@ -116,6 +118,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.row = np.zeros(code.blocklength, dtype=np.int)
         self.successfulCols = np.empty(code.blocklength, dtype=np.intp)
         self.cutLimit = kwargs.get('cutLimit', 0)
+        self.fixedConstrs = 0
+        self.lbConstr = None
 
 
     cdef int searchCutFromDualCodeword(self, np.int_t[::1] dual) except -2:
@@ -216,9 +220,13 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
 
     cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
         self.model.fastSetObjective(0, llrs.size, llrs)
-        Decoder.setLLRs(self, llrs, sent)
+        self.fixedConstrs = 0
         self.removeNonfixedConstraints()
-        #self.htilde[:, :] = self.hmat[:, :]
+        if self.lbCut:
+            self.lbConstr = self.model.addConstr(g.quicksum(self.xlist), b'>', -INFINITY, 'lbcut')
+            self.fixedConstrs = 1
+        Decoder.setLLRs(self, llrs, sent)
+
         self.model.update()
 
     @staticmethod
@@ -239,6 +247,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         cdef int i, iteration = 0, rpcrounds = 0, numCuts, totalCuts = 0
         if not self.keepCuts:
             self.removeNonfixedConstraints()
+        if self.lbCut:
+            self.lbConstr.RHS = lb
         self.foundCodeword = self.mlCertificate = False
         self.objectiveValue = -INFINITY
         self.objBuff[:] = -INFINITY
@@ -446,14 +456,14 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         #  compute average slack of constraints all constraints, if only those above the average
         # slack should be removed
         if self.removeAboveAverageSlack:
-            slacks = self.model.get('Slack', self.model.getConstrs())
+            slacks = self.model.get('Slack', self.model.getConstrs()[self.fixedConstrs:])
             if self.model.NumConstrs == 0:
                 avgSlack = 1e-5
             else:
                 avgSlack = np.mean(slacks)
         else:
             avgSlack = 1e-5  # some tolerance to avoid removing active constraints
-        for constr in self.model.getConstrs():
+        for constr in self.model.getConstrs()[self.fixedConstrs:]:
             if self.model.getElementDblAttr(b'Slack', constr.index) > avgSlack:
                 removed += 1
                 self.model.remove(constr)
@@ -468,7 +478,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         constraints are fixed and not removed by this function.
         """
         cdef g.Constr constr
-        for constr in self.model.getConstrs():
+        for constr in self.model.getConstrs()[self.fixedConstrs:]:
             self.model.remove(constr)
         self.model.update()
                    
@@ -499,6 +509,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     params['sdMin'] = self.sdMin
                 if self.sdMax != .45:
                     params['sdMax'] = self.sdMax
+        if self.lbCut:
+            params['lowerBoundCut'] = True
         if len(self.grbParams):
             params['gurobiParams'] = self.grbParams
         params['gurobiVersion'] = '.'.join(str(v) for v in g.gurobi.version())

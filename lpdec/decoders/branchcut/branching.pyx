@@ -138,7 +138,7 @@ cdef class ReliabilityBranching(BranchingRule):
         self.objBufLim = kwargs.get('objBufLim', .05)
         self.iterLimit = kwargs.get('iterLimit', 25)
         self.minCutoff = kwargs.get('minCutoff', .2)
-        self.cutLimit = kwargs.get('cutLimit', 99999999)
+        self.cutLimit = kwargs.get('cutLimit', 0)
         self.updateInCallback = kwargs.get('updateInCallback', True)
         self.updateInStrong = kwargs.get('updateInStrong', False)
         self.initStrong = kwargs.get('initStrong', True)
@@ -372,6 +372,6 @@ cdef class ReliabilityBranching(BranchingRule):
             ret['updateInStrong'] = True
         if not self.initStrong:
             ret['initStrong'] = False
-        if self.cutLimit != 99999999:
+        if self.cutLimit != 0:
             ret['cutLimit'] = self.cutLimit
         return ret
