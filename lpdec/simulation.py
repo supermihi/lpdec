@@ -245,6 +245,7 @@ class Simulator(object):
         from lpdec.database import simulation as dbsim
         self.dataPoints = OrderedDict()  # maps decoders to DataPoint instances
         #  check for problems with the decoders before time is spent on computations
+        global DEBUG_SAMPLE
         if DEBUG_SAMPLE is None:
             for decoder in self.decoders:
                 db.checkDecoder(decoder, insert=False)
@@ -265,7 +266,6 @@ class Simulator(object):
             return
         signaller = self.channel.signalGenerator(self.code, wordSeed=self.wordSeed)
         startSample = min(point.samples for point in self.dataPoints.values()) + 1
-        global DEBUG_SAMPLE
         if DEBUG_SAMPLE is not None:
             if isinstance(DEBUG_SAMPLE, int):
                 DEBUG_SAMPLE = (DEBUG_SAMPLE, )
