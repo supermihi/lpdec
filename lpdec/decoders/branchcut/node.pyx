@@ -45,8 +45,10 @@ cdef class Node:
         if parent:
             self.depth = self.parent.depth + 1
             self.lb = self.parent.lb
-            if self.parent.branchLb is not None:
-                self.lb = fmax(self.lb, self.parent.branchLb[branchIndex, branchValue])
+            while parent is not None:
+                if parent.branchLb is not None:
+                    self.lb = fmax(self.lb, parent.branchLb[branchIndex, branchValue])
+                parent = parent.parent
         else:
             self.depth = 0
             self.lb = -INFINITY
