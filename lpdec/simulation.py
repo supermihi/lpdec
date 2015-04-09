@@ -256,9 +256,9 @@ class Simulator(object):
                                         self.identifier)
                 if point.samples >= self.maxSamples or point.errors >= self.maxErrors:
                     continue
+                point.checkResume()
             else:
                 point = DataPoint(self.code, self.channel, self.wordSeed, decoder, self.identifier)
-            point.checkResume()
             self.dataPoints[decoder] = point
             decoder.setStats(point.stats)
             outputFormat[decoder] = '{:<' + str(max(len(decoder.name), 13)) + 's} '

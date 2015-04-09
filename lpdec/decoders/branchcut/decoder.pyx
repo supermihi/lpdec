@@ -71,7 +71,7 @@ cdef class BranchAndCutDecoder(Decoder):
     """
     cdef:
         bint calcUb  # indicates whether to run the iterative decoder in the next iteration
-        bint ubBB, highSNR, minDistance
+        bint ubBB, highSNR, minDistance, fixInitConstrs
         bytes childOrder
         object timer
         SelectionMethod selectionMethod
@@ -92,7 +92,8 @@ cdef class BranchAndCutDecoder(Decoder):
                  lpClass=AdaptiveLPDecoder,
                  lpParams=None,
                  iterClass=IterativeDecoder,
-                 iterParams=None):
+                 iterParams=None,
+                 fixInitConstrs=False):
         self.name = name
         if lpParams is None:
             lpParams = {}
@@ -109,6 +110,7 @@ cdef class BranchAndCutDecoder(Decoder):
             branchParams = {}
         if isinstance(branchClass, basestring):
             branchClass = eval(branchClass)
+        self.fixInitConstrs = fixInitConstrs
         self.branchRule = branchClass(code, self, **branchParams)
         if isinstance(childOrder, unicode):
             self.childOrder = childOrder.encode('utf8')
@@ -230,7 +232,7 @@ cdef class BranchAndCutDecoder(Decoder):
             iteration += 1
             if node.depth > self._stats['maxDepth']:
                 self._stats['maxDepth'] = node.depth
-            if iteration % 10 == 0:
+            if iteration % 10 == 0 or iteration == 2:
                 logger.debug('{}/{}, c {}, it {}, lp {:6f}, heu {:6f} bra {:6f}'.format(
                     self.root.lb, ub, self.lbProvider.model.NumConstrs,
                     iteration, self._stats["lpTime"], self._stats['iterTime'], self._stats['branchTime']))
@@ -282,6 +284,8 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.minCutoff = self.cutoffOrig
                 self.branchRule.rootCallback(self.lbProvider._stats['rpcRounds'] - rounds,
                                              self.lbProvider._stats['simplexIters'] - totalIters)
+                if self.fixInitConstrs:
+                    self.lbProvider.fixCurrentConstrs()
             # pruning or branching
             if self.lbProvider.foundCodeword:
                 # solution is integral
@@ -510,6 +514,8 @@ cdef class BranchAndCutDecoder(Decoder):
         if type(self.ubProvider) is not IterativeDecoder:
             parms['iterClass'] = type(self.ubProvider).__name__
         parms['iterParams'] = self.ubProvider.params()
+        if self.fixInitConstrs:
+            parms['fixInitConstrs'] = True
         if self.highSNR:
             parms['highSNR'] = True
         parms['name'] = self.name

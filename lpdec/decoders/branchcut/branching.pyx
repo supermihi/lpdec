@@ -291,7 +291,7 @@ cdef class ReliabilityBranching(BranchingRule):
     cdef int strongBranchScore(self, int index) except -1:
         cdef double deltaMinus, deltaPlus, objMinus, objPlus
         self.bcDecoder.lbProvider.fix(index, 0)
-        self.bcDecoder.lbProvider.solve(-INFINITY, self.ub)
+        self.bcDecoder.lbProvider.solve(self.node.lb, self.ub)
         objMinus = self.bcDecoder.lbProvider.objectiveValue
         self.bcDecoder.lbProvider.release(index)
         if self.bcDecoder.lbProvider.status == Decoder.UPPER_BOUND_HIT:
@@ -304,7 +304,7 @@ cdef class ReliabilityBranching(BranchingRule):
             self.bcDecoder._stats['brStopLim'] += 1
 
         self.bcDecoder.lbProvider.fix(index, 1)
-        self.bcDecoder.lbProvider.solve(-INFINITY, self.ub)
+        self.bcDecoder.lbProvider.solve(self.node.lb, self.ub)
         self.bcDecoder.lbProvider.release(index)
         objPlus = self.bcDecoder.lbProvider.objectiveValue
         if self.bcDecoder.lbProvider.status == Decoder.UPPER_BOUND_HIT:

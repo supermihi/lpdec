@@ -57,7 +57,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
       frame.
     """
 
-    cdef public bint removeAboveAverageSlack, keepCuts, rejected, lbCut
+    cdef public bint removeAboveAverageSlack, keepCuts, rejected
     cdef int objBufSize, fixedConstrs
     cdef public double minCutoff, objBufLim, iterationLimit, sdMin, sdMax, sdX
     cdef public int removeInactive, maxRPCrounds, superDual, cutLimit
@@ -70,7 +70,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     cdef public object xlist, dualDecoder
     cdef object timer, grbParams
     cdef double[:] objBuff
-    cdef g.Constr lbConstr
 
 
     def __init__(self, code,
@@ -92,7 +91,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.sdMin = kwargs.get('sdMin', .25)
         self.sdMax = kwargs.get('sdMax', .45)
         self.sdX = kwargs.get('sdX', -1)
-        self.lbCut = kwargs.get('lowerBoundCut', False)
         if self.superDual & 2:
             from lpdec.codes import BinaryLinearBlockCode
             from lpdec.decoders.ip import GurobiIPDecoder
@@ -119,7 +117,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.successfulCols = np.empty(code.blocklength, dtype=np.intp)
         self.cutLimit = kwargs.get('cutLimit', 0)
         self.fixedConstrs = 0
-        self.lbConstr = None
 
 
     cdef int searchCutFromDualCodeword(self, np.int_t[::1] dual) except -2:
@@ -222,9 +219,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.model.fastSetObjective(0, llrs.size, llrs)
         self.fixedConstrs = 0
         self.removeNonfixedConstraints()
-        if self.lbCut:
-            self.lbConstr = self.model.addConstr(g.quicksum(self.xlist), b'>', -INFINITY, 'lbcut')
-            self.fixedConstrs = 1
         Decoder.setLLRs(self, llrs, sent)
 
         self.model.update()
@@ -247,8 +241,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         cdef int i, iteration = 0, rpcrounds = 0, numCuts, totalCuts = 0
         if not self.keepCuts:
             self.removeNonfixedConstraints()
-        if self.lbCut:
-            self.lbConstr.RHS = lb
         self.foundCodeword = self.mlCertificate = False
         self.objectiveValue = -INFINITY
         self.objBuff[:] = -INFINITY
@@ -482,6 +474,10 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             self.model.remove(constr)
         self.model.update()
                    
+    def fixCurrentConstrs(self):
+        self.removeInactiveConstraints()
+        self.fixedConstrs = self.model.NumConstrs
+
     def params(self):
         params = OrderedDict(name=self.name)
         if self.maxRPCrounds != -1:
@@ -509,8 +505,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     params['sdMin'] = self.sdMin
                 if self.sdMax != .45:
                     params['sdMax'] = self.sdMax
-        if self.lbCut:
-            params['lowerBoundCut'] = True
         if len(self.grbParams):
             params['gurobiParams'] = self.grbParams
         params['gurobiVersion'] = '.'.join(str(v) for v in g.gurobi.version())
