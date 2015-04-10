@@ -71,7 +71,7 @@ cdef class BranchAndCutDecoder(Decoder):
     """
     cdef:
         bint calcUb  # indicates whether to run the iterative decoder in the next iteration
-        bint ubBB, highSNR, minDistance, fixInitConstrs
+        bint highSNR, minDistance, fixInitConstrs
         bytes childOrder
         object timer
         SelectionMethod selectionMethod
@@ -237,8 +237,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.selectCnt = 1
                 self.lbProvider.objBufLim = min(self.maxDecayDepth, newNode.depth)*self.bufDecayFactor + 0.001
                 self.lbProvider.minCutoff = min(self.maxDecayDepth, newNode.depth)*self.cutDecayFactor + 1e-5
-                if self.ubBB:
-                    self.calcUb = True
+                self.calcUb = True
                 newNode.special = True
                 self.bestBoundNode = newNode
                 return newNode
@@ -247,8 +246,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.objBufLim = self.objBufLimOrig
                 self.lbProvider.minCutoff = self.cutoffOrig
                 self.selectCnt += 1
-                if self.ubBB:
-                    self.calcUb = False
+                self.calcUb = False
 
                 return newNode
         elif self.selectionMethod == dfs:
