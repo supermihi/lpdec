@@ -125,8 +125,8 @@ cdef class BranchAndCutDecoder(Decoder):
             self.mixGap = float(b)
             self.cutoffOrig = self.lbProvider.minCutoff
             self.objBufLimOrig = self.lbProvider.objBufLim
-            maxDecay = 2.0
-            maxDecayDepth = (code.blocklength - code.infolength) // 3
+            maxDecay = 3.0
+            maxDecayDepth = (code.blocklength - code.infolength) // 2
             self.bufDecayFactor = (self.objBufLimOrig / maxDecay - 0.001)/maxDecayDepth
             self.cutDecayFactor = (self.cutoffOrig / maxDecay - 1e-5)/maxDecayDepth
             self.maxDecayDepth = maxDecayDepth
