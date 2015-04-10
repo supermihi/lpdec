@@ -146,7 +146,7 @@ cdef class BranchAndCutDecoder(Decoder):
                                           reencodeIfCodeword=False))
 
     def setStats(self, stats):
-        for item in 'nodes', 'prBd1', 'prBd2', 'prInf', 'prBranch', 'prOpt', 'termEx', 'termGap', 'lpTime', \
+        for item in 'nodes', 'prBd1', 'prBd2', 'prInf', 'prBranch', 'prOpt', 'termEx', 'termGap', 'termSent', 'lpTime', \
                     'iterTime', 'maxDepth', 'branchTime', 'initUbOpt':
             if item not in stats:
                 stats[item] = 0
@@ -291,6 +291,7 @@ cdef class BranchAndCutDecoder(Decoder):
                     initOpt = False
                 if ub < self.sentObjective  - 1e-5:
                     self.mlCertificate = False
+                    self._stats['termSent'] += 1
                     break
 
             # lower bound calculation
