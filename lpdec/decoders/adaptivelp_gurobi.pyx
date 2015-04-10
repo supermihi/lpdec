@@ -18,7 +18,7 @@ import logging
 import numpy as np
 cimport numpy as np
 from numpy.math cimport INFINITY
-from libc.math cimport fabs, sqrt
+from libc.math cimport fabs, sqrt, fmin, fmax, atanh, isnan, tanh
 import gurobimh as g
 cimport gurobimh as g
 from cython.operator cimport dereference
@@ -57,7 +57,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
       frame.
     """
 
-    cdef public bint removeAboveAverageSlack, keepCuts, rejected
+    cdef public bint removeAboveAverageSlack, keepCuts, rejected, noSkipOrig
     cdef int objBufSize, fixedConstrs
     cdef public double minCutoff, objBufLim, iterationLimit, sdMin, sdMax, sdX
     cdef public int removeInactive, maxRPCrounds, superDual, cutLimit
@@ -91,12 +91,12 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.sdMin = kwargs.get('sdMin', .25)
         self.sdMax = kwargs.get('sdMax', .45)
         self.sdX = kwargs.get('sdX', -1)
-        if self.superDual & 2:
+        self.noSkipOrig = kwargs.get('noSkipOrig', False)
+        if self.superDual != 0:
             from lpdec.codes import BinaryLinearBlockCode
             from lpdec.decoders.ip import GurobiIPDecoder
             dualCode = BinaryLinearBlockCode(parityCheckMatrix=code.generatorMatrix, name='dual')
-            self.dualDecoder = AdaptiveLPDecoderGurobi(dualCode, keepCuts=True, removeInactive=150,
-                                                       minCutoff=.001, objBufLim=.001, objBufSize=8) #GurobiIPDecoder(dualCode)
+            self.dualDecoder = SuperDualDecoder(dualCode, self, iterations=100, reencodeOrder=2, reencodeRange=1)
         self.xlist = []
         for i in range(self.code.blocklength):
             self.xlist.append(self.model.addVar(0, 1, g.GRB_CONTINUOUS))
@@ -118,6 +118,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.cutLimit = kwargs.get('cutLimit', 0)
         self.fixedConstrs = 0
 
+    def searchCut(self, np.int_t[::1] dual):
+        return self.searchCutFromDualCodeword(dual)
 
     cdef int searchCutFromDualCodeword(self, np.int_t[::1] dual) except -2:
         """Search for a cut in the given dual codeword and insert it if its cutoff exceeds
@@ -189,7 +191,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     def setStats(self, object stats):
         statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'ubReachedC', 'lpTime', 'simplexIters',
                      'objBufHit', 'infeasible', 'iterLimitHit', 'minCutoffFailed', 'rpcRounds',
-                     'cutsFromOrig', 'sdFound', 'sdSearch', 'cutLimitHit']
+                     'cutsFromOrig', 'sdFound', 'sdSearch', 'cutLimitHit', 'sd2Found']
         for item in statNames:
             if item not in stats:
                 stats[item] = 0
@@ -325,6 +327,11 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             self.foundCodeword = self.mlCertificate = True
             self.rejected = False
             numCuts = self.cutSearchAlgorithm(self.hmat, True)
+            if self.noSkipOrig and self.rejected and numCuts == 0:
+                origCut = self.minCutoff
+                self.minCutoff = 1e-5
+                numCuts = self.cutSearchAlgorithm(self.hmat, True)
+                self.minCutoff = origCut
             if numCuts > 0:
                 # found cuts from original H matrix
                 totalCuts += numCuts
@@ -344,32 +351,19 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 numCuts = self.cutSearchAlgorithm(self.htilde, False)
                 totalCuts += numCuts
                 if numCuts == 0:
-                    #print(np.asarray(self.solution)[unitCols])
                     if self.superDual & 1:
                         numCuts = self.superDualSearch(unitCols, xindices)
                         if numCuts > 0:
                             totalCuts += numCuts
                             continue
                     if self.superDual & 2:
-                        print('sd2')
                         dLLRs = np.zeros(self.llrs.shape[0])
                         for i in range(self.solution.size):
-                            if self.solution[i] > 1e-6 and self.solution[i] < 1-1e-6:
-                                dLLRs[i] = .5 - fabs(.5 - self.solution[i])
+                            dLLRs[i] = .5 - fabs(.50001 - self.solution[i])
                         self.dualDecoder.setLLRs(dLLRs)
-                        found = 0
-                        for i in range(unitCols.size):
-                            self.dualDecoder.fix(unitCols[i], 1)
-                            self.dualDecoder.solve()
-                            self.dualDecoder.release(unitCols[i])
-                            if not self.dualDecoder.foundCodeword:
-                                continue
-                            m = np.asarray(self.dualDecoder.solution).astype(np.int)
-                            ans = self.searchCutFromDualCodeword(m)
-                            if ans == 1:
-                                print(ans, i)
-                                found += 1
+                        found = self.dualDecoder.search()
                         if found > 0:
+                            self._stats['sd2Found'] += found
                             continue
                     self.mlCertificate = self.foundCodeword = False
                     break
@@ -404,8 +398,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     self._stats['sdSearch'] += 1
                     ans = self.searchCutFromDualCodeword(self.row)
                     if ans == 1:
-                        # print(':-)', i, j, self.solution[unitCols[i]],
-                        #       self.solution[unitCols[j]])
                         found += 1
                     if j > 0:
                         for k in range(self.row.shape[0]):
@@ -417,7 +409,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 if fabs(.5 - self.solution[unitCols[i]]) >= self.sdMax:
                     maxInd = i
                     break
-            #print('inds', minInd, maxInd)
             for i in range(minInd, maxInd):
                 self.row[:] = self.htilde[i, :]
                 for j in range(i+1, maxInd + 1):
@@ -426,14 +417,11 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     self._stats['sdSearch'] += 1
                     ans = self.searchCutFromDualCodeword(self.row)
                     if ans == 1:
-                        # print(':-)', i, j, self.solution[unitCols[i]],
-                        #       self.solution[unitCols[j]])
                         found += 1
                     if j < maxInd:
                         for k in range(self.row.shape[0]):
                             self.row[k] ^= self.htilde[j, k]
         if found:
-            #print('found {}'.format(found))
             self._stats['cuts'] += found
             self._stats['sdFound'] += found
             self.model.update()
@@ -505,8 +493,287 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     params['sdMin'] = self.sdMin
                 if self.sdMax != .45:
                     params['sdMax'] = self.sdMax
+        if self.noSkipOrig:
+            params['noSkipOrig'] = True
         if len(self.grbParams):
             params['gurobiParams'] = self.grbParams
         params['gurobiVersion'] = '.'.join(str(v) for v in g.gurobi.version())
         params['name'] = self.name
         return params
+
+cdef class SuperDualDecoder(Decoder):
+
+    cdef:
+        int[:]    checkNodeSatStates
+        double[:] varSoftBits
+        np.int_t[:]    varHardBits
+        int[:]    varNodeDegree
+        int[:]    checkNodeDegree
+        np.intp_t[:,::1]  varNeighbors
+        np.intp_t[:,::1]  checkNeighbors
+        double[:,:]  varToChecks
+        double[:,:]  checkToVars
+        double[:] fP, bP
+        double[:] fixes
+        int            iterations
+        int            reencodeOrder
+        bint           minSum
+        # helpers for the order-i reprocessing
+        int[:]    syndrome, varDeg2, fixSyndrome
+        np.int_t[::1] candidate
+        np.intp_t[:]   indices, pool
+        np.intp_t[:,:] varNeigh2
+        int            maxRange
+        double         reencodeRange
+        np.int_t  [:,::1] matrix
+        Decoder alpDecoder
+
+    def __init__(self, code, alpDecoder, minSum=False, iterations=20,
+                 reencodeOrder=-1,
+                 reencodeRange=1):
+        name = 'X'
+        Decoder.__init__(self, code, name)
+        self.name = name
+        self.alpDecoder = alpDecoder
+        self.minSum = minSum
+        self.reencodeRange = reencodeRange
+        self.iterations = iterations
+        self.reencodeOrder = reencodeOrder
+        mat = self.code.parityCheckMatrix
+        k, n = code.parityCheckMatrix.shape
+        self.syndrome = np.zeros(code.blocklength, dtype=np.intc)
+        self.candidate = np.zeros(code.blocklength, dtype=np.int)
+        self.indices = np.zeros(reencodeOrder, dtype=np.intp)
+        self.matrix = mat.copy()
+        self.pool = np.zeros(code.blocklength, dtype=np.intp)
+        self.varNeigh2 = np.zeros((n, k), dtype=np.intp)
+        self.varDeg2 = np.zeros(code.blocklength, dtype=np.intc)
+        self.fixSyndrome = np.zeros(code.blocklength, dtype=np.intc)
+        self.fixes = np.zeros(n, dtype=np.double)
+        self.checkNodeSatStates = np.empty(k, dtype=np.intc)
+        self.varSoftBits = np.empty(n, dtype=np.double)
+        self.varHardBits = np.empty(n, dtype=np.int)
+        self.varNodeDegree = np.empty(n, dtype=np.intc)
+        self.checkNodeDegree = np.empty(k, dtype=np.intc)
+        self.varToChecks = np.empty( (n, k), dtype=np.double)
+        self.checkToVars = np.empty( (k, n), dtype=np.double)
+        self.checkNeighbors = np.empty( (k, n), dtype=np.intp)
+        self.varNeighbors = np.empty( (n, k), dtype=np.intp)
+        self.fP = np.empty(n+1, dtype=np.double)
+        self.bP = np.empty(n+1, dtype=np.double)
+
+        for j in range(n):
+            self.varNodeDegree[j] = 0
+            for i in range(k):
+                if mat[i, j]:
+                    self.varNeighbors[j, self.varNodeDegree[j]] = i
+                    self.varNodeDegree[j] += 1
+        for i in range(k):
+            self.checkNodeDegree[i] = 0
+            for j in range(n):
+                if mat[i, j]:
+                    self.checkNeighbors[i, self.checkNodeDegree[i]] = j
+                    self.checkNodeDegree[i] += 1
+
+    def setStats(self, object stats):
+        for param in 'iterations', 'noncodewords':
+            if param not in stats:
+                stats[param] = 0
+        Decoder.setStats(self, stats)
+
+    cpdef fix(self, int index, int val):
+        """Variable fixing is implemented by adding :attr:`fixes` to the LLRs. This vector
+        contains :math:`\infty` for a fix to zero and :math:`-\infty` for a fix to one.
+        """
+        self.fixes[index] = (.5 - val) * INFINITY
+
+    cpdef release(self, int index):
+        self.fixes[index] = 0
+
+    def search(self):
+        cdef:
+            int[:]      checkNodeSatStates = self.checkNodeSatStates
+            np.int_t[:]      varHardBits = self.varHardBits
+            int[:]      varNodeDegree = self.varNodeDegree
+            int[:]      checkNodeDegree = self.checkNodeDegree
+            np.intp_t[:,:]    varNeighbors = self.varNeighbors, checkNeighbors = self.checkNeighbors
+            double[:,:] varToChecks = self.varToChecks, checkToVars = self.checkToVars
+            double[:]   varSoftBits = self.varSoftBits, bP = self.bP, fP = self.fP
+            int i, j, deg, iteration, checkIndex, varIndex
+            int numVarNodes = self.code.blocklength
+            int numCheckNodes = self.code.parityCheckMatrix.shape[0], foundCuts = 0
+            bint codeword, sign
+
+        # reset messages
+        for j in range(numVarNodes):
+            for i in range(varNodeDegree[j]):
+                varToChecks[j, varNeighbors[j, i]] = 0
+        for i in range(numCheckNodes):
+            for j in range(checkNodeDegree[i]):
+                checkToVars[i, checkNeighbors[i, j]] = 0
+        # reset satisfy state of check nodes
+        for i in range(numCheckNodes):
+            checkNodeSatStates[i] = False
+
+        iteration = 0
+        while iteration < self.iterations:
+            iteration += 1
+            # variable node processing
+            for i in range(numVarNodes):
+                varSoftBits[i] = self.llrs[i] + self.fixes[i]
+                for j in range(varNodeDegree[i]):
+                    varSoftBits[i] += checkToVars[varNeighbors[i,j], i]
+                    if isnan(varSoftBits[i]):
+                        # this might happen if contradicting bits are fixed
+                        return 0
+                varHardBits[i] = ( varSoftBits[i] <= 0 )
+                for j in range(varNodeDegree[i]):
+                    checkIndex = varNeighbors[i,j]
+                    varToChecks[i, checkIndex] = varSoftBits[i] - checkToVars[checkIndex, i]
+                    checkNodeSatStates[checkIndex] ^= varHardBits[i]
+            # check node processing
+            codeword = True
+            for i in range(numCheckNodes):
+                deg = checkNodeDegree[i]
+                if checkNodeSatStates[i]:
+                    codeword = checkNodeSatStates[i] = False # reset for next iteration
+                if self.minSum:
+                    fP[0] = bP[deg] = INFINITY
+                    sign = False
+                    for j in range(deg):
+                        varIndex = checkNeighbors[i,j]
+                        if varToChecks[varIndex, i] < 0:
+                            fP[j+1] = fmin(fP[j], -varToChecks[varIndex, i])
+                            sign = not sign
+                        else:
+                            fP[j+1] = fmin(fP[j], varToChecks[varIndex, i])
+                        varIndex = checkNeighbors[i, deg-j-1]
+                        bP[deg-1-j] = fmin(bP[deg-j], fabs(varToChecks[varIndex, i]))
+                    for j in range(deg):
+                        varIndex = checkNeighbors[i,j]
+                        if sign ^ (varToChecks[varIndex,i] < 0):
+                            checkToVars[i, varIndex] = -fmin(fP[j], bP[j+1])
+                        else:
+                            checkToVars[i, varIndex] = fmin(fP[j], bP[j+1])
+                else:
+                    fP[0] = bP[deg] = 1
+                    for j in range(deg):
+                        varIndex = checkNeighbors[i,j]
+                        fP[j+1] = fP[j]*tanh(varToChecks[varIndex, i]/2)
+                        varIndex = checkNeighbors[i, deg-j-1]
+                        bP[deg-1-j] = bP[deg-j]*tanh(varToChecks[varIndex, i]/2)
+                    for j in range(deg):
+                        checkToVars[i, checkNeighbors[i,j]] = fmax(-1e9, fmin(2*atanh(fP[j]*bP[
+                                j+1]), 1e9)) # avoid infinity values
+            if codeword:
+                if self.alpDecoder.searchCut(varHardBits) == 1:
+                    foundCuts += 1
+                break
+        foundCuts += self.reprocess()
+        return foundCuts
+
+    cdef int reprocess(self) except -2:
+        """Perform order-i reprocessing, where i is given by :attr:`self.reencodeOrder`.
+        """
+        cdef int mod2sum, i, j, index, order, poolSize = 0, poolRange, foundCuts = 0
+        cdef double objVal
+        cdef np.intp_t[:] sorted = np.argsort(np.abs(self.varSoftBits))
+        cdef np.intp_t[:] indices = self.indices, pool = self.pool
+        cdef np.int_t[::1] candidate = self.candidate
+        cdef int[:] syndrome = self.syndrome, fixSyndrome = self.fixSyndrome
+        cdef np.int_t[:] varHardBits = self.varHardBits
+        cdef int[:] varDeg = self.varDeg2
+        cdef np.int_t[:,::1] matrix = self.matrix
+        cdef np.intp_t[:,:] varNeigh = self.varNeigh2
+        cdef double[:] fixes = self.fixes
+        cdef np.intp_t[:] unit = gaussianElimination(matrix, sorted, True)
+
+        for j in unit:
+            if fixes[j] != 0:
+                # unit column is fixed -> not enough "free" unit columns -> no reprocessing possible
+                return 0
+        # first, data structures are built up.
+        # pool: contains the variable indices that are neither part of the unit matrix nor fixed,
+        #   ie, the pool of indices that can be flipped during order-i reprocessing. poolSize
+        #   indicates what part of pool is valid.
+        # fixSyndrome: per check, stores the syndrome (mod-2 sum) of the fixed columns of H.
+        for j in range(matrix.shape[0]):
+            fixSyndrome[j] = 0
+        for i in range(self.code.blocklength):
+            j = sorted[i]
+            if j not in unit:
+                if fixes[j] == 0:
+                    pool[poolSize] = j
+                    poolSize += 1
+                elif fixes[j] == -INFINITY:
+                    for row in range(matrix.shape[0]):
+                        fixSyndrome[row] ^= matrix[row, j]
+        # poolRange: one plus maximum pool index for flipping due to reencodeRange limitation.
+        poolRange = int(poolSize * self.reencodeRange)
+        # varDeg: record variable degrees of indices in pool (wrt Gaussed matrix)
+        # varNeigh: record neighborhood of variables in pool (wrt Gaussed matrix)
+        for j in range(poolSize):
+            varDeg[j] = 0
+            for i in range(matrix.shape[0]):
+                if matrix[i, pool[j]] == 1:
+                    varNeigh[j, varDeg[j]] = i
+                    varDeg[j] += 1
+
+        for order in range(0, self.reencodeOrder+1):
+            # we need at least `order` flippable positions in the allowed pool range!
+            if order > poolRange:
+                break
+            # reset candidate and syndrome
+            for j in range(self.code.blocklength):
+                candidate[j] = <int>varHardBits[j]
+            for row in range(matrix.shape[0]):
+                syndrome[row] = fixSyndrome[row]
+            for j in range(poolSize):
+                if candidate[pool[j]]:
+                    for i in range(varDeg[j]):
+                        syndrome[varNeigh[j, i]] ^= 1
+            # now, syndrome reflects the syndrome of the matrix except for the unit part
+
+            # this is inspired by the example implementation of itertools.combinations in the
+            # python docs
+            # First, flip bits 0, ..., order-1, and reencode this configuration.
+            for i in range(order):
+                indices[i] = i
+                candidate[pool[indices[i]]] ^= 1
+                for j in range(varDeg[indices[i]]):
+                    syndrome[varNeigh[indices[i], j]] ^= 1
+            # reencode
+            for row in range(unit.shape[0]):
+                candidate[unit[row]] = syndrome[row]
+            if self.alpDecoder.searchCut(candidate) == 1:
+                foundCuts += 1
+            # now, move the `order` positions through all configurations among the feasible pool.
+            while True:
+                for i in range(order - 1, -1, -1):
+                    if indices[i] != i + poolRange - order:
+                        break
+                else:
+                    break
+                index = pool[indices[i]]
+                candidate[pool[indices[i]]] ^= 1
+                for j in range(varDeg[indices[i]]):
+                    syndrome[varNeigh[indices[i], j]] ^= 1
+                indices[i] += 1
+                index = pool[indices[i]]
+                candidate[pool[indices[i]]] ^= 1
+                for j in range(varDeg[indices[i]]):
+                    syndrome[varNeigh[indices[i], j]] ^= 1
+                for j in range(i + 1, order):
+                    candidate[pool[indices[j]]] ^= 1
+                    for index in range(varDeg[indices[j]]):
+                        syndrome[varNeigh[indices[j], index]] ^= 1
+                    indices[j] = indices[j-1] + 1
+                    candidate[pool[indices[j]]] ^= 1
+                    for index in range(varDeg[indices[j]]):
+                        syndrome[varNeigh[indices[j], index]] ^= 1
+                # reencode
+                for row in range(unit.shape[0]):
+                    candidate[unit[row]] = syndrome[row]
+                if self.alpDecoder.searchCut(candidate) == 1:
+                    foundCuts += 1
+        return foundCuts

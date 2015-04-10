@@ -259,8 +259,9 @@ cdef class BranchAndCutDecoder(Decoder):
             if node.depth == 0:
                 # special root node treatment
                 self.lbProvider.maxRPCrounds = -1
-                self.lbProvider.objBufLim = 0.01
+                self.lbProvider.objBufLim = 0.001
                 self.lbProvider.minCutoff = 1e-5
+                #self.lbProvider.superDual |= 2
             rounds = self.lbProvider._stats['rpcRounds']
             totalIters -= self.lbProvider._stats['simplexIters']
 
@@ -282,6 +283,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.objBufLim = self.objBufLimOrig
                 self.lbProvider.maxRPCrounds = self.maxRPCorig
                 self.lbProvider.minCutoff = self.cutoffOrig
+                #self.lbProvider.superDual &= 1
                 self.branchRule.rootCallback(self.lbProvider._stats['rpcRounds'] - rounds,
                                              self.lbProvider._stats['simplexIters'] - totalIters)
                 if self.fixInitConstrs:
