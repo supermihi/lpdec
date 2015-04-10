@@ -77,8 +77,8 @@ cdef class BranchAndCutDecoder(Decoder):
         SelectionMethod selectionMethod
         BranchingRule branchRule
         public Decoder lbProvider, ubProvider
-        int mixParam, maxRPCspecial, maxRPCnormal, maxRPCorig
-        double mixGap, sentObjective, objBufLimOrig, cutoffOrig
+        int mixParam, maxDecayDepth
+        double mixGap, sentObjective, objBufLimOrig, cutoffOrig, cutDecayFactor, bufDecayFactor
         public int selectCnt
         Node root, bestBoundNode
 
@@ -93,7 +93,8 @@ cdef class BranchAndCutDecoder(Decoder):
                  lpParams=None,
                  iterClass=IterativeDecoder,
                  iterParams=None,
-                 fixInitConstrs=False):
+                 fixInitConstrs=False,
+                 **kwargs):
         self.name = name
         if lpParams is None:
             lpParams = {}
@@ -118,20 +119,17 @@ cdef class BranchAndCutDecoder(Decoder):
             self.childOrder = childOrder
         if selectionMethod.startswith('mixed'):
             self.selectionMethod = mixed
-            if selectionMethod[5] == '-':
-                self.ubBB = True
-                selectionMethod = selectionMethod[7:]
-            else:
-                self.ubBB = False
-                selectionMethod = selectionMethod[6:]
-            a, b, c, d = selectionMethod.split("/")
+            selectionMethod = selectionMethod[5:]
+            a, b = selectionMethod.split("/")
             self.mixParam = int(a)
-            self.maxRPCspecial = int(b)
-            self.maxRPCnormal = int(c)
-            self.mixGap = float(d)
-            self.maxRPCorig = self.lbProvider.maxRPCrounds
+            self.mixGap = float(b)
             self.cutoffOrig = self.lbProvider.minCutoff
             self.objBufLimOrig = self.lbProvider.objBufLim
+            maxDecay = 2.0
+            maxDecayDepth = (code.blocklength - code.infolength) // 3
+            self.bufDecayFactor = (self.objBufLimOrig / maxDecay - 0.001)/maxDecayDepth
+            self.cutDecayFactor = (self.cutoffOrig / maxDecay - 1e-5)/maxDecayDepth
+            self.maxDecayDepth = maxDecayDepth
         elif selectionMethod == 'dfs':
             self.selectionMethod = dfs
         else:
@@ -142,7 +140,7 @@ cdef class BranchAndCutDecoder(Decoder):
         Decoder.__init__(self, code, name=name)
 
 
-    optimizedOptions=dict(name='B&C[mixed-/30/100/5/2;llr;cut.2;M-100;iter100-o2]',
+    optimizedOptions=dict(name='B&C[mixed/30/2;llr;cut.2;M-100;iter100-o2]',
                           selectionMethod='mixed-/30/100/5/2', childOrder=b'llr',
                           lpParams=dict(removeInactive=100, keepCuts=True,
                                         maxRPCrounds=-1, minCutoff=.2),
@@ -237,12 +235,8 @@ cdef class BranchAndCutDecoder(Decoder):
                 # best bound step
                 newNode = self.popMinNode(activeNodes)
                 self.selectCnt = 1
-                #self.lbProvider.maxRPCrounds = self.maxRPCspecial
-                # self.lbProvider.objBufLim = self.objBufLimOrig / 3
-                # self.lbProvider.minCutoff = self.cutoffOrig / 3
-                self.lbProvider.maxRPCrounds = -1
-                self.lbProvider.objBufLim = newNode.depth*(self.objBufLimOrig/2.0 - 0.001)/(self.code.infolength/4.0) + 0.001
-                self.lbProvider.minCutoff = newNode.depth*(self.cutoffOrig/2.0 - 1e-5)/(self.code.infolength/4.0) + 1e-5
+                self.lbProvider.objBufLim = min(self.maxDecayDepth, newNode.depth)*self.bufDecayFactor + 0.001
+                self.lbProvider.minCutoff = min(self.maxDecayDepth, newNode.depth)*self.cutDecayFactor + 1e-5
                 if self.ubBB:
                     self.calcUb = True
                 newNode.special = True
@@ -250,7 +244,6 @@ cdef class BranchAndCutDecoder(Decoder):
                 return newNode
             else:
                 newNode = activeNodes.pop()
-                self.lbProvider.maxRPCrounds = self.maxRPCnormal
                 self.lbProvider.objBufLim = self.objBufLimOrig
                 self.lbProvider.minCutoff = self.cutoffOrig
                 self.selectCnt += 1
@@ -280,7 +273,6 @@ cdef class BranchAndCutDecoder(Decoder):
         self.selectCnt = 0 #  parameter used for the mixed node selection strategy
         self._stats['nodes'] += 1
         if self.selectionMethod == mixed:
-            self.lbProvider.maxRPCrounds = self.maxRPCspecial
             self.bestBoundNode = self.root
 
         while True:
@@ -313,7 +305,6 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.lbProvider.hint = None
             if node.depth == 0:
                 # special root node treatment
-                self.lbProvider.maxRPCrounds = -1
                 self.lbProvider.objBufLim = 0.001
                 self.lbProvider.minCutoff = 1e-5
                 #self.lbProvider.superDual |= 2
@@ -336,7 +327,6 @@ cdef class BranchAndCutDecoder(Decoder):
             totalIters += self.lbProvider._stats['simplexIters']
             if node.depth == 0:
                 self.lbProvider.objBufLim = self.objBufLimOrig
-                self.lbProvider.maxRPCrounds = self.maxRPCorig
                 self.lbProvider.minCutoff = self.cutoffOrig
                 #self.lbProvider.superDual &= 1
                 self.branchRule.rootCallback(self.lbProvider._stats['rpcRounds'] - rounds,
@@ -380,8 +370,6 @@ cdef class BranchAndCutDecoder(Decoder):
                 newNode = self.selectNode(activeNodes, node, ub)
             move(self.lbProvider, self.ubProvider, node, newNode)
             node = newNode
-        if self.selectionMethod == mixed:
-            self.lbProvider.maxRPCrounds = self.maxRPCorig
         self.objectiveValue = ub
         if initOpt:
             self._stats['initUbOpt'] += 1
@@ -508,11 +496,7 @@ cdef class BranchAndCutDecoder(Decoder):
 
     def params(self):
         if self.selectionMethod == mixed:
-            method = "mixed{}/{}/{}/{}/{}".format('-' if self.ubBB else "",
-                                                   self.mixParam,
-                                                   self.maxRPCspecial,
-                                                   self.maxRPCnormal,
-                                                   self.mixGap)
+            method = "mixed{}/{}".format(self.mixParam, self.mixGap)
         else:
             selectionMethodNames = { dfs: "dfs", bbs: "bbs"}
             method = selectionMethodNames[self.selectionMethod]
