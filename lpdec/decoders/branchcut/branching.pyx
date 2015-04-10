@@ -127,18 +127,14 @@ cdef class FirstFractional(BranchingRule):
 
 cdef class ReliabilityBranching(BranchingRule):
 
-    cdef int etaRel, rootRounds, rootIters, cutLimit
-    cdef double iterLimit, objBufLim, minCutoff, deltaMinus, deltaPlus, objMinus, objPlus
+    cdef int etaRel
+    cdef double deltaMinus, deltaPlus, objMinus, objPlus
     cdef double[::1] sigmaPlus, sigmaMinus, psiPlus, psiMinus
     cdef int[::1] etaPlus, etaMinus
     cdef bint sort, updateInStrong, updateInCallback, initStrong
 
     def __init__(self, code, Decoder bcDecoder, lamb=4, mu=1./6, etaRel=4, sort=False, **kwargs):
         BranchingRule.__init__(self, code, bcDecoder, lamb, mu)
-        self.objBufLim = kwargs.get('objBufLim', .05)
-        self.iterLimit = kwargs.get('iterLimit', 25)
-        self.minCutoff = kwargs.get('minCutoff', .2)
-        self.cutLimit = kwargs.get('cutLimit', 0)
         self.updateInCallback = kwargs.get('updateInCallback', True)
         self.updateInStrong = kwargs.get('updateInStrong', False)
         self.initStrong = kwargs.get('initStrong', True)
@@ -229,10 +225,6 @@ cdef class ReliabilityBranching(BranchingRule):
 
         computedThisRound = np.zeros(len(candidates))
         if self.initStrong:
-            self.bcDecoder.lbProvider.objBufLim = self.objBufLim/2
-            self.bcDecoder.lbProvider.iterationLimit = self.iterLimit*2
-            self.bcDecoder.lbProvider.minCutoff = self.minCutoff/2
-            self.bcDecoder.lbProvider.cutLimit = self.cutLimit*2
             for i in range(len(candidates)):
                 index = candidates[i]
                 if self.etaPlus[index] == 0 or self.etaMinus[index] == 0:
@@ -243,17 +235,19 @@ cdef class ReliabilityBranching(BranchingRule):
                     computedThisRound[i] = 1
                     if self.canPrune:
                         break
-        factorA = sqrt(fmax(0.2, 1 - float(node.depth)/11))
-        factorB = sqrt(fmax(0.05, 1 - float(node.depth)/8))
-        factorC = sqrt(fmax(0.1, 1 - float(node.depth)/10))
+        # factorA = sqrt(fmax(0.2, 1 - float(node.depth)/11))
+        # factorB = sqrt(fmax(0.05, 1 - float(node.depth)/8))
+        # factorC = sqrt(fmax(0.1, 1 - float(node.depth)/10))
+        factorX = 1
         # factorA = .2 + .8*exp(-float(node.depth)/10)
         # factorB = .1 + .9*exp(-float(node.depth)/6)
         #factorB = factorA
-        self.bcDecoder.lbProvider.objBufLim = self.objBufLim/factorB
-        self.bcDecoder.lbProvider.iterationLimit = self.iterLimit*factorA
-        self.bcDecoder.lbProvider.minCutoff = self.minCutoff#/factorB
-        self.bcDecoder.lbProvider.sdX = origSdX*factorB
-        #self.bcDecoder.lbProvider.cutLimit = <int>(self.cutLimit*factorC)
+        # self.bcDecoder.lbProvider.objBufLim = self.objBufLim/factorB
+        # self.bcDecoder.lbProvider.iterationLimit = self.iterLimit*factorA
+        # self.bcDecoder.lbProvider.minCutoff = self.minCutoff#/factorB
+        # self.bcDecoder.lbProvider.sdX = origSdX*factorB
+        self.bcDecoder.lbProvider.objBufLim = origLim * factorX
+        self.bcDecoder.lbProvider.minCutoff = origCut * factorX
         if not self.canPrune:
             if self.sort:
                 sortedByScore = np.argsort(scores)[::-1]
@@ -282,10 +276,10 @@ cdef class ReliabilityBranching(BranchingRule):
                 if self.lamb != -1 and itersSinceChange >= self.lamb:# and node.depth > 0:
                     break
         self.bcDecoder.lbProvider.objBufLim = origLim
-        self.bcDecoder.lbProvider.iterationLimit = INFINITY
+        #self.bcDecoder.lbProvider.iterationLimit = INFINITY
         self.bcDecoder.lbProvider.minCutoff = origCut
-        self.bcDecoder.lbProvider.cutLimit = origCutLim
-        self.bcDecoder.lbProvider.sdX = origSdX
+        #self.bcDecoder.lbProvider.cutLimit = origCutLim
+        #self.bcDecoder.lbProvider.sdX = origSdX
         node.fractionalPart = solution[self.index]  # record f_i^+
 
     cdef int strongBranchScore(self, int index) except -1:
@@ -355,23 +349,22 @@ cdef class ReliabilityBranching(BranchingRule):
                 self.updatePsiMinus(node.branchIndex, Delta / node.parent.fractionalPart)
 
     cdef int rootCallback(self, int rounds, int iters) except -1:
-        self.rootRounds = rounds
-        self.rootIters = iters
+        pass
 
     cpdef params(self):
         ret = BranchingRule.params(self)
         ret['etaRel'] = self.etaRel
         if not self.sort:
             ret['sort'] = self.sort
-        ret['objBufLim'] = self.objBufLim
-        ret['iterLimit'] = self.iterLimit
-        ret['minCutoff'] = self.minCutoff
+        #ret['objBufLim'] = self.objBufLim
+        #ret['iterLimit'] = self.iterLimit
+        #ret['minCutoff'] = self.minCutoff
         if not self.updateInCallback:
             ret['updateInCallback'] = False
         if self.updateInStrong:
             ret['updateInStrong'] = True
         if not self.initStrong:
             ret['initStrong'] = False
-        if self.cutLimit != 0:
-            ret['cutLimit'] = self.cutLimit
+        # if self.cutLimit != 0:
+        #     ret['cutLimit'] = self.cutLimit
         return ret

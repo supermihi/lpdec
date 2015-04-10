@@ -47,7 +47,9 @@ cdef class Node:
             self.lb = self.parent.lb
             while parent is not None:
                 if parent.branchLb is not None:
-                    self.lb = fmax(self.lb, parent.branchLb[branchIndex, branchValue])
+                    if parent.branchLb[branchIndex, branchValue] > self.lb:
+                        self.lb = parent.branchLb[branchIndex, branchValue]
+                        self.parent.updateBound(self.lb, branchValue)
                 parent = parent.parent
         else:
             self.depth = 0
@@ -94,6 +96,14 @@ cdef class Node:
                 return [node1, node0]
             else:
                 return [node0, node1]
+
+    def isDescendantOf(self, Node other):
+        cdef Node current = self
+        while current is not None:
+            if current is other:
+                return True
+            current = current.parent
+        return False
 
     def printFixes(self):
         cdef Node node = self

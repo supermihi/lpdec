@@ -80,7 +80,7 @@ cdef class BranchAndCutDecoder(Decoder):
         int mixParam, maxRPCspecial, maxRPCnormal, maxRPCorig
         double mixGap, sentObjective, objBufLimOrig, cutoffOrig
         public int selectCnt
-        Node root
+        Node root, bestBoundNode
 
     def __init__(self, code,
                  branchClass=MostFractional,
@@ -131,13 +131,14 @@ cdef class BranchAndCutDecoder(Decoder):
             self.mixGap = float(d)
             self.maxRPCorig = self.lbProvider.maxRPCrounds
             self.cutoffOrig = self.lbProvider.minCutoff
+            self.objBufLimOrig = self.lbProvider.objBufLim
         elif selectionMethod == 'dfs':
             self.selectionMethod = dfs
         else:
             assert selectionMethod == "bbs", str(selectionMethod)
             self.selectionMethod = bbs
         self.timer = utils.Timer()
-        self.objBufLimOrig = self.lbProvider.objBufLim
+        self.bestBoundNode = None
         Decoder.__init__(self, code, name=name)
 
 
@@ -208,6 +209,59 @@ cdef class BranchAndCutDecoder(Decoder):
     cpdef fixed(self, int index):
         return self.lbProvider.fixed(index)
 
+    cdef Node popMinNode(self, list activeNodes):
+        cdef int i, minIndex = -1
+        cdef double minValue = INFINITY
+        for i in range(len(activeNodes)):
+            if activeNodes[i].lb < minValue:
+                minIndex = i
+                minValue = activeNodes[i].lb
+        if minValue > self.root.lb:
+            print('{} > {}'.format(minValue, self.root.lb))
+        return activeNodes.pop(minIndex)
+
+
+    cdef Node selectNode(self, list activeNodes, Node currentNode, double ub):
+        cdef bint bestBoundStep = False
+        if self.selectionMethod == mixed:
+            if ub - currentNode.lb > self.mixGap:
+                if self.selectCnt >= self.mixParam*(1+self.bestBoundNode.depth/10.0):
+                    bestBoundStep = True
+                elif self.minDistance and self.root.lb == 1:
+                    bestBoundStep = True
+            if len(activeNodes) == 0:
+                pass
+            elif not bestBoundStep and self.bestBoundNode is not None and not activeNodes[-1].isDescendantOf(self.bestBoundNode):
+                bestBoundStep = True
+            if bestBoundStep:
+                # best bound step
+                newNode = self.popMinNode(activeNodes)
+                self.selectCnt = 1
+                #self.lbProvider.maxRPCrounds = self.maxRPCspecial
+                # self.lbProvider.objBufLim = self.objBufLimOrig / 3
+                # self.lbProvider.minCutoff = self.cutoffOrig / 3
+                self.lbProvider.maxRPCrounds = -1
+                self.lbProvider.objBufLim = newNode.depth*(self.objBufLimOrig/2.0 - 0.001)/(self.code.infolength/4.0) + 0.001
+                self.lbProvider.minCutoff = newNode.depth*(self.cutoffOrig/2.0 - 1e-5)/(self.code.infolength/4.0) + 1e-5
+                if self.ubBB:
+                    self.calcUb = True
+                newNode.special = True
+                self.bestBoundNode = newNode
+                return newNode
+            else:
+                newNode = activeNodes.pop()
+                self.lbProvider.maxRPCrounds = self.maxRPCnormal
+                self.lbProvider.objBufLim = self.objBufLimOrig
+                self.lbProvider.minCutoff = self.cutoffOrig
+                self.selectCnt += 1
+                if self.ubBB:
+                    self.calcUb = False
+
+                return newNode
+        elif self.selectionMethod == dfs:
+            return activeNodes.pop()
+        elif self.selectionMethod == bbs:
+            return self.popMinNode(activeNodes)
 
     cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef:
@@ -227,15 +281,16 @@ cdef class BranchAndCutDecoder(Decoder):
         self._stats['nodes'] += 1
         if self.selectionMethod == mixed:
             self.lbProvider.maxRPCrounds = self.maxRPCspecial
+            self.bestBoundNode = self.root
 
         while True:
             iteration += 1
             if node.depth > self._stats['maxDepth']:
                 self._stats['maxDepth'] = node.depth
             if iteration % 10 == 0 or iteration == 2:
-                logger.debug('{}/{}, c {}, it {}, lp {:6f}, heu {:6f} bra {:6f}'.format(
+                logger.debug('{}/{}, c {}, d {}, it {}, n {}, lp {:6f}, heu {:6f} bra {:6f}'.format(
                     self.root.lb, ub, self.lbProvider.model.NumConstrs,
-                    iteration, self._stats["lpTime"], self._stats['iterTime'], self._stats['branchTime']))
+                    node.depth, iteration, len(activeNodes), self._stats["lpTime"], self._stats['iterTime'], self._stats['branchTime']))
             # upper bound calculation
             if iteration > 1 and self.calcUb: # for first iteration this was done in setLLR
                 self.timer.start()
@@ -309,14 +364,6 @@ cdef class BranchAndCutDecoder(Decoder):
                 else:
                     branchIndex = self.branchRule.index
                     if branchIndex < 0:
-                        print('BAA', branchIndex)
-                        print([i for i in range(self.code.blocklength) if self.fixed(i)])
-                        print(np.asarray(self.lbProvider.solution))
-                        print(np.around(np.dot(self.code.parityCheckMatrix, self.lbProvider.solution), 6) % 2)
-                        print(self.lbProvider.solution in self.code)
-                        print(np.allclose(np.mod(self.lbProvider.solution, 1), 0))
-                        print(np.mod(self.lbProvider.solution, 1))
-                        print(gfqla.inKernel(self.code.parityCheckMatrix, np.rint(self.lbProvider.solution).astype(np.int)))
                         raise RuntimeError()
                     activeNodes.extend(node.branch(branchIndex, self.childOrder, self, ub))
             if node.parent is not None:
@@ -328,6 +375,9 @@ cdef class BranchAndCutDecoder(Decoder):
                 self._stats["termEx"] += 1
                 break
             newNode = self.selectNode(activeNodes, node, ub)
+            while newNode.lb >= ub - 1e-6:
+                print('x')
+                newNode = self.selectNode(activeNodes, node, ub)
             move(self.lbProvider, self.ubProvider, node, newNode)
             node = newNode
         if self.selectionMethod == mixed:
@@ -455,44 +505,6 @@ cdef class BranchAndCutDecoder(Decoder):
         # restore normal (decoding) mode
         self.ubProvider.excludeZero = self.minDistance = False
         return self.objectiveValue
-
-    cdef Node popMinNode(self, list activeNodes):
-        cdef int i, minIndex = -1
-        cdef double minValue = INFINITY
-        for i in range(len(activeNodes)):
-            if activeNodes[i].lb < minValue:
-                minIndex = i
-                minValue = activeNodes[i].lb
-        return activeNodes.pop(minIndex)
-
-
-    cdef Node selectNode(self, list activeNodes, Node currentNode, double ub):
-        if self.selectionMethod == mixed:
-            if (self.selectCnt >= self.mixParam or (self.minDistance and self.root.lb == 1)) and (ub - currentNode.lb) > self.mixGap:
-                # best bound step
-                newNode = self.popMinNode(activeNodes)
-                self.selectCnt = 1
-                self.lbProvider.maxRPCrounds = self.maxRPCspecial
-                # self.lbProvider.objBufLim = self.objBufLimOrig / 3
-                # self.lbProvider.minCutoff = self.cutoffOrig / 3
-                if self.ubBB:
-                    self.calcUb = True
-                newNode.special = True
-                return newNode
-            else:
-                newNode = activeNodes.pop()
-                self.lbProvider.maxRPCrounds = self.maxRPCnormal
-                # self.lbProvider.objBufLim = self.objBufLimOrig
-                # self.lbProvider.minCutoff = self.cutoffOrig
-                self.selectCnt += 1
-                if self.ubBB:
-                    self.calcUb = False
-
-                return newNode
-        elif self.selectionMethod == dfs:
-            return activeNodes.pop()
-        elif self.selectionMethod == bbs:
-            return self.popMinNode(activeNodes)
 
     def params(self):
         if self.selectionMethod == mixed:
