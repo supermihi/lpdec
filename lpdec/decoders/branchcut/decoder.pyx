@@ -13,10 +13,8 @@
 
 import logging
 import itertools
-import random
 from collections import OrderedDict
 
-from libc.math cimport fabs, fmin, fmax
 import numpy as np
 cimport numpy as np
 from numpy.math cimport INFINITY
@@ -27,7 +25,7 @@ from lpdec.decoders.iterative import IterativeDecoder
 from lpdec.decoders.branchcut.node cimport Node, move
 from lpdec.decoders.branchcut.branching cimport BranchingRule
 from lpdec.decoders.branchcut.branching import MostFractional, FirstFractional, LeastReliable, ReliabilityBranching
-from lpdec import gfqla, utils, persistence
+from lpdec import utils, persistence
 
 logger = logging.getLogger(name='branchcut-decoder')
 
@@ -125,7 +123,7 @@ cdef class BranchAndCutDecoder(Decoder):
             self.mixGap = float(b)
             self.cutoffOrig = self.lbProvider.minCutoff
             self.objBufLimOrig = self.lbProvider.objBufLim
-            maxDecay = 3.0
+            maxDecay = 4.0
             maxDecayDepth = (code.blocklength - code.infolength) // 2
             self.bufDecayFactor = (self.objBufLimOrig / maxDecay - 0.001)/maxDecayDepth
             self.cutDecayFactor = (self.cutoffOrig / maxDecay - 1e-5)/maxDecayDepth
