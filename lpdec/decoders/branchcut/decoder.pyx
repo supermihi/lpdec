@@ -371,6 +371,8 @@ cdef class BranchAndCutDecoder(Decoder):
         self.objectiveValue = ub
         if initOpt:
             self._stats['initUbOpt'] += 1
+        self.lbProvider.objBufLim = self.objBufLimOrig
+        self.lbProvider.minCutoff = self.cutoffOrig
         for i in range(self.code.blocklength):
             self.lbProvider.release(i)
             self.ubProvider.release(i)

@@ -237,7 +237,7 @@ def get(what, identifier, code=None):
     else:
         try:
             return cls.fromJSON(row[table.c.json], code=code)
-        except (ImportError, RuntimeError) as e:
+        except Exception as e:
             # CPLEX, Gurobi etc. might not be available
             print('Warning: creating dummy decoder "{}":\n{}'.format(row[table.c.name], e))
             return DummyDecoder(code=code, name=row[table.c.name])
