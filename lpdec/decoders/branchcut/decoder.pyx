@@ -75,7 +75,7 @@ cdef class BranchAndCutDecoder(Decoder):
         SelectionMethod selectionMethod
         BranchingRule branchRule
         public Decoder lbProvider, ubProvider
-        int mixParam, maxDecayDepth
+        int mixParam, maxDecayDepth, initOrder, origOrder
         double mixGap, sentObjective, objBufLimOrig, cutoffOrig, cutDecayFactor, bufDecayFactor
         public int selectCnt
         Node root, bestBoundNode
@@ -135,6 +135,8 @@ cdef class BranchAndCutDecoder(Decoder):
             self.selectionMethod = bbs
         self.timer = utils.Timer()
         self.bestBoundNode = None
+        self.initOrder = kwargs.get('initOrder', 0)
+        self.origOrder = self.ubProvider.reencodeOrder
         Decoder.__init__(self, code, name=name)
 
 
@@ -182,7 +184,11 @@ cdef class BranchAndCutDecoder(Decoder):
             self.ubProvider.foundCodeword = self.ubProvider.mlCertificate = False
         else:
             self.timer.start()
+            if self.initOrder != 0:
+                self.ubProvider.reencodeOrder = self.initOrder
             self.ubProvider.solve()
+            if self.initOrder != 0:
+                self.ubProvider.reencodeOrder = self.origOrder
             self._stats['iterTime'] += self.timer.stop()
             if self.ubProvider.foundCodeword:
                 self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
@@ -515,5 +521,7 @@ cdef class BranchAndCutDecoder(Decoder):
             parms['fixInitConstrs'] = True
         if self.highSNR:
             parms['highSNR'] = True
+        if self.initOrder != 0:
+            parms['initOrder'] = self.initOrder
         parms['name'] = self.name
         return parms

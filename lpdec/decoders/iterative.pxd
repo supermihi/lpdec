@@ -23,7 +23,7 @@ cdef class IterativeDecoder(Decoder):
         double[:] fP, bP
         double[:] fixes
         int            iterations
-        int            reencodeOrder
+        public int     reencodeOrder
         bint           minSum, reencodeIfCodeword
         public bint    excludeZero
         # helpers for the order-i reprocessing
