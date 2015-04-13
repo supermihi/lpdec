@@ -309,9 +309,11 @@ cdef class BranchAndCutDecoder(Decoder):
             totalIters -= self.lbProvider._stats['simplexIters']
             lpFromBranch = False
             if node.parent is not None and node.parent.branchLb is not None and \
-                            (node.branchIndex, node.branchValue) in node.parent.branchLb:
+                            (node.branchIndex, node.branchValue) in node.parent.branchLb and \
+                            node.parent.branchSol0 is not None:
                 node.lpObj = node.parent.branchLb[node.branchIndex, node.branchValue]
                 lpFromBranch = True
+                print('from bla')
             else:
                 self.timer.start()
                 self.lbProvider.solve(node.lb, ub)
