@@ -132,6 +132,8 @@ cdef class ReliabilityBranching(BranchingRule):
     cdef double[::1] sigmaPlus, sigmaMinus, psiPlus, psiMinus
     cdef int[::1] etaPlus, etaMinus
     cdef bint sort, updateInStrong, updateInCallback, initStrong
+    cdef public double[::1] codeword
+    cdef Decoder lbProvider
 
     def __init__(self, code, Decoder bcDecoder, lamb=4, mu=1./6, etaRel=4, sort=False, **kwargs):
         BranchingRule.__init__(self, code, bcDecoder, lamb, mu)
@@ -145,6 +147,8 @@ cdef class ReliabilityBranching(BranchingRule):
         self.etaPlus = np.zeros(code.blocklength, dtype=np.intc)
         self.etaMinus = np.zeros(code.blocklength, dtype=np.intc)
         self.etaRel = etaRel
+        self.codeword = None
+        self.lbProvider = bcDecoder.lbProvider
         self.sort = sort
 
     cdef int reset(self) except -1:
@@ -203,7 +207,7 @@ cdef class ReliabilityBranching(BranchingRule):
         self.node = node
         self.canPrune = False
         self.index = -1
-
+        self.codeword = None
         candidates = np.array([i for i in range(solution.size) if solution[i] > 1e-6 and solution[i] < 1-1e-6])
         if len(candidates) == 0:
             print('no cands')
@@ -215,11 +219,6 @@ cdef class ReliabilityBranching(BranchingRule):
             print('all fixed')
             return 0
         itersSinceChange = 0
-        origLim = self.bcDecoder.lbProvider.objBufLim
-        origCut = self.bcDecoder.lbProvider.minCutoff
-        origCutLim = self.bcDecoder.lbProvider.cutLimit
-        origSdX = self.bcDecoder.lbProvider.sdX
-
         scores = np.array([self.score(solution[i]*self.psiMinus[i], (1-solution[i])*self.psiPlus[i])
                           for i in candidates])
 
@@ -235,19 +234,6 @@ cdef class ReliabilityBranching(BranchingRule):
                     computedThisRound[i] = 1
                     if self.canPrune:
                         break
-        # factorA = sqrt(fmax(0.2, 1 - float(node.depth)/11))
-        # factorB = sqrt(fmax(0.05, 1 - float(node.depth)/8))
-        # factorC = sqrt(fmax(0.1, 1 - float(node.depth)/10))
-        factorX = 1
-        # factorA = .2 + .8*exp(-float(node.depth)/10)
-        # factorB = .1 + .9*exp(-float(node.depth)/6)
-        #factorB = factorA
-        # self.bcDecoder.lbProvider.objBufLim = self.objBufLim/factorB
-        # self.bcDecoder.lbProvider.iterationLimit = self.iterLimit*factorA
-        # self.bcDecoder.lbProvider.minCutoff = self.minCutoff#/factorB
-        # self.bcDecoder.lbProvider.sdX = origSdX*factorB
-        self.bcDecoder.lbProvider.objBufLim = origLim * factorX
-        self.bcDecoder.lbProvider.minCutoff = origCut * factorX
         if not self.canPrune:
             if self.sort:
                 sortedByScore = np.argsort(scores)[::-1]
@@ -275,44 +261,45 @@ cdef class ReliabilityBranching(BranchingRule):
                     itersSinceChange += 1
                 if self.lamb != -1 and itersSinceChange >= self.lamb:# and node.depth > 0:
                     break
-        self.bcDecoder.lbProvider.objBufLim = origLim
-        #self.bcDecoder.lbProvider.iterationLimit = INFINITY
-        self.bcDecoder.lbProvider.minCutoff = origCut
-        #self.bcDecoder.lbProvider.cutLimit = origCutLim
-        #self.bcDecoder.lbProvider.sdX = origSdX
         node.fractionalPart = solution[self.index]  # record f_i^+
 
     cdef int strongBranchScore(self, int index) except -1:
         cdef double deltaMinus, deltaPlus, objMinus, objPlus
-        self.bcDecoder.lbProvider.fix(index, 0)
-        self.bcDecoder.lbProvider.solve(self.node.lb, self.ub)
-        objMinus = self.bcDecoder.lbProvider.objectiveValue
-        self.bcDecoder.lbProvider.release(index)
-        if self.bcDecoder.lbProvider.status == Decoder.UPPER_BOUND_HIT:
-            deltaMinus = 1.0*(objMinus - self.node.lpObj)
-        elif self.bcDecoder.lbProvider.status ==  Decoder.INFEASIBLE:
+        self.lbProvider.fix(index, 0)
+        self.lbProvider.solve(self.node.lb, self.ub)
+        objMinus = self.lbProvider.objectiveValue
+        self.lbProvider.release(index)
+        if self.lbProvider.status == Decoder.UPPER_BOUND_HIT:
+            deltaMinus = objMinus - self.node.lpObj
+        elif self.lbProvider.status ==  Decoder.INFEASIBLE:
             deltaMinus = objMinus - self.node.lpObj
         else:
             deltaMinus = objMinus - self.node.lpObj
-        if self.bcDecoder.lbProvider.status == Decoder.LIMIT_HIT:
+            if self.lbProvider.foundCodeword and objMinus < self.ub:
+                self.codeword = self.lbProvider.solution.copy()
+                self.ub = objMinus
+        if self.lbProvider.status == Decoder.LIMIT_HIT:
             self.bcDecoder._stats['brStopLim'] += 1
 
-        self.bcDecoder.lbProvider.fix(index, 1)
-        self.bcDecoder.lbProvider.solve(self.node.lb, self.ub)
-        self.bcDecoder.lbProvider.release(index)
-        objPlus = self.bcDecoder.lbProvider.objectiveValue
-        if self.bcDecoder.lbProvider.status == Decoder.UPPER_BOUND_HIT:
-            deltaPlus = 1.0*(objPlus - self.node.lpObj)
-        elif self.bcDecoder.lbProvider.status == Decoder.INFEASIBLE:
+        self.lbProvider.fix(index, 1)
+        self.lbProvider.solve(self.node.lb, self.ub)
+        self.lbProvider.release(index)
+        objPlus = self.lbProvider.objectiveValue
+        if self.lbProvider.status == Decoder.UPPER_BOUND_HIT:
+            deltaPlus = objPlus - self.node.lpObj
+        elif self.lbProvider.status == Decoder.INFEASIBLE:
             deltaPlus = objPlus - self.node.lpObj
         else:
             deltaPlus = objPlus - self.node.lpObj
+            if self.lbProvider.foundCodeword and objPlus < self.ub:
+                self.codeword = self.lbProvider.solution.copy()
+                self.ub = objPlus
         if fmin(objMinus, objPlus) > self.node.lb:
             # we can update the node's lower bound using the branching results!
             self.node.lb = fmin(objMinus, objPlus)
             if self.node.parent is not None:
                 self.node.parent.updateBound(self.node.lb, self.node.branchValue)
-        if self.bcDecoder.lbProvider.status == Decoder.LIMIT_HIT:
+        if self.lbProvider.status == Decoder.LIMIT_HIT:
             self.bcDecoder._stats['brStopLim'] += 1
 
         if objMinus > self.ub - 1e-6 and objPlus > self.ub - 1e-6:
@@ -332,24 +319,21 @@ cdef class ReliabilityBranching(BranchingRule):
         if not self.updateInCallback:
             return 0
         if node.depth > 0:
-            # if self.bcDecoder.lbProvider.objectiveValue > self.ub - 1e-6:
+            # if self.lbProvider.objectiveValue > self.ub - 1e-6:
             #     print('ua')
             #     return 0
             if node.parent.fractionalPart == 0 or node.parent.fractionalPart == 1:
                 return 0
-            Delta = self.bcDecoder.lbProvider.objectiveValue - node.parent.lpObj
+            Delta = self.lpObj - node.parent.lpObj
             if Delta < 0:
                 self.bcDecoder._stats['deltaNeg'] += 1
                 #delta = 0
             else:
                 self.bcDecoder._stats['deltaPos'] += 1
-            if node.branchValue:
+            if node.branchValue == 1:
                 self.updatePsiPlus(node.branchIndex, Delta / (1 - node.parent.fractionalPart))
             else:
                 self.updatePsiMinus(node.branchIndex, Delta / node.parent.fractionalPart)
-
-    cdef int rootCallback(self, int rounds, int iters) except -1:
-        pass
 
     cpdef params(self):
         ret = BranchingRule.params(self)

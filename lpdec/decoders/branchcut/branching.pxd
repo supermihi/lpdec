@@ -13,7 +13,8 @@ cdef class BranchingRule(JSONDecodable):
         object code
         Decoder bcDecoder
         int lamb
-        double ub, mu
+        public double ub
+        double mu
         Node node
         public int index
         public bint canPrune

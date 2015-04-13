@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # Copyright 2014-2015 Michael Helmling
-# cython: boundscheck=True
-# cython: nonecheck=True
+# cython: boundscheck=False
+# cython: nonecheck=False
 # cython: cdivision=False
 # cython: wraparound=True
-# cython: initializedcheck=True
+# cython: initializedcheck=False
 # cython: language_level=3
 #
 # This program is free software; you can redistribute it and/or modify
@@ -276,12 +276,15 @@ cdef class BranchAndCutDecoder(Decoder):
         self._stats['nodes'] += 1
         if self.selectionMethod == mixed:
             self.bestBoundNode = self.root
+            # set strong values for root node processing for root node
+            self.lbProvider.objBufLim = 0.001
+            self.lbProvider.minCutoff = 1e-5
 
         while True:
             iteration += 1
             if node.depth > self._stats['maxDepth']:
                 self._stats['maxDepth'] = node.depth
-            if iteration % 10 == 0 or iteration == 2:
+            if iteration % 50 == 0 or iteration == 2:
                 logger.debug('{}/{}, c {}, d {}, it {}, n {}, lp {:6f}, heu {:6f} bra {:6f}'.format(
                     self.root.lb, ub, self.lbProvider.model.NumConstrs,
                     node.depth, iteration, len(activeNodes), self._stats["lpTime"], self._stats['iterTime'], self._stats['branchTime']))
@@ -301,41 +304,29 @@ cdef class BranchAndCutDecoder(Decoder):
                     break
 
             # lower bound calculation
-            if (iteration == 1 or self.calcUb) and self.ubProvider.foundCodeword:
-                # self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
-                pass #TODO hint not used
-            else:
-                self.lbProvider.hint = None
-            if node.depth == 0:
-                # special root node treatment
-                self.lbProvider.objBufLim = 0.001
-                self.lbProvider.minCutoff = 1e-5
-                #self.lbProvider.superDual |= 2
             rounds = self.lbProvider._stats['rpcRounds']
             totalIters -= self.lbProvider._stats['simplexIters']
-
-            self.timer.start()
-            self.lbProvider.solve(node.lb, ub)
-            node.lpObj = self.lbProvider.objectiveValue
-            self._stats['lpTime'] += self.timer.stop()
-            if self.lbProvider.status == Decoder.UPPER_BOUND_HIT:
-                node.lb = INFINITY
-                self._stats['prBd2'] += 1
-            elif self.lbProvider.status == Decoder.INFEASIBLE:
-                node.lb = INFINITY
-                self._stats['prInf'] += 1
-            elif self.lbProvider.objectiveValue > node.lb:
-                node.lb = self.lbProvider.objectiveValue
+            if node.parent is not None and node.parent.branchLb is not None and \
+                    node.parent.branchLb[node.branchIndex, node.branchValue] > -INFINITY:
+                print('lb from branch')
+                node.lpObj = node.parent.branchLb[node.branchIndex, node.branchValue]
+            else:
+                self.timer.start()
+                self.lbProvider.solve(node.lb, ub)
+                node.lpObj = self.lbProvider.objectiveValue
+                self._stats['lpTime'] += self.timer.stop()
+                if self.lbProvider.status == Decoder.UPPER_BOUND_HIT:
+                    node.lb = INFINITY
+                    self._stats['prBd2'] += 1
+                elif self.lbProvider.status == Decoder.INFEASIBLE:
+                    node.lb = INFINITY
+                    self._stats['prInf'] += 1
+                elif self.lbProvider.objectiveValue > node.lb:
+                    node.lb = self.lbProvider.objectiveValue
+                totalIters += self.lbProvider._stats['simplexIters']
             self.branchRule.callback(node)
-            totalIters += self.lbProvider._stats['simplexIters']
-            if node.depth == 0:
-                self.lbProvider.objBufLim = self.objBufLimOrig
-                self.lbProvider.minCutoff = self.cutoffOrig
-                #self.lbProvider.superDual &= 1
-                self.branchRule.rootCallback(self.lbProvider._stats['rpcRounds'] - rounds,
-                                             self.lbProvider._stats['simplexIters'] - totalIters)
-                if self.fixInitConstrs:
-                    self.lbProvider.fixCurrentConstrs()
+            if node.depth == 0 and self.fixInitConstrs:
+                self.lbProvider.fixCurrentConstrs()
             # pruning or branching
             if self.lbProvider.foundCodeword:
                 # solution is integral
@@ -352,6 +343,10 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.timer.start()
                 self.branchRule.computeBranchIndex(node, ub, self.lbProvider.solution.copy())
                 self._stats['branchTime'] += self.timer.stop()
+                if self.branchRule.ub < ub:
+                    self.solution[:] = self.branchRule.codeword[:]
+                    ub = self.branchRule.ub
+                    print('new codeword from branching LP')
                 if self.branchRule.canPrune or node.lb >= ub - 1e-6:
                     self._stats['prBranch'] += 1
                 else:
