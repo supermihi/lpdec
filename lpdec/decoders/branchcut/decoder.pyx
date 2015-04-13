@@ -356,7 +356,7 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.branchRule.computeBranchIndex(node, ub, branchSolution)
                 self._stats['branchTime'] += self.timer.stop()
                 if self.branchRule.ub < ub:
-                    self.solution[:] = self.branchRule.codeword[:]
+                    self.solution = self.branchRule.codeword.copy()
                     ub = self.branchRule.ub
                     print('new codeword from branching LP')
                 if self.branchRule.canPrune or node.lb >= ub - 1e-6:
