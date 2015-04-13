@@ -347,9 +347,9 @@ cdef class BranchAndCutDecoder(Decoder):
                 self.timer.start()
                 if lpFromBranch:
                     if node.branchValue == 0:
-                        branchSolution = node.branchSol0
+                        branchSolution = node.parent.branchSol0
                     else:
-                        branchSolution = node.branchSol1
+                        branchSolution = node.parent.branchSol1
                     assert branchSolution is not None
                 else:
                     branchSolution = self.lbProvider.solution.copy()
