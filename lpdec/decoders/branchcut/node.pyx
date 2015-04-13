@@ -47,8 +47,7 @@ cdef class Node:
             self.lb = self.parent.lb
             while parent is not None:
                 if parent.branchLb is not None:
-                    if (branchIndex, branchValue) in parent.branchLb and \
-                                    parent.branchLb[branchIndex, branchValue] > self.lb:
+                    if parent.branchLb[branchIndex, branchValue] > self.lb:
                         self.lb = parent.branchLb[branchIndex, branchValue]
                         self.parent.updateBound(self.lb, branchValue)
                 parent = parent.parent

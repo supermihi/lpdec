@@ -7,6 +7,7 @@
 from __future__ import division
 
 from collections import OrderedDict
+from collections import defaultdict
 from numpy.math cimport INFINITY
 cimport numpy as np
 import numpy as np
@@ -200,7 +201,7 @@ cdef class ReliabilityBranching(BranchingRule):
 
     cdef int updBranchLb(self, Node node, int index, double lb0, double lb1):
         if node.branchLb is None:
-            node.branchLb = {}
+            node.branchLb = defaultdict(lambda: -INFINITY)
         node.branchLb[index, 0] = lb0
         node.branchLb[index, 1] = lb1
     
