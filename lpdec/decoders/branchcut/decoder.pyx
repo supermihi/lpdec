@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # Copyright 2014-2015 Michael Helmling
-# cython: boundscheck=False
-# cython: nonecheck=False
+# cython: boundscheck=True
+# cython: nonecheck=True
 # cython: cdivision=False
 # cython: wraparound=True
-# cython: initializedcheck=False
+# cython: initializedcheck=True
 # cython: language_level=3
 #
 # This program is free software; you can redistribute it and/or modify
