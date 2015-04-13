@@ -136,7 +136,8 @@ cdef class BranchAndCutDecoder(Decoder):
         self.timer = utils.Timer()
         self.bestBoundNode = None
         self.initOrder = kwargs.get('initOrder', 0)
-        self.origOrder = self.ubProvider.reencodeOrder
+        if self.initOrder != 0:
+            self.origOrder = self.ubProvider.reencodeOrder
         Decoder.__init__(self, code, name=name)
 
 
@@ -308,7 +309,7 @@ cdef class BranchAndCutDecoder(Decoder):
             totalIters -= self.lbProvider._stats['simplexIters']
             if node.parent is not None and node.parent.branchLb is not None and \
                     node.parent.branchLb[node.branchIndex, node.branchValue] > -INFINITY:
-                print('lb from branch')
+                #print('lb from branch')
                 node.lpObj = node.parent.branchLb[node.branchIndex, node.branchValue]
             else:
                 self.timer.start()
