@@ -324,7 +324,7 @@ cdef class ReliabilityBranching(BranchingRule):
             #     return 0
             if node.parent.fractionalPart == 0 or node.parent.fractionalPart == 1:
                 return 0
-            Delta = self.lpObj - node.parent.lpObj
+            Delta = node.lpObj - node.parent.lpObj
             if Delta < 0:
                 self.bcDecoder._stats['deltaNeg'] += 1
                 #delta = 0
