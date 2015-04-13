@@ -17,7 +17,8 @@ cdef class Node:
     cdef double lbChild0, lbChild1
     cdef double fractionalPart, lpObj
     cdef public list implicitFixes
-    cdef public double[:, ::1] branchLb
+    cdef public dict branchLb
+    cdef public double[::1] branchSol0, branchSol1
 
     cdef void updateBound(self, double lbChild, int childValue)
     cdef list branch(self, int index, bytes childOrder, Decoder decoder, double ub)

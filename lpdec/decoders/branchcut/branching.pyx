@@ -129,7 +129,7 @@ cdef class ReliabilityBranching(BranchingRule):
 
     cdef int etaRel
     cdef double deltaMinus, deltaPlus, objMinus, objPlus
-    cdef double[::1] sigmaPlus, sigmaMinus, psiPlus, psiMinus
+    cdef double[::1] sigmaPlus, sigmaMinus, psiPlus, psiMinus, bs0, bs1
     cdef int[::1] etaPlus, etaMinus
     cdef bint sort, updateInStrong, updateInCallback, initStrong
     cdef public double[::1] codeword
@@ -149,6 +149,8 @@ cdef class ReliabilityBranching(BranchingRule):
         self.etaRel = etaRel
         self.codeword = None
         self.lbProvider = bcDecoder.lbProvider
+        self.bs0 = np.empty(code.blocklength, dtype=np.double)
+        self.bs1 = np.empty(code.blocklength, dtype=np.double)
         self.sort = sort
 
     cdef int reset(self) except -1:
@@ -198,7 +200,7 @@ cdef class ReliabilityBranching(BranchingRule):
 
     cdef int updBranchLb(self, Node node, int index, double lb0, double lb1):
         if node.branchLb is None:
-            node.branchLb = -INFINITY * np.ones((self.code.blocklength, 2))
+            node.branchLb = {}
         node.branchLb[index, 0] = lb0
         node.branchLb[index, 1] = lb1
     
@@ -243,6 +245,7 @@ cdef class ReliabilityBranching(BranchingRule):
             maxScore = scores[0]
             for i in range(len(candidates)):
                 index = candidates[i]
+                strong = False
                 if min(self.etaPlus[index], self.etaMinus[index]) < self.etaRel and not computedThisRound[i]:
                     # unreliable score -> strong branch!
                     self.strongBranchScore(index)
@@ -253,10 +256,16 @@ cdef class ReliabilityBranching(BranchingRule):
                         self.updatePsiMinus(index, self.deltaMinus/solution[index])
                     score = self.score(self.deltaMinus, self.deltaPlus)
                     scores[i] = score
+                    strong = True
                 if scores[i] > maxScore:
                     self.index = index
                     maxScore = scores[i]
                     itersSinceChange = 0
+                    if strong:
+                        node.branchSol0 = self.bs0.copy()
+                        node.branchSol1 = self.bs1.copy()
+                    else:
+                        node.branchSol0 = node.branchSol1 = None
                 else:
                     itersSinceChange += 1
                 if self.lamb != -1 and itersSinceChange >= self.lamb:# and node.depth > 0:
@@ -280,7 +289,7 @@ cdef class ReliabilityBranching(BranchingRule):
                 self.ub = objMinus
         if self.lbProvider.status == Decoder.LIMIT_HIT:
             self.bcDecoder._stats['brStopLim'] += 1
-
+        self.bs0[:] = self.lbProvider.solution[:]
         self.lbProvider.fix(index, 1)
         self.lbProvider.solve(self.node.lb, self.ub)
         self.lbProvider.release(index)
@@ -301,7 +310,7 @@ cdef class ReliabilityBranching(BranchingRule):
                 self.node.parent.updateBound(self.node.lb, self.node.branchValue)
         if self.lbProvider.status == Decoder.LIMIT_HIT:
             self.bcDecoder._stats['brStopLim'] += 1
-
+        self.bs1[:] = self.lbProvider.solution[:]
         if objMinus > self.ub - 1e-6 and objPlus > self.ub - 1e-6:
             self.canPrune = True
         else:
