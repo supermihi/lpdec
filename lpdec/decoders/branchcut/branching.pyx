@@ -227,6 +227,7 @@ cdef class ReliabilityBranching(BranchingRule):
 
         computedThisRound = np.zeros(len(candidates))
         if self.initStrong:
+            initBestScore = -INFINITY
             for i in range(len(candidates)):
                 index = candidates[i]
                 if self.etaPlus[index] == 0 or self.etaMinus[index] == 0:
@@ -237,6 +238,10 @@ cdef class ReliabilityBranching(BranchingRule):
                     computedThisRound[i] = 1
                     if self.canPrune:
                         break
+                    if scores[i] > initBestScore:
+                        initBestScore = scores[i]
+                        node.branchSol0 = self.bs0.copy()
+                        node.branchSol1 = self.bs1.copy()
         if not self.canPrune:
             if self.sort:
                 sortedByScore = np.argsort(scores)[::-1]
