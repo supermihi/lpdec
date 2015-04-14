@@ -82,7 +82,7 @@ class PolarCode(BinaryLinearBlockCode):
         for i in range(2**m):
             G[i] = Fkron[int(np.binary_repr(i, m)[::-1], 2)]
         Gt = G.T.copy()
-        frozen = np.flatnonzero(G.sum(1) < 2**(m-r))
+        frozen = np.flatnonzero(G.sum(1) < 2**(m-r)).tolist()
         return PolarCode(m, frozen=frozen, name='ReedMullerPolar({},{})'.format(m, r))
 
     def factorGraph(self):
