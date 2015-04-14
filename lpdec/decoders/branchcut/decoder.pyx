@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # Copyright 2014-2015 Michael Helmling
-# cython: boundscheck=True
-# cython: nonecheck=True
-# cython: cdivision=False
-# cython: wraparound=True
-# cython: initializedcheck=True
+# cython: boundscheck=False
+# cython: nonecheck=False
+# cython: cdivision=True
+# cython: wraparound=False
+# cython: initializedcheck=False
 # cython: language_level=3
 #
 # This program is free software; you can redistribute it and/or modify
@@ -376,7 +376,6 @@ cdef class BranchAndCutDecoder(Decoder):
                 break
             newNode = self.selectNode(activeNodes, node, ub)
             while newNode.lb >= ub - 1e-6:
-                print('x')
                 newNode = self.selectNode(activeNodes, node, ub)
             move(self.lbProvider, self.ubProvider, node, newNode)
             node = newNode

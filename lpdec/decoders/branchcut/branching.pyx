@@ -213,7 +213,6 @@ cdef class ReliabilityBranching(BranchingRule):
         self.codeword = None
         candidates = np.array([i for i in range(solution.size) if solution[i] > 1e-6 and solution[i] < 1-1e-6])
         if len(candidates) == 0:
-            print('no cands')
             for i in range(solution.size):
                 if not self.bcDecoder.fixed(i):
                     self.index = i
