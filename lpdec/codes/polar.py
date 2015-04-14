@@ -71,6 +71,20 @@ class PolarCode(BinaryLinearBlockCode):
             self._parityCheckMatrix = G.T[self.frozen].copy()  # make C-contiguous
         return self._parityCheckMatrix
 
+    @staticmethod
+    def reedMullerCode(m, r):
+        F = np.array([[1, 0], [1, 1]]) # polar kernel matrix
+        Fkron = np.ones((1, 1))
+        for i in range(m):
+            Fkron = np.kron(Fkron, F)
+        # reorder rows by bit-reversal
+        G = np.empty(Fkron.shape, dtype=np.int)
+        for i in range(2**m):
+            G[i] = Fkron[int(np.binary_repr(i, m)[::-1], 2)]
+        Gt = G.T.copy()
+        frozen = np.flatnonzero(G.sum(1) < 2**(m-r))
+        return PolarCode(m, frozen=frozen, name='ReedMullerPolar({},{})'.format(m, r))
+
     def factorGraph(self):
         factorGraph = PolarFactorGraph(self.n)
         for index in self.frozen:
