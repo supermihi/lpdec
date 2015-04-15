@@ -141,9 +141,10 @@ cdef class BranchAndCutDecoder(Decoder):
         Decoder.__init__(self, code, name=name)
 
 
-    optimizedOptions=dict(name='B&C[mixed30/2;llr;cut.2;M-100;iter100-o2]',
-                          selectionMethod='mixed50/2', childOrder=b'llr',
-                          lpParams=dict(removeInactive=100, keepCuts=True, minCutoff=.2),
+    optimizedOptions=dict(name='B&C[mixed/30/2;llr;cut.2;M-100;iter100-o2]',
+                          selectionMethod='mixed-/30/100/5/2', childOrder=b'llr',
+                          lpParams=dict(removeInactive=100, keepCuts=True,
+                                        maxRPCrounds=-1, minCutoff=.2),
                           iterParams=dict(iterations=100, reencodeOrder=2,
                                           reencodeIfCodeword=False))
 
@@ -306,32 +307,24 @@ cdef class BranchAndCutDecoder(Decoder):
             # lower bound calculation
             rounds = self.lbProvider._stats['rpcRounds']
             totalIters -= self.lbProvider._stats['simplexIters']
-            lpFromBranch = False
-            if node.parent is not None and node.parent.branchLb is not None and \
-                            (node.branchIndex, node.branchValue) in node.parent.branchLb and \
-                            node.parent.branchSol0 is not None:
-                node.lpObj = node.parent.branchLb[node.branchIndex, node.branchValue]
-                lpFromBranch = True
-                print('from bla')
-            else:
-                self.timer.start()
-                self.lbProvider.solve(node.lb, ub)
-                node.lpObj = self.lbProvider.objectiveValue
-                self._stats['lpTime'] += self.timer.stop()
-                if self.lbProvider.status == Decoder.UPPER_BOUND_HIT:
-                    node.lb = INFINITY
-                    self._stats['prBd2'] += 1
-                elif self.lbProvider.status == Decoder.INFEASIBLE:
-                    node.lb = INFINITY
-                    self._stats['prInf'] += 1
-                elif self.lbProvider.objectiveValue > node.lb:
-                    node.lb = self.lbProvider.objectiveValue
-                totalIters += self.lbProvider._stats['simplexIters']
+            self.timer.start()
+            self.lbProvider.solve(node.lb, ub)
+            node.lpObj = self.lbProvider.objectiveValue
+            self._stats['lpTime'] += self.timer.stop()
+            if self.lbProvider.status == Decoder.UPPER_BOUND_HIT:
+                node.lb = INFINITY
+                self._stats['prBd2'] += 1
+            elif self.lbProvider.status == Decoder.INFEASIBLE:
+                node.lb = INFINITY
+                self._stats['prInf'] += 1
+            elif self.lbProvider.objectiveValue > node.lb:
+                node.lb = self.lbProvider.objectiveValue
+            totalIters += self.lbProvider._stats['simplexIters']
             self.branchRule.callback(node)
             if node.depth == 0 and self.fixInitConstrs:
                 self.lbProvider.fixCurrentConstrs()
             # pruning or branching
-            if not lpFromBranch and self.lbProvider.foundCodeword:
+            if self.lbProvider.foundCodeword:
                 # solution is integral
                 if self.lbProvider.objectiveValue < ub:
                     self.solution[:] = self.lbProvider.solution[:]
@@ -344,15 +337,7 @@ cdef class BranchAndCutDecoder(Decoder):
             elif node.lb < ub-1e-6:
                 # branch
                 self.timer.start()
-                if lpFromBranch:
-                    if node.branchValue == 0:
-                        branchSolution = node.parent.branchSol0
-                    else:
-                        branchSolution = node.parent.branchSol1
-                    assert branchSolution is not None
-                else:
-                    branchSolution = self.lbProvider.solution.copy()
-                self.branchRule.computeBranchIndex(node, ub, branchSolution)
+                self.branchRule.computeBranchIndex(node, ub, self.lbProvider.solution.copy())
                 self._stats['branchTime'] += self.timer.stop()
                 if self.branchRule.ub < ub:
                     self.solution = self.branchRule.codeword.copy()
