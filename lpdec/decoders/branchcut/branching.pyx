@@ -225,6 +225,7 @@ cdef class ReliabilityBranching(BranchingRule):
                           for i in candidates])
 
         computedThisRound = np.zeros(len(candidates))
+        branchSolIndex = -1
         if self.initStrong:
             initBestScore = -INFINITY
             for i in range(len(candidates)):
@@ -237,6 +238,11 @@ cdef class ReliabilityBranching(BranchingRule):
                     computedThisRound[i] = 1
                     if self.canPrune:
                         break
+                    if scores[i] > initBestScore:
+                        initBestScore = scores[i]
+                        node.branchSol0 = self.bs0.copy()
+                        node.branchSol1 = self.bs1.copy()
+                        branchSolIndex = index
         if not self.canPrune:
             if self.sort:
                 sortedByScore = np.argsort(scores)[::-1]
@@ -246,6 +252,7 @@ cdef class ReliabilityBranching(BranchingRule):
             maxScore = scores[0]
             for i in range(len(candidates)):
                 index = candidates[i]
+                strong = False
                 if min(self.etaPlus[index], self.etaMinus[index]) < self.etaRel and not computedThisRound[i]:
                     # unreliable score -> strong branch!
                     self.strongBranchScore(index)
@@ -256,14 +263,23 @@ cdef class ReliabilityBranching(BranchingRule):
                         self.updatePsiMinus(index, self.deltaMinus/solution[index])
                     score = self.score(self.deltaMinus, self.deltaPlus)
                     scores[i] = score
+                    strong = True
                 if scores[i] > maxScore:
                     self.index = index
                     maxScore = scores[i]
                     itersSinceChange = 0
+                    if strong:
+                        node.branchSol0 = self.bs0.copy()
+                        node.branchSol1 = self.bs1.copy()
+                        branchSolIndex = index
                 else:
                     itersSinceChange += 1
                 if self.lamb != -1 and itersSinceChange >= self.lamb:# and node.depth > 0:
                     break
+        if branchSolIndex != self.index:
+            node.branchSol0 = node.branchSol1 = None
+        else:
+            print('have bs')
         node.fractionalPart = solution[self.index]  # record f_i^+
 
     cdef int strongBranchScore(self, int index) except -1:

@@ -58,6 +58,7 @@ cdef class Node:
         self.lbChild0 = self.lbChild1 = -INFINITY
         self.implicitFixes = []
         self.branchLb = None
+        self.branchSol0 = self.branchSol1 = None
 
     cdef void updateBound(self, double lbChild, int childValue):
         cdef double newLb, oldChild = self.lbChild0 if childValue == 0 else self.lbChild1
