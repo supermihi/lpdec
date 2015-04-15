@@ -31,9 +31,10 @@ cdef class IterativeDecoder(Decoder):
         np.intp_t[:]   indices, pool
         np.intp_t[:,:] varNeigh2
         int            maxRange
-        double         reencodeRange
+        double         reencodeRange, sentObjective
         np.int_t  [:,::1] matrix
 
+    cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=?)
     cpdef solve(self, double lb=?, double ub=?)
 
     cpdef fix(self, int index, int val)

@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 # distutils: libraries = ["gurobi60"]
-# cython: boundscheck=False
-# cython: nonecheck=False
 # cython: cdivision=True
 # cython: wraparound=False
-# cython: initializedcheck=False
 # cython: language_level=3
 # Copyright 2014-2015 Michael Helmling
 #

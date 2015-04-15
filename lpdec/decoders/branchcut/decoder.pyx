@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright 2014-2015 Michael Helmling
-# cython: boundscheck=False
-# cython: nonecheck=False
 # cython: cdivision=True
 # cython: wraparound=True
-# cython: initializedcheck=False
 # cython: language_level=3
 #
 # This program is free software; you can redistribute it and/or modify
@@ -27,7 +24,7 @@ from lpdec.decoders.branchcut.branching cimport BranchingRule
 from lpdec.decoders.branchcut.branching import MostFractional, FirstFractional, LeastReliable, ReliabilityBranching
 from lpdec import utils, persistence
 
-logger = logging.getLogger(name='branchcut-decoder')
+logger = logging.getLogger(name='b&c')
 
 
 cdef enum SelectionMethod:

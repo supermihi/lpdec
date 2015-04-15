@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# cython: cdivision=False, wraparound=False, boundscheck=False, initializedcheck=False, nonecheck=False
+# cython: cdivision=False, wraparound=False
 # Copyright 2014-2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -51,7 +51,6 @@ cdef class IterativeDecoder(Decoder):
             self.varDeg2 = np.zeros(code.blocklength, dtype=np.intc)
             self.fixSyndrome = np.zeros(code.blocklength, dtype=np.intc)
         self.fixes = np.zeros(n, dtype=np.double)
-        self.solution = np.empty(n, dtype=np.double)
         self.checkNodeSatStates = np.empty(k, dtype=np.intc)
         self.varSoftBits = np.empty(n, dtype=np.double)
         self.varHardBits = np.empty(n, dtype=np.intc)
@@ -91,6 +90,16 @@ cdef class IterativeDecoder(Decoder):
 
     cpdef release(self, int index):
         self.fixes[index] = 0
+
+    cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
+        cdef int i
+        if sent is not None:
+            self.sentObjective = np.dot(sent, llrs)
+            for i in range(sent.size):
+                self.solution[i] = sent[i]
+        else:
+            self.sentObjective = -INFINITY
+        Decoder.setLLRs(self, llrs)
 
     cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef:
@@ -174,6 +183,7 @@ cdef class IterativeDecoder(Decoder):
             if codeword:
                 self.foundCodeword = True
                 break
+        self._stats['iterations'] += iteration
         self.objectiveValue = 0
         # create solution from varHardBits
         for i in range(numVarNodes):
@@ -182,12 +192,14 @@ cdef class IterativeDecoder(Decoder):
                 self.objectiveValue += llrs[i]
         if not codeword:
             self._stats['noncodewords'] += 1
+        elif self.objectiveValue < self.sentObjective and not self.excludeZero:
+            return
         if not codeword or (self.excludeZero and self.objectiveValue == 0) or self.reencodeIfCodeword:
             if not codeword or (self.excludeZero and self.objectiveValue == 0):
                 self.objectiveValue = INFINITY
             if self.reencodeOrder >= 0:
                 self.reprocess()
-        self._stats['iterations'] += iteration
+
 
     cdef int reprocess(self) except 1:
         """Perform order-i reprocessing, where i is given by :attr:`self.reencodeOrder`.
@@ -203,7 +215,9 @@ cdef class IterativeDecoder(Decoder):
         cdef np.intp_t[:,:] varNeigh = self.varNeigh2
         cdef double[:] fixes = self.fixes, solution = self.solution, llrs = self.llrs
         cdef np.intp_t[:] unit = gaussianElimination(matrix, sorted, True)
-
+        if indices.shape[0] < self.reencodeOrder:
+            self.indices = np.empty(self.reencodeOrder, dtype=np.intp)
+            indices = self.indices
         for j in unit:
             if fixes[j] != 0:
                 # unit column is fixed -> not enough "free" unit columns -> no reprocessing possible
@@ -269,6 +283,8 @@ cdef class IterativeDecoder(Decoder):
                 self.foundCodeword = True
                 for j in range(self.code.blocklength):
                     solution[j] = candidate[j]
+                if self.objectiveValue < self.sentObjective:
+                    return 0
             # now, move the `order` positions through all configurations among the feasible pool.
             while True:
                 for i in range(order - 1, -1, -1):
@@ -304,6 +320,8 @@ cdef class IterativeDecoder(Decoder):
                     self.foundCodeword = True
                     for j in range(self.code.blocklength):
                         solution[j] = candidate[j]
+                    if self.objectiveValue < self.sentObjective:
+                        return 0
 
     def params(self):
         parms = OrderedDict()

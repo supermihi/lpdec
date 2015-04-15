@@ -29,6 +29,12 @@ def makeExtensions():
     if '--profile' in sys.argv:
         directives['profile'] = True
         sys.argv.remove('--profile')
+    if '--debug' in sys.argv:
+        sys.argv.remove('--debug')
+    else:
+        directives['boundscheck'] = False
+        directives['nonecheck'] = False
+        directives['initializedcheck'] = False
     extensions = cythonize(sources, include_path=[np.get_include()],
                            compiler_directives=directives)
     for e in extensions:
