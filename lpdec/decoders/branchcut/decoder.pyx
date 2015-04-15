@@ -72,8 +72,9 @@ cdef class BranchAndCutDecoder(Decoder):
         SelectionMethod selectionMethod
         BranchingRule branchRule
         public Decoder lbProvider, ubProvider
-        int mixParam, maxDecayDepth, initOrder, origOrder
+        int mixParam, maxDecayDepth, maxDecayDepthFactor, initOrder, origOrder
         double mixGap, sentObjective, objBufLimOrig, cutoffOrig, cutDecayFactor, bufDecayFactor
+        double maxDecay
         public int selectCnt
         Node root, bestBoundNode
 
@@ -120,8 +121,9 @@ cdef class BranchAndCutDecoder(Decoder):
             self.mixGap = float(b)
             self.cutoffOrig = self.lbProvider.minCutoff
             self.objBufLimOrig = self.lbProvider.objBufLim
-            maxDecay = 4.0
-            maxDecayDepth = (code.blocklength - code.infolength) // 2
+            self.maxDecay = kwargs.get('maxDecay', 4.0)
+            self.maxDecayDepthFactor = kwargs.get('maxDecayDepthFactor', 2)
+            maxDecayDepth = (code.blocklength - code.infolength) // self.maxDecayDepthFactor
             self.bufDecayFactor = (self.objBufLimOrig / maxDecay - 0.001)/maxDecayDepth
             self.cutDecayFactor = (self.cutoffOrig / maxDecay - 1e-5)/maxDecayDepth
             self.maxDecayDepth = maxDecayDepth
@@ -282,7 +284,7 @@ cdef class BranchAndCutDecoder(Decoder):
             iteration += 1
             if node.depth > self._stats['maxDepth']:
                 self._stats['maxDepth'] = node.depth
-            if iteration % 50 == 0 or iteration == 2:
+            if iteration % 100 == 0 or iteration == 2:
                 logger.debug('{}/{}, c {}, d {}, it {}, n {}, lp {:6f}, heu {:6f} bra {:6f}'.format(
                     self.root.lb, ub, self.lbProvider.model.NumConstrs,
                     node.depth, iteration, len(activeNodes), self._stats["lpTime"], self._stats['iterTime'], self._stats['branchTime']))
@@ -510,5 +512,9 @@ cdef class BranchAndCutDecoder(Decoder):
             parms['highSNR'] = True
         if self.initOrder != 0:
             parms['initOrder'] = self.initOrder
+        if self.maxDecay != 4.0:
+            parms['maxDecay'] = self.maxDecay
+        if self.maxDecayDepthFactor != 2:
+            parms['maxDecayDepthFactor'] = self.maxDecayDepthFactor
         parms['name'] = self.name
         return parms
