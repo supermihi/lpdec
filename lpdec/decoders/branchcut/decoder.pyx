@@ -72,9 +72,9 @@ cdef class BranchAndCutDecoder(Decoder):
         SelectionMethod selectionMethod
         BranchingRule branchRule
         public Decoder lbProvider, ubProvider
-        int mixParam, maxDecayDepth, maxDecayDepthFactor, initOrder, origOrder
+        int mixParam, maxDecayDepth, initOrder, origOrder
         double mixGap, sentObjective, objBufLimOrig, cutoffOrig, cutDecayFactor, bufDecayFactor
-        double maxDecay
+        double maxDecay, maxDecayDepthFactor, dfsDepthFactor
         public int selectCnt
         Node root, bestBoundNode
 
@@ -122,11 +122,12 @@ cdef class BranchAndCutDecoder(Decoder):
             self.cutoffOrig = self.lbProvider.minCutoff
             self.objBufLimOrig = self.lbProvider.objBufLim
             self.maxDecay = kwargs.get('maxDecay', 4.0)
-            self.maxDecayDepthFactor = kwargs.get('maxDecayDepthFactor', 2)
-            maxDecayDepth = (code.blocklength - code.infolength) // self.maxDecayDepthFactor
-            self.bufDecayFactor = (self.objBufLimOrig / maxDecay - 0.001)/maxDecayDepth
-            self.cutDecayFactor = (self.cutoffOrig / maxDecay - 1e-5)/maxDecayDepth
+            self.maxDecayDepthFactor = kwargs.get('maxDecayDepthFactor', 2.0)
+            maxDecayDepth = int((code.blocklength - code.infolength) / self.maxDecayDepthFactor)
+            self.bufDecayFactor = (self.objBufLimOrig / self.maxDecay - 0.001)/maxDecayDepth
+            self.cutDecayFactor = (self.cutoffOrig / self.maxDecay - 1e-5)/maxDecayDepth
             self.maxDecayDepth = maxDecayDepth
+            self.dfsDepthFactor = kwargs.get('dfsDepthFactor', 10)
         elif selectionMethod == 'dfs':
             self.selectionMethod = dfs
         else:
@@ -227,7 +228,7 @@ cdef class BranchAndCutDecoder(Decoder):
         cdef bint bestBoundStep = False
         if self.selectionMethod == mixed:
             if ub - currentNode.lb > self.mixGap:
-                if self.selectCnt >= self.mixParam*(1+self.bestBoundNode.depth/10.0):
+                if self.selectCnt >= self.mixParam*(1+self.bestBoundNode.depth/self.dfsDepthFactor):
                     bestBoundStep = True
                 elif self.minDistance and self.root.lb == 1:
                     bestBoundStep = True
@@ -516,5 +517,7 @@ cdef class BranchAndCutDecoder(Decoder):
             parms['maxDecay'] = self.maxDecay
         if self.maxDecayDepthFactor != 2:
             parms['maxDecayDepthFactor'] = self.maxDecayDepthFactor
+        if self.dfsDepthFactor != 10.0:
+            parms['dfsDepthFactor'] = self.dfsDepthFactor
         parms['name'] = self.name
         return parms
