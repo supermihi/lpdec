@@ -192,6 +192,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         for item in statNames:
             if item not in stats:
                 stats[item] = 0
+        if 'objSum' not in stats:
+            stats['objSum'] = 0.0
         Decoder.setStats(self, stats)
 
     cpdef fix(self, int i, int val):
@@ -244,9 +246,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.objectiveValue = -INFINITY
         self.objBuff[:] = -INFINITY
         self.status = Decoder.OPTIMAL
-        if self.sent is not None and ub == INFINITY:
-            # calculate known upper bound on the objective from sent codeword
-            ub = np.dot(self.sent, self.llrs) + 1e-6
         while True:
             iteration += 1
             self.timer.start()
@@ -297,7 +296,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)
                 self.status = Decoder.UPPER_BOUND_HIT
                 return
-            if self.objBufSize > 1:
+            if self.objBufLim != 0.0 and self.objBufSize > 1:
                 self.objBuff = np.roll(self.objBuff, 1)
                 self.objBuff[0] = self.objectiveValue
                 if self.objectiveValue - self.objBuff[self.objBuff.shape[0] - 1] < self.objBufLim:
@@ -365,6 +364,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     self.mlCertificate = self.foundCodeword = False
                     break
                 rpcrounds += 1
+        self._stats['objSum'] += self.objectiveValue
 
     cdef int superDualSearch(self, np.intp_t[::1] unitCols, np.intp_t[:] xindices) except -1:
         cdef int found = 0
