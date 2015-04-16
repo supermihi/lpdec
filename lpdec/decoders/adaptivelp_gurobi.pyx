@@ -377,6 +377,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                 if xindices[j] == i:
                     i = j + 1
                     break
+            # now xindices[i] is the first entry that is not a unit column
             for k in range(i, xindices.shape[0]):
                 if self.fractionality[xindices[k]] > 1e-6:
                     sigma += self.fractionality[xindices[k]]
