@@ -93,7 +93,8 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
             from lpdec.codes import BinaryLinearBlockCode
             from lpdec.decoders.ip import GurobiIPDecoder
             dualCode = BinaryLinearBlockCode(parityCheckMatrix=code.generatorMatrix, name='dual')
-            self.dualDecoder = SuperDualDecoder(dualCode, self, iterations=100, reencodeOrder=2, reencodeRange=1)
+            dualParams = kwargs.get('dualParams', {})
+            self.dualDecoder = SuperDualDecoder(dualCode, self, **dualParams)
         self.xlist = []
         for i in range(self.code.blocklength):
             self.xlist.append(self.model.addVar(0, 1, g.GRB_CONTINUOUS))
@@ -491,6 +492,9 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                     params['sdMin'] = self.sdMin
                 if self.sdMax != .45:
                     params['sdMax'] = self.sdMax
+            if self.superDual & 2:
+                if len(self.dualDecoder.params()) > 0:
+                    params['dualParams'] = self.dualDecoder.params()
         if self.noSkipOrig:
             params['noSkipOrig'] = True
         if len(self.grbParams):
@@ -515,7 +519,6 @@ cdef class SuperDualDecoder(Decoder):
         double[:] fixes
         int            iterations
         int            reencodeOrder
-        bint           minSum
         # helpers for the order-i reprocessing
         int[:]    syndrome, varDeg2, fixSyndrome
         np.int_t[::1] candidate
@@ -526,14 +529,11 @@ cdef class SuperDualDecoder(Decoder):
         np.int_t  [:,::1] matrix
         Decoder alpDecoder
 
-    def __init__(self, code, alpDecoder, minSum=False, iterations=20,
-                 reencodeOrder=-1,
-                 reencodeRange=1):
+    def __init__(self, code, alpDecoder, iterations=100, reencodeOrder=2, reencodeRange=1):
         name = 'X'
         Decoder.__init__(self, code, name)
         self.name = name
         self.alpDecoder = alpDecoder
-        self.minSum = minSum
         self.reencodeRange = reencodeRange
         self.iterations = iterations
         self.reencodeOrder = reencodeOrder
@@ -635,34 +635,15 @@ cdef class SuperDualDecoder(Decoder):
                 deg = checkNodeDegree[i]
                 if checkNodeSatStates[i]:
                     codeword = checkNodeSatStates[i] = False # reset for next iteration
-                if self.minSum:
-                    fP[0] = bP[deg] = INFINITY
-                    sign = False
-                    for j in range(deg):
-                        varIndex = checkNeighbors[i,j]
-                        if varToChecks[varIndex, i] < 0:
-                            fP[j+1] = fmin(fP[j], -varToChecks[varIndex, i])
-                            sign = not sign
-                        else:
-                            fP[j+1] = fmin(fP[j], varToChecks[varIndex, i])
-                        varIndex = checkNeighbors[i, deg-j-1]
-                        bP[deg-1-j] = fmin(bP[deg-j], fabs(varToChecks[varIndex, i]))
-                    for j in range(deg):
-                        varIndex = checkNeighbors[i,j]
-                        if sign ^ (varToChecks[varIndex,i] < 0):
-                            checkToVars[i, varIndex] = -fmin(fP[j], bP[j+1])
-                        else:
-                            checkToVars[i, varIndex] = fmin(fP[j], bP[j+1])
-                else:
-                    fP[0] = bP[deg] = 1
-                    for j in range(deg):
-                        varIndex = checkNeighbors[i,j]
-                        fP[j+1] = fP[j]*tanh(varToChecks[varIndex, i]/2)
-                        varIndex = checkNeighbors[i, deg-j-1]
-                        bP[deg-1-j] = bP[deg-j]*tanh(varToChecks[varIndex, i]/2)
-                    for j in range(deg):
-                        checkToVars[i, checkNeighbors[i,j]] = fmax(-1e9, fmin(2*atanh(fP[j]*bP[
-                                j+1]), 1e9)) # avoid infinity values
+                fP[0] = bP[deg] = 1
+                for j in range(deg):
+                    varIndex = checkNeighbors[i,j]
+                    fP[j+1] = fP[j]*tanh(varToChecks[varIndex, i]/2)
+                    varIndex = checkNeighbors[i, deg-j-1]
+                    bP[deg-1-j] = bP[deg-j]*tanh(varToChecks[varIndex, i]/2)
+                for j in range(deg):
+                    checkToVars[i, checkNeighbors[i,j]] = fmax(-1e9, fmin(2*atanh(fP[j]*bP[
+                            j+1]), 1e9)) # avoid infinity values
             if codeword:
                 if self.alpDecoder.searchCut(varHardBits) == 1:
                     foundCuts += 1
@@ -775,3 +756,13 @@ cdef class SuperDualDecoder(Decoder):
                 if self.alpDecoder.searchCut(candidate) == 1:
                     foundCuts += 1
         return foundCuts
+
+    def params(self):
+        parms = OrderedDict()
+        if self.iterations != 100:
+            parms['iterations'] = self.iterations
+        if self.reencodeOrder != 2:
+            parms['reencodeOrder'] = self.reencodeOrder
+        if self.reencodeRange != 1:
+            parms['reencodeRange'] = self.reencodeRange
+        return parms
