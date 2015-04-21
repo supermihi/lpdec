@@ -393,13 +393,17 @@ cdef class BranchAndCutDecoder(Decoder):
         self.selectCnt = 1
         self.root = node = Node()
         self.root.lb = 1
+        if self.selectionMethod == mixed:
+            self.bestBoundNode = self.root
+            # set strong values for root node processing for root node
+            self.lbProvider.objBufLim = 0.001
+            self.lbProvider.minCutoff = 1e-5
         activeNodes = []
         self.branchRule.reset()
         ub = INFINITY
         self._stats['nodes'] += 1
         for iteration in itertools.count(start=1):
             # statistic collection and debug output
-            depthStr = str(node.depth)
             if iteration % 10 == 0:
                 logger.info('MD {}/{}, d {}, n {}, it {}, lp {}, heu {} bra {}'.format(
                     self.root.lb,ub, node.depth,len(activeNodes), iteration,
@@ -455,6 +459,10 @@ cdef class BranchAndCutDecoder(Decoder):
                     self.timer.start()
                     self.branchRule.computeBranchIndex(node, ub, self.lbProvider.solution.copy())
                     self._stats['branchTime'] += self.timer.stop()
+                    if self.branchRule.ub < ub:
+                        self.solution = self.branchRule.codeword.copy()
+                        ub = self.branchRule.ub
+                        print('new codeword from branching LP')
                     if self.branchRule.canPrune or node.lb >= ub - 1 + delta:
                         node.lb = INFINITY
                         self._stats['prBranch'] += 1
@@ -476,6 +484,8 @@ cdef class BranchAndCutDecoder(Decoder):
                 self._stats["termEx"] += 1
                 break
             newNode = self.selectNode(activeNodes, node, ub)
+            while newNode.lb >= ub - 1e-6:
+                newNode = self.selectNode(activeNodes, node, ub)
             move(self.lbProvider, self.ubProvider, node, newNode)
             node = newNode
 

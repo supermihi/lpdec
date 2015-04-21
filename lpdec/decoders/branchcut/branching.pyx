@@ -27,6 +27,7 @@ cdef class BranchingRule(JSONDecodable):
         self.candInds = np.zeros(code.blocklength, dtype=np.intc)
         self.index = -1
         self.canPrune = False
+        self.ub = INFINITY
 
     cdef int callback(self, Node node) except -1:
         pass
