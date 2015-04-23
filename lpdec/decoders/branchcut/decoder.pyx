@@ -74,7 +74,7 @@ cdef class BranchAndCutDecoder(Decoder):
         public Decoder lbProvider, ubProvider
         int mixParam, maxDecayDepth, initOrder, origOrder
         double mixGap, sentObjective, objBufLimOrig, cutoffOrig, cutDecayFactor, bufDecayFactor
-        double maxDecay, maxDecayDepthFactor, dfsDepthFactor
+        double maxDecay, maxDecayDepthFactor, dfsDepthFactor, ub
         public int selectCnt
         Node root, bestBoundNode
 
@@ -179,8 +179,10 @@ cdef class BranchAndCutDecoder(Decoder):
             self.sentObjective = np.dot(sent, llrs)
             for i in range(sent.size):
                 self.solution[i] = sent[i]
+            self.ub = self.sentObjective
         else:
             self.sentObjective = -INFINITY
+            self.ub = 1
         if self.highSNR:
             self.ubProvider.foundCodeword = self.ubProvider.mlCertificate = False
         else:
@@ -194,6 +196,7 @@ cdef class BranchAndCutDecoder(Decoder):
             if self.ubProvider.foundCodeword:
                 self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
                 self.solution[:] = self.ubProvider.solution[:]
+                self.ub = min(self.ub, self.ubProvider.objectiveValue)
         self.lbProvider.setLLRs(llrs, sent)
         Decoder.setLLRs(self, llrs)
 
@@ -266,7 +269,7 @@ cdef class BranchAndCutDecoder(Decoder):
             str depthStr
             double totalIters = 0
             bint initOpt = True
-        ub = 0 if self.sentObjective == -INFINITY else self.sentObjective
+        ub = self.ub
         self.branchRule.reset()
         #  ensure there are no leftover fixes from previous decodings
         self.foundCodeword = self.mlCertificate = True
