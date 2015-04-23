@@ -65,7 +65,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
     cdef double[::1] setV, fractionality
     cdef int[::1] Nj, fixes
     cdef public object xlist, dualDecoder
-    cdef object timer, grbParams
+    cdef object timer, grbParams, dual4
     cdef double[:] objBuff
 
 
@@ -89,15 +89,35 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.sdMax = kwargs.get('sdMax', .45)
         self.sdX = kwargs.get('sdX', -1)
         self.noSkipOrig = kwargs.get('noSkipOrig', False)
-        if self.superDual != 0:
+        if self.superDual & 2:
             from lpdec.codes import BinaryLinearBlockCode
             from lpdec.decoders.ip import GurobiIPDecoder
             dualCode = BinaryLinearBlockCode(parityCheckMatrix=code.generatorMatrix, name='dual')
             dualParams = kwargs.get('dualParams', {})
             self.dualDecoder = SuperDualDecoder(dualCode, self, **dualParams)
+            if self.superDual & 4:
+                self.dual4 = {}
+                self.dual4['code'] = dualCode
+                model = self.dual4['model'] = g.Model('DUAL')
+                model.setParam('OutputFlag', 0)
+                xv =  [model.addVar(0, 1, 0.0, vtype=g.GRB.BINARY, name='xv{}'.format(i)) for i in range(code.blocklength)]
+                xvb = [model.addVar(0, 1, 0.0, vtype=g.GRB.BINARY, name='xvb{}'.format(i)) for i in range(code.blocklength)]
+                z = [model.addVar(0, code.blocklength, 0.0, vtype=g.GRB.INTEGER, name='z{}'.format(i)) for i in range(dualCode.parityCheckMatrix.shape[0])]
+                zv = model.addVar(0, code.blocklength, 0.0, vtype=g.GRB.INTEGER, name='zv')
+                self.dual4['zv'] = zv
+                model.update()
+                for i in range(code.blocklength):
+                    model.addConstr(xv[i] + xvb[i] <= 1)
+                print(g.quicksum(xv) - 2*zv)
+                model.addConstr(g.quicksum(xv) - 2*zv, g.GRB.EQUAL, 1)
+                for z, row in zip(z, dualCode.parityCheckMatrix):
+                    model.addConstr(g.quicksum(xv[i] + xvb[i] for i in np.flatnonzero(row)) - 2*z, g.GRB.EQUAL, 0)
+                self.dual4['xv'] = xv
+                self.dual4['xvb'] = xvb
+
         self.xlist = []
         for i in range(self.code.blocklength):
-            self.xlist.append(self.model.addVar(0, 1, g.GRB_CONTINUOUS))
+            self.xlist.append(self.model.addVar(0, 1, 0.0, g.GRB_CONTINUOUS))
         self.model.update()
         # initialize various structures
         self.hmat = code.parityCheckMatrix
@@ -124,7 +144,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.minCutoff.
 
         Returns:
-          1 in cut found and inserted, -1 if cut found but rejected by min cutoff rule, 0 else
+          1 in cut found and inserted, -1 if cut fouINFINITind but rejected by min cutoff rule, 0 else
         """
         cdef int Njsize = 0, setVsize = 0, maxFracIndex = -1
         cdef int j, ind
@@ -193,8 +213,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         for item in statNames:
             if item not in stats:
                 stats[item] = 0
-        if 'objSum' not in stats:
-            stats['objSum'] = 0.0
         Decoder.setStats(self, stats)
 
     cpdef fix(self, int i, int val):
@@ -362,10 +380,25 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
                         if found > 0:
                             self._stats['sd2Found'] += found
                             continue
+                    if self.superDual & 4:
+                        model = self.dual4['model']
+                        model.setObjective(g.LinExpr(np.asarray(self.solution), self.dual4['xvb'])
+                                                         + g.LinExpr(1 - np.asarray(self.solution), self.dual4['xv']),g.GRB.MINIMIZE)
+                        model.optimize()
+                        if model.Status == g.GRB.OPTIMAL and model.ObjVal < 1-1e-5:
+                            #print(self.dual4['model'].ObjVal)
+                            xvVal = [int(x.X) for x in self.dual4['xv']]
+                            xvbVal = [int(x.X) for x in self.dual4['xvb']]
+                            #print(np.add(xvVal, xvbVal))
+                            #print([x.X for x in self.dual4['xv']])
+                            #print([x.X for x in self.dual4['xvb']])
+                            #print(np.dot(self.solution, xvVal))
+                            if self.searchCutFromDualCodeword(np.add(xvVal, xvbVal)) == 1:
+                                print('found SD4!')
+                                continue
                     self.mlCertificate = self.foundCodeword = False
                     break
                 rpcrounds += 1
-        self._stats['objSum'] += self.objectiveValue
 
     cdef int superDualSearch(self, np.intp_t[::1] unitCols, np.intp_t[:] xindices) except -1:
         cdef int found = 0
