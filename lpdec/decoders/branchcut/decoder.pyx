@@ -193,8 +193,7 @@ cdef class BranchAndCutDecoder(Decoder):
             self._stats['iterTime'] += self.timer.stop()
             if self.ubProvider.foundCodeword:
                 self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
-                # codeword will be used in first iteration of main algorithm; no need to copy it
-                # here
+                self.solution[:] = self.ubProvider.solution[:]
         self.lbProvider.setLLRs(llrs, sent)
         Decoder.setLLRs(self, llrs)
 
