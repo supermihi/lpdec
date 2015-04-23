@@ -193,8 +193,7 @@ cdef class BranchAndCutDecoder(Decoder):
             if self.initOrder != 0:
                 self.ubProvider.reencodeOrder = self.origOrder
             self._stats['iterTime'] += self.timer.stop()
-            if self.ubProvider.foundCodeword:
-                self.lbProvider.hint = np.asarray(self.ubProvider.solution).astype(np.int)
+            if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < self.ub:
                 self.solution[:] = self.ubProvider.solution[:]
                 self.ub = min(self.ub, self.ubProvider.objectiveValue)
         self.lbProvider.setLLRs(llrs, sent)
