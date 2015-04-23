@@ -60,6 +60,7 @@ def browse(args):
     """Interactive command-line browsing through simulation results."""
     import lpdec.imports  # ensure all decoder and code classes are loaded
     lpdec.database.init(args.database)
+    lpdec.database.ONLY_DUMMY = True
     dbsim.init()
 
     # query simulation identifier, if not provided as CLI option

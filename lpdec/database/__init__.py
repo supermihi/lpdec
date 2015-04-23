@@ -25,6 +25,7 @@ from lpdec.decoders import Decoder
 
 CONF_DIR = expanduser(join('~', '.config', 'lpdec'))
 DB_LIST_FILE = join(CONF_DIR, 'databases')
+ONLY_DUMMY = False
 _knownDBs = None
 if sys.version_info.major == 2:
     input = raw_input
@@ -235,6 +236,8 @@ def get(what, identifier, code=None):
         return cls.fromJSON(row[table.c.json])
 
     else:
+        if ONLY_DUMMY:
+            return DummyDecoder(code=code, name=row[table.c.name])
         try:
             return cls.fromJSON(row[table.c.json], code=code)
         except Exception as e:
