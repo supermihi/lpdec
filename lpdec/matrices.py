@@ -7,6 +7,7 @@
 
 from __future__ import unicode_literals, print_function
 import os.path
+import sys
 import numpy as np
 from lpdec import utils
 
@@ -95,8 +96,13 @@ def formatMatrix(matrix, format='plain', width=2, filename=None):
             mstring = ''.join(('{:<' + str(width) + 'd}').format(k) for k in matrix)
     else:
         assert format == 'alist'
-        import cStringIO
-        output = cStringIO.StringIO()
+        if sys.version_info[0] == 2:
+            import cStringIO
+            StringIO = cStringIO.StringIO
+        else:
+            import io
+            StringIO = io.StringIO
+        output = StringIO()
         maxColSum = max(col.sum() for col in matrix.T)
         maxRowSum = max(row.sum() for row in matrix)
         output.write('{1} {0}\n'.format(*matrix.shape))
