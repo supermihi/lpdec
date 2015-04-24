@@ -176,10 +176,9 @@ cdef class BranchAndCutDecoder(Decoder):
         cdef int i
         self.ubProvider.setLLRs(llrs, sent)
         if sent is not None:
-            self.sentObjective = np.dot(sent, llrs)
+            self.ub = self.sentObjective = np.dot(sent, llrs)
             for i in range(sent.size):
                 self.solution[i] = sent[i]
-            self.ub = self.sentObjective
         else:
             self.sentObjective = -INFINITY
             self.ub = 1
@@ -193,9 +192,12 @@ cdef class BranchAndCutDecoder(Decoder):
             if self.initOrder != 0:
                 self.ubProvider.reencodeOrder = self.origOrder
             self._stats['iterTime'] += self.timer.stop()
-            if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < self.ub:
-                self.solution[:] = self.ubProvider.solution[:]
-                self.ub = min(self.ub, self.ubProvider.objectiveValue)
+            if self.ubProvider.foundCodeword:
+                if self.ubProvider.objectiveValue < self.sentObjective:
+                    self.objectiveValue = self.ubProvider.objectiveValue
+                else:
+                    self.solution[:] = self.ubProvider.solution[:]
+                    self.objectiveValue = self.ub = self.ubProvider.objectiveValue
         self.lbProvider.setLLRs(llrs, sent)
         Decoder.setLLRs(self, llrs)
 
@@ -269,6 +271,8 @@ cdef class BranchAndCutDecoder(Decoder):
             double totalIters = 0
             bint initOpt = True
         ub = self.ub
+        if ub < self.sentObjective:
+            return
         self.branchRule.reset()
         #  ensure there are no leftover fixes from previous decodings
         self.foundCodeword = self.mlCertificate = True

@@ -307,9 +307,11 @@ cdef class PolarSCListDecoder(Decoder):
             return
         self.status = Decoder.OPTIMAL
         C0 = self.getArrayPointer(0, lp)
+        self.objectiveValue = 0
         for beta in range(n):
             self.solution[beta] = C[0, C0, beta, 0]
-        self.objectiveValue = np.dot(self.solution, self.llrs)
+            if self.solution[beta]:
+                self.objectiveValue += self.llrs[beta]
         if self.excludeZero:
             assert np.sum(self.solution) > 0
             assert self.objectiveValue > 0
