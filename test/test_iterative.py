@@ -33,5 +33,6 @@ class TestIterativeDecoder(unittest.TestCase):
                     solution = decoder.decode(llr)
                     if not np.allclose(solution, sig.codeword):
                         errors[decoder] += 1
+                    self.assertNotEquals(decoder.objectiveValue, np.inf)
             for i in range(len(decoders) - 1):
                 self.assertGreaterEqual(errors[decoders[i]], errors[decoders[i+1]])
