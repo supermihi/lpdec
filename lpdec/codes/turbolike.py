@@ -22,19 +22,6 @@ import numpy as np
 from lpdec.codes import interleaver, convolutional, BinaryLinearBlockCode, trellis
 from lpdec.codes.trellis import INFO, PARITY
 
-class ConnectInfo:
-
-    def __init__(self, vertex):
-        self.vertex = vertex
-        self.outPositions = []
-        self.inPositions = []
-
-    def __len__(self):
-        return len(self.outPositions)
-
-    def add(self, outPos, inPos):
-        self.outPositions.append(outPos)
-        self.inPositions.append(inPos)
 
 class TurboVertex:
     """Base class for all vertices of turbo-like codes.
@@ -77,8 +64,10 @@ class TurboVertex:
             for i in range(arc.size):
                 vertex, pos = arc.endOfPath(i)
                 if vertex not in self.connections:
-                    self.connections[vertex] = ConnectInfo(vertex)
-                self.connections[vertex].add(i, pos)
+                    self.connections[vertex] = []
+                self.connections[vertex].append([i, pos])
+        for v in list(self.connections.keys()):
+            self.connections[v] = np.array(self.connections[v], dtype=np.int)
     
 
 class InformationSource(TurboVertex):
@@ -458,13 +447,13 @@ class TurboLikeCode(BinaryLinearBlockCode):
 
     def encode(self, infoword):
         self.infoVertex._outWord = infoword
-        for i, vertex in enumerate(self.stoppers):
+        for vertex in self.stoppers:
             if isinstance(vertex, EncoderVertex):
                 vertex._outWord = vertex.trellis.encode(vertex._inWord)
             for targetVertex, info in vertex.connections.items():
-                for k in range(len(info)):
-                    targetVertex._inWord[info.inPositions[k]] = vertex._outWord[info.outPositions[k]]
-        return self.codeVertex._inWord.copy()
+                for outP, inP in info:
+                    targetVertex._inWord[inP] = vertex._outWord[outP]
+        return self.codeVertex._inWord
 
 
     def encodePath(self, path, encoder):

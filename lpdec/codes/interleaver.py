@@ -251,10 +251,10 @@ class LTEInterleaver(Interleaver):
         Interleaver.__init__(self, size=k, f1=f1, f2=f2)
     
     def params(self):
-        return {"k": self.size}
+        return dict(k=self.size)
     
     def __str__(self):
-        return "LTE {}-bit interleaver".format(self.size)
+        return 'LTE {}-bit interleaver'.format(self.size)
     
     lteTable = dict(((40, (3, 10)), (48, (7, 12)), (56, (19, 42)), (64, (7, 16)), (72, (7, 18)),
                      (80, (11, 20)), (88, (5, 22)), (96, (11, 24)), (104, (7, 26)),
