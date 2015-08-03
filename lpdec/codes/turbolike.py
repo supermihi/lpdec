@@ -16,19 +16,27 @@ parallel connections of a certain number of bits, and may have an attached inter
 permutes the bits.
 """
 
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 
 import numpy as np
-cimport numpy as np
-import cython
-cimport cython
-from lpdec.codes import interleaver, convolutional, BinaryLinearBlockCode
-from lpdec.codes cimport trellis
-from lpdec.codes.trellis cimport _INFO, _PARITY, OUTPUT, Trellis, Segment
-from libc.stdlib cimport malloc, free
+from lpdec.codes import interleaver, convolutional, BinaryLinearBlockCode, trellis
+from lpdec.codes.trellis import INFO, PARITY
 
+class ConnectInfo:
 
-cdef class TurboVertex:
+    def __init__(self, vertex):
+        self.vertex = vertex
+        self.outPositions = []
+        self.inPositions = []
+
+    def __len__(self):
+        return len(self.outPositions)
+
+    def add(self, outPos, inPos):
+        self.outPositions.append(outPos)
+        self.inPositions.append(inPos)
+
+class TurboVertex:
     """Base class for all vertices of turbo-like codes.
 
     The class property *isStopper* tells whether the vertex is a "stopper", that is, doing more
@@ -50,15 +58,7 @@ cdef class TurboVertex:
     def __init__(self):
         self.inArcs = []
         self.outArcs = []
-        self.name = ""
-        self._inWord = None
-        self._outWord = None
-
-    def addInArc(self, arc):
-        self.inArcs.append(arc)
-        
-    def addOutArc(self, arc):
-        self.outArcs.append(arc)
+        self.name = ''
 
     def connect(self, target, size, interleaver=None):
         """Connect *size* bits of this vertex' output to the input of *target*.
@@ -71,31 +71,17 @@ cdef class TurboVertex:
         else:
             InterleaverArc(interleaver, self, target)
 
-    cdef void finalize(self):
-        self._outSize = self.outSize
-        self._inSize = self.inSize
-        targets = {}
+    def finalize(self):
+        self.connections = {}
         for arc in self.outArcs:
             for i in range(arc.size):
                 vertex, pos = arc.endOfPath(i)
-                if vertex not in targets:
-                    targets[vertex] = []
-                targets[vertex].append( (i, pos) )
-        self._connects = <ConnectInfo *>malloc(len(targets) * sizeof(ConnectInfo))
-        self._numConnects = len(targets)
-        cdef:
-            ConnectInfo info
-        for i, (vertex, wires) in enumerate(targets.items()):
-            info = ConnectInfo(<void*>vertex, <int*>malloc(len(wires)*sizeof(int)),
-                               <int*>malloc(len(wires)*sizeof(int)),
-                               len(wires))
-            self._connects[i] = info
-            for j, (outPos, inPos) in enumerate(wires):
-                info.outPositions[j] = outPos
-                info.inPositions[j] = inPos
+                if vertex not in self.connections:
+                    self.connections[vertex] = ConnectInfo(vertex)
+                self.connections[vertex].add(i, pos)
     
 
-cdef class InformationSource(TurboVertex):
+class InformationSource(TurboVertex):
     """The vertex representing the information source in a turbo-like code. Each
     code must have exactly one information source.
 
@@ -103,7 +89,7 @@ cdef class InformationSource(TurboVertex):
     such that each connection carries a complete copy of the information input.
     """
 
-    def __init__(self, int infobits):
+    def __init__(self, infobits):
         """Create the source vertex with information length *infobits*."""
         TurboVertex.__init__(self)
         self.infobits = infobits
@@ -112,25 +98,24 @@ cdef class InformationSource(TurboVertex):
         """Convenience function: Automatically determine the size"""
         TurboVertex.connect(self, target, self.infobits, interleaver)
 
-    cdef void finalize(self):
+    def finalize(self):
         TurboVertex.finalize(self)
-        self._numTrellises = <int*>malloc(sizeof(int) * self.infobits)
-        self._trellises = <void***>malloc(sizeof(void**) * self.infobits)
-        self._segments = <int**>malloc(sizeof(int**) * self.infobits)
+        self.numTrellises = []
+        self.trellises = []
+        self.segments = []
         for i in range(self.infobits):
-            ends = [ arc.endOfPath(i)
-                        for arc in self.outArcs
-                        if isinstance(arc.endOfPath(i)[0], EncoderVertex ) ]
-            self._numTrellises[i] = len(ends)
-            self._trellises[i] = <void**>malloc(sizeof(void*) * len(ends))
-            self._segments[i] = <int*>malloc(sizeof(int) * len(ends))
+            ends = [arc.endOfPath(i) for arc in self.outArcs
+                                     if isinstance(arc.endOfPath(i)[0], EncoderVertex )]
+            self.numTrellises.append(len(ends))
+            self.trellises.append([])
+            self.segments.append([])
             for j, (vertex, segment) in enumerate(ends):
                 vertex.isInfoConnected = True
-                self._trellises[i][j] = <void*>vertex.trellis
-                self._segments[i][j] = segment
+                self.trellises[i].append(vertex.trellis)
+                self.segments[i].append(segment)
 
     def __repr__(self):
-        return 'InformationSource({0})'.format(self.infobits)
+        return 'InformationSource({})'.format(self.infobits)
 
 
 class EncoderVertex(TurboVertex):
@@ -148,8 +133,8 @@ class EncoderVertex(TurboVertex):
         keyword arguments will be passed to the Trellis constructor."""
         TurboVertex.__init__(self)
         self.trellis = trellis.Trellis(encoder, length, name=name, **kwargs)
-        self._inWord = np.empty(self.trellis.insize, dtype=np.int)
         self.name = name
+        self._inWord = np.empty(self.trellis.insize, dtype=np.int)
         self.isInfoConnected = False
 
     def connect(self, target):
@@ -157,7 +142,7 @@ class EncoderVertex(TurboVertex):
         TurboVertex.connect(self, target, self.trellis.outsize)
 
     def __repr__(self):
-        return 'EncoderVertex(name={0})'.format(self.name)
+        return 'EncoderVertex(name={})'.format(self.name)
 
 
 class MuxVertex(TurboVertex):
@@ -189,7 +174,7 @@ class MuxVertex(TurboVertex):
         """Returns a tuple (arc, pos) such that the *inBit*-th bit incoming through *inArc*
         is the *pos*-th bit on *arc*. Note that *arc* will always be the single output arc."""
         inIndex = self.inArcs.index(inArc)
-        if self.style == "alternating":
+        if self.style == 'alternating':
             return self.outArcs[0], len(self.inArcs) * inBit + inIndex
         else:
             sum = 0
@@ -203,7 +188,7 @@ class MuxVertex(TurboVertex):
         the *outPos*-th bit on *outArc* (which must be the single output arc).
         """
         
-        if self.style == "alternating":
+        if self.style == 'alternating':
             pos, inIndex = divmod(outBit, len(self.inArcs))
             return self.inArcs[inIndex], pos
         else:
@@ -215,7 +200,7 @@ class MuxVertex(TurboVertex):
             raise ValueError('Something went wrong')
 
     def __repr__(self):
-        return 'MuxVertex(name = {0})'.format(self.name)
+        return 'MuxVertex(name={})'.format(self.name)
 
 
 class DeMuxVertex(TurboVertex):
@@ -228,7 +213,7 @@ class DeMuxVertex(TurboVertex):
     Note how this supports outputs of different length.
     """
     
-    def __init__(self, np.ndarray[ndim=1, dtype=np.int_t] pattern, name=None):
+    def __init__(self, pattern, name=None):
         """Creates the DeMuxVertex; see the class doc on how to specify the pattern."""
         TurboVertex.__init__(self)
         if pattern is None:
@@ -283,34 +268,34 @@ class DeMuxVertex(TurboVertex):
         return self.outArcs[outArcNum], outBit
 
     def __repr__(self):
-        return 'DeMuxVertex(name = {0})'.format(self.name)
+        return 'DeMuxVertex(name={})'.format(self.name)
 
 
-cdef class CodeVertex(TurboVertex):
+class CodeVertex(TurboVertex):
     """A CodeVertex represents the codeword of a turbo-like code.
 
     It has a single incoming arc, the bits of which comprise the codeword."""
 
     isStopper = True
 
-    cdef void finalize(self):
+    def finalize(self):
         TurboVertex.finalize(self)
-        cdef:
-            Trellis trellis
         blocklength = self.inSize
-        self._trellises = <void**>malloc(sizeof(void*) * blocklength)
-        self._labels = <int*>malloc(sizeof(int) * blocklength)
-        self._segments = <int*>malloc(sizeof(int) * blocklength)
+        self.trellises = []
+        self.labels = []
+        self.segments = []
         for i in range(blocklength):
             vertex, pos = self.inArcs[0].startOfPath(i)
             if isinstance(vertex, InformationSource):
-                self._trellises[i] = NULL
-                self._segments[i] = pos
+                self.trellises.append(None)
+                self.segments.append(pos)
+                self.labels.append(None)
             else:
-                trellis = <Trellis>vertex.trellis
-                self._trellises[i] = <void*>vertex.trellis
-                self._segments[i] = trellis.segmentFromPosAndDirection(pos, OUTPUT)
-                self._labels[i] = trellis.labelFromPosAndDirection(pos, OUTPUT)
+                trellis = vertex.trellis
+                self.trellises.append(trellis)
+                seg, lab = trellis.segmentAndLabel(pos, 'out')
+                self.segments.append(seg)
+                self.labels.append(lab)
 
     def __repr__(self):
         return 'CodeVertex'
@@ -331,24 +316,24 @@ class TurboArc:
         self.size = size
         self.tail = tail
         self.head = head
-        self.tail.addOutArc(self)
-        self.head.addInArc(self)
+        self.tail.outArcs.append(self)
+        self.head.inArcs.append(self)
 
-    def endPosition(self, int start):
+    def endPosition(self, start):
         """Returns the position to which *start*-th input bit is wired.
 
         This is the identity mapping for non-interleaver arcs."""
         # pylint: disable=R0201
         return start
 
-    def startPosition(self, int end):
+    def startPosition(self, end):
         """Returns the position which is wired to the *end*-th bit in the output.
 
         This is the identity mapping for non-interleaver arcs."""
         # pylint: disable=R0201
         return end
 
-    def endOfPath(self, int i):
+    def endOfPath(self, i):
         """Compute where the *i*-th bit on this arc encounters the next stopper vertex.
 
         Returns a tuple (vertex, pos) such that the *i*-th bit of this arc is wired to the *pos*-th
@@ -357,14 +342,14 @@ class TurboArc:
         and demuxers.
         """
         if i < 0 or i >= self.size:
-            raise ValueError('value {0} out of range for arc {1}'.format(i, self))
+            raise ValueError('value {} out of range for arc {}'.format(i, self))
         if self.head.isStopper:
             return self.head, self.endPosition(i)
         else:
             arc, bit = self.head.outPosition(self, i)
             return arc.endOfPath(bit)
 
-    def startOfPath(self, int i):
+    def startOfPath(self, i):
         """Compute where the *i*-th bit of this arc originates at an encoder or InformationSource.
 
         This is complementary to endOfPath: Returns a tuple (vertex, pos) such that the bit at
@@ -372,7 +357,7 @@ class TurboArc:
         InformationSource) at output position *pos*.
         """
         if i < 0 or i >= self.size:
-            raise ValueError('value {0} out of range for arc {1}'.format(i, self))
+            raise ValueError('value {} out of range for arc {}'.format(i, self))
         if self.tail.isStopper or isinstance(self.tail, InformationSource):
             return self.tail, self.startPosition(i)
         else:
@@ -390,15 +375,11 @@ class InterleaverArc(TurboArc):
         TurboArc.__init__(self, interleaver.size, tail, head)
         self.interleaver = interleaver
 
-    def endPosition(self, int start):
+    def endPosition(self, start):
         return self.interleaver(start)
 
-    def startPosition(self, int end):
+    def startPosition(self, end):
         return self.interleaver.inv(end)
-
-
-cdef class TurboLikePrivate:
-     pass
 
 
 class TurboLikeCode(BinaryLinearBlockCode):
@@ -417,38 +398,30 @@ class TurboLikeCode(BinaryLinearBlockCode):
         """
 
         encoders = []
-        cdef:
-            TurboLikePrivate p = TurboLikePrivate()
-            int i
-            TurboVertex _vertex
-        self.p = p
-
-        p.codeVertex = p.infoVertex = None
+        self.infoVertex = self.codeVertex = None
         for vertex in vertices:
             if isinstance(vertex, InformationSource):
-                assert p.infoVertex is None
-                p.infoVertex = vertex
+                assert self.infoVertex is None
+                self.infoVertex = vertex
             elif isinstance(vertex, CodeVertex):
-                assert p.codeVertex is None
-                p.codeVertex = vertex
+                assert self.codeVertex is None
+                self.codeVertex = vertex
             elif isinstance(vertex, EncoderVertex):
                 encoders.append(vertex)
-        self.vertices = vertices
+        self.vertices = vertices[:]
         self.encoders = encoders
-        self.blocklength = p.codeVertex.inSize
-        self.infolength = p.infoVertex.infobits
-        p.codeVertex._inWord = np.empty(self.blocklength, dtype=np.int)
+        self.blocklength = self.codeVertex.inSize
+        self.codeVertex._inWord = np.empty(self.blocklength, dtype=np.int)
+        self.infolength = self.infoVertex.infobits
         BinaryLinearBlockCode.__init__(self, name=name)
-        stoppers = [p.infoVertex] + self.encoders + [p.codeVertex]
-        p._numStoppers = len(stoppers)
-        p._stoppers = <void**>malloc(sizeof(void*) * p._numStoppers)
-        for i, _vertex in enumerate(stoppers):
-            p._stoppers[i] = <void*>_vertex
-            _vertex.finalize()
+        self.stoppers = [self.infoVertex] + self.encoders + [self.codeVertex]
+
+        for vertex in self.stoppers:
+            vertex.finalize()
         for i in range(self.blocklength):
             sals = self.segmentsForCodeBit(i)
             for seg, lab in sals:
-                if lab == _INFO:
+                if lab == trellis.INFO:
                     seg.info_code_bit = i
                     seg.info_code_ratio = 1/len(sals)
                 else:
@@ -482,85 +455,45 @@ class TurboLikeCode(BinaryLinearBlockCode):
             node = arc.head
         return outPath, cost
 
-    def encode(self, np.int_t[::1] infoword):
-        cdef:
-            TurboVertex vertex, targetVertex
-            TurboLikePrivate p = self.p
-            ConnectInfo info
-            int i, j, k
-            np.int_t[:] outWord, inWord
-        self.p.infoVertex._outWord = infoword
-        for i in range(p._numStoppers):
-            vertex = <TurboVertex>(p._stoppers[i])
+
+    def encode(self, infoword):
+        self.infoVertex._outWord = infoword
+        for i, vertex in enumerate(self.stoppers):
             if isinstance(vertex, EncoderVertex):
                 vertex._outWord = vertex.trellis.encode(vertex._inWord)
-            outWord = vertex._outWord
-            for j in range(vertex._numConnects):
-                info = vertex._connects[j]
-                targetVertex = <TurboVertex>info.vertex
-                inWord = targetVertex._inWord
-                for k in range(info.numWires):
-                    inWord[info.inPositions[k]] = outWord[info.outPositions[k]]
-        return vertex._inWord.copy()
-    
-    def encodePath(self, np.int_t[::1] path, encoder):
+            for targetVertex, info in vertex.connections.items():
+                for k in range(len(info)):
+                    targetVertex._inWord[info.inPositions[k]] = vertex._outWord[info.outPositions[k]]
+        return self.codeVertex._inWord.copy()
+
+
+    def encodePath(self, path, encoder):
         """Try to encode the given *path* in the trellis of EncoderVertex *encoder* to a codeword.
 
         This will only work if the encoder is directly connected to the information source.
         """
-        cdef:
-            np.ndarray[ndim=1, dtype=np.int_t] infoWord = np.empty(self.infolength, dtype=np.int)
-            int i
-        if encoder.inArcs[0].tail != self.p.infoVertex:
+        infoWord = np.empty(self.infolength, dtype=np.int)
+        if encoder.inArcs[0].tail != self.infoVertex:
             raise ValueError('invalid encoder for TurboLikeCode.encode()')
         for i in range(self.infolength):
             infoWord[i] = path[encoder.inArcs[0].endPosition(i)]
         return self.encode(infoWord)
-
-    def fixCodeBit(self, int i, int val):
-        cdef:
-            Trellis trellis
-            position = self.p.codeVertex._segments[i]
-            label = self.p.codeVertex._labels[i]
-            Segment segment
-            CodeVertex codeVertex = self.p.codeVertex
-            int j, numInfos
-        if codeVertex._trellises[i] is NULL:
-            numInfos = self.infoVertex._numTrellises[position]
-            for j in range(numInfos):
-                trellis = <Trellis>self.p.infoVertex._trellises[position][j]
-                segment = <Segment>trellis.segments[self.infoVertex._segments[position][j]]
-                segment.fix_info = val
-        else:
-            trellis = <Trellis>self.p.codeVertex._trellises[i]
-            segment = <Segment>trellis.segments[position]
-            if label == _INFO:
-                segment.fix_info = val
-            else:
-                segment.fix_parity = val
     
     def segmentsForCodeBit(self, i):
-        cdef:
-            Trellis trellis
-            CodeVertex codeVertex = self.p.codeVertex
-            position = codeVertex._segments[i]
-            label = codeVertex._labels[i]
-            InformationSource infoVertex = self.p.infoVertex
-            Segment segment
-
-            int j, numInfos
-        if codeVertex._trellises[i] is NULL:
-            numInfos = infoVertex._numTrellises[position]
+        position = self.codeVertex.segments[i]
+        label = self.codeVertex.labels[i]
+        if self.codeVertex.trellises[i] is None:
+            numInfos = self.infoVertex.numTrellises[position]
             ret = []
             for j in range(numInfos):
-                trellis = <Trellis>infoVertex._trellises[position][j]
-                segment = <Segment>trellis.segments[infoVertex._segments[position][j]]
-                ret.append( (segment, _INFO) )
+                trellis = self.infoVertex.trellises[position][j]
+                segment = trellis[self.infoVertex.segments[position][j]]
+                ret.append((segment, INFO))
             return ret
         else:
-            trellis = <Trellis>codeVertex._trellises[i]
-            segment = <Segment>trellis.segments[position]
-            return ( (segment, label), )
+            trellis = self.codeVertex.trellises[i]
+            segment = trellis[position]
+            return [(segment, label)]
     
     def trellisSegmentsOfOutBit(self, i):
         """Returns those arcs of the trellis graphs in code that define the *i*-th output bit.
@@ -575,9 +508,9 @@ class TurboLikeCode(BinaryLinearBlockCode):
         arcs corresponding to that bit ("parity"-arcs in case of a normal parity bit, "one"-arcs
         for termination bits).
         """
-        start, pos = self.p.codeVertex.inArcs[0].startOfPath(i)
+        start, pos = self.codeVertex.inArcs[0].startOfPath(i)
         outList = []
-        if start is self.p.infoVertex:
+        if start is self.infoVertex:
             for out in start.outArcs:
                 end, endPos = out.endOfPath(pos)
                 if isinstance(end, EncoderVertex):
@@ -585,122 +518,6 @@ class TurboLikeCode(BinaryLinearBlockCode):
         else:
             outList.append(start.trellis.outArcs(pos))
         return outList
-
-    def prepareConstraintsData(self):
-        """Prepares data structures for algorithms that employ the equality-type constraints.
-        """
-        labelStr = { _INFO: 'info', _PARITY: 'parity'}
-        constraints = self.equalityPairs()
-        for i, ((trellis1, segment1, label1), (trellis2, segment2, label2)) \
-                in enumerate(constraints):
-            setattr(trellis1[segment1], "g_{0}_index".format(labelStr[label1]), i)
-            setattr(trellis1[segment1], "g_{0}".format(labelStr[label1]), 1)
-            
-            setattr(trellis2[segment2], "g_{0}_index".format(labelStr[label2]), i)
-            setattr(trellis2[segment2], "g_{0}".format(labelStr[label2]), -1)   
-        return constraints
-
-    def equalityPairs(self):
-        """Returns pairs of trellis segments which carry the same codeword bits.
-
-        The result is a list of pairs ( (t1, s1, b1), (t2, s2, b2) ), meaning that the flow on the
-        *b1*-arcs of segment *s1* in trellis *t1* must equal the flow on the *b2*-arcs on segment
-        *s2* in trellis *t2*, where
-            - *b1* and *b2* are one of(trellis.INFO, trellis.PARITY),
-            - *s1* and *s2* are segment indexes, and
-            - *t1* and *t2* are trellis.Trellis instances."""
-        pairs = []
-        #  first we take care of the info source vertex and encoders connected to it
-        equalInfoArcs = []
-        for arc in self.p.infoVertex.outArcs:
-            stopper = arc.endOfPath(0)[0]
-            if isinstance(stopper, EncoderVertex):
-                equalInfoArcs.append(arc)
-        referenceArc = equalInfoArcs[0]
-        for i in range(referenceArc.size):
-            refEncoder, refPosition = referenceArc.endOfPath(i)
-            refSegment, refLabel = refEncoder.trellis.segmentAndLabel(refPosition, "in")
-            for arc in equalInfoArcs[1:]:
-                otherEncoder, otherPosition = arc.endOfPath(i)
-                otherSegment, otherLabel = otherEncoder.trellis.segmentAndLabel(otherPosition,
-                                                                                "in")
-                pairs.append(((refEncoder.trellis, refSegment, refLabel),
-                               (otherEncoder.trellis, otherSegment, otherLabel)))
-        #  now take care of encoder-to-encoder connections, like in 3-D turbo codes
-        for encoder in self.encoders:
-            for i in range(encoder.outArcs[0].size):
-                refPosition, refLabel = encoder.trellis.segmentAndLabel(i, "out")
-                endVertex, endPos = encoder.outArcs[0].endOfPath(i)
-                if isinstance(endVertex, EncoderVertex):
-                    endSegment, endLabel = endVertex.trellis.segmentAndLabel(endPos, "in")
-                    pairs.append(((encoder.trellis, i, trellis._PARITY),
-                                   (endVertex.trellis, endSegment, endLabel)))
-        return pairs
-
-    def setCost(self, np.double_t[::1] costVector):
-        """Sets arc costs on all involved trellis graphs according to the given cost vector.
-
-        The size of *costVector* must equal the blocklength of the code. The method determines
-        which arcs are affected by which costs by calling trellisSegmentsOfOutBit for each
-        component of the cost vector.
-        """
-        cdef:
-            int i
-            double val
-        for vertex in self.encoders:
-            vertex.trellis.clearArcCosts()
-        for i, val in enumerate(costVector):
-            listList = self.trellisSegmentsOfOutBit(i)
-            for liste in listList:
-                for arc in liste:
-                    arc.cost += (val / len(listList))
-
-    def constraints(self):
-        """Returns the constraint set Ax=b of the corresponding LP.
-
-        Returns a 3-tuple (A,b,i), where i is the index of the first row corresponding
-        to equality constraints.
-        """
-        # TODO: so far only equality constraints corresponding to arcs originating in the source
-        # node are considered --> does not work for e.g. 3-D turbo codes.
-        # TODO: code reuse: use equalityPairs()   
-        nodes = OrderedDict()
-        arcs = OrderedDict()
-        for vertex in (v for v in self.vertices if isinstance(v, EncoderVertex)):
-            trellis = vertex.trellis
-            for segment in trellis:
-                for _, node in sorted(segment.items()):
-                    nodes[node] = len(nodes)
-                    for _, arc in sorted(node.outs.items()):
-                        arcs[arc] = len(arcs)
-
-        equalInputEncoders = []
-        for arc in self.p.infoVertex.outArcs:
-            if isinstance(arc.head, EncoderVertex):
-                equalInputEncoders.append((arc, arc.head))
-
-        naim = np.zeros((len(nodes) + (len(equalInputEncoders) - 1) * self.infolength, len(arcs)),
-                        dtype=np.int)
-        rhs = np.zeros((naim.shape[0], 1), dtype=np.int)
-        for arc, column in arcs.items():
-            naim[nodes[arc.tail], column] = 1
-            naim[nodes[arc.head], column] = -1
-
-        for node, i in nodes.items():
-            if len(node.outs) == 0:
-                rhs[i] = -1
-            elif len(node.ins) == 0:
-                rhs[i] = 1
-        row = len(nodes)
-        for i in range(len(equalInputEncoders) - 1):
-            (arc1, encoder1), (arc2, encoder2) = equalInputEncoders[i:i + 2]
-            for index in range(arc1.size):
-                for arc in encoder1.trellis[arc1.endPosition(index)].allArcsOfInfoBit(1):
-                    naim[row, arcs[arc]] = 1
-                for arc in encoder2.trellis[arc2.endPosition(index)].allArcsOfInfoBit(1):
-                    naim[row, arcs[arc]] = -1
-                row += 1
-        return naim, rhs, len(nodes)
 
     def params(self):
         raise NotImplementedError()
@@ -733,7 +550,7 @@ class StandardTurboCode(TurboLikeCode):
         self.encoder = encoder
         self.interleaver = interleaver
         if name is None:
-            name = "StandardTurbo({0}".format(interleaver.size)
+            name = "StandardTurbo({}".format(interleaver.size)
         source = InformationSource(interleaver.size)
         codeV = CodeVertex()
         mux = MuxVertex('sequential')

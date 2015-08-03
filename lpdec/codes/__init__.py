@@ -110,7 +110,7 @@ class BinaryLinearBlockCode(LinearBlockCode):
     def generatorMatrix(self):
         """Generator matrix of this code; generated on first access if not available."""
         if self._generatorMatrix is None:
-            if self.parityCheckMatrix is None:
+            if self._parityCheckMatrix is None:
                 # neither parity-check nor generator matrix exist -> encode all unit vectors
                 self._generatorMatrix = np.zeros((self.infolength, self.blocklength), dtype=np.int)
                 infoWord = np.zeros(self.infolength, dtype=np.int)
@@ -123,8 +123,8 @@ class BinaryLinearBlockCode(LinearBlockCode):
                 cols = np.hstack((np.arange(self.infolength, self.blocklength),
                                   np.arange(self.infolength))).astype(np.intp)
                 self._generatorMatrix = gfqla.orthogonalComplement(self._parityCheckMatrix, cols)
-            assert np.all(np.dot(self._generatorMatrix, self._parityCheckMatrix.T) % 2 == 0)
-            assert np.all(np.dot(self._parityCheckMatrix, self.generatorMatrix.T) % 2 == 0)
+            assert np.all(np.dot(self._generatorMatrix, self.parityCheckMatrix.T) % 2 == 0)
+            assert np.all(np.dot(self.parityCheckMatrix, self._generatorMatrix.T) % 2 == 0)
         return self._generatorMatrix
 
     @property

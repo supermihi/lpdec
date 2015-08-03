@@ -7,8 +7,9 @@
 from __future__ import division, unicode_literals, print_function
 import sys
 import numpy as np
-from lpdec.codes import BinaryLinearBlockCode
+from lpdec.imports import *
 from lpdec import database as db, matrices
+
 
 if sys.version_info.major == 2:
     input = raw_input
@@ -16,6 +17,7 @@ if sys.version_info.major == 2:
 
 def initParser(parser):
     parser.add_argument('-f', '--file', help='input file for the code')
+    parser.add_argument('-e', '--eval', help='Python command for creating the code')
     parser.set_defaults(func=codeCommand)
     sub = parser.add_subparsers(title='actions', dest='action')
     printParser = sub.add_parser('print', help='print a code')
@@ -55,6 +57,8 @@ def compareCode(args):
 def codeCommand(args):
     if args.file:
         args.code = BinaryLinearBlockCode(parityCheckMatrix=args.file)
+    elif args.eval:
+        args.code = eval(args.eval)
     else:
         db.init(args.database)
         codes = db.names('codes')
@@ -62,7 +66,6 @@ def codeCommand(args):
         for i, code in enumerate(codes):
             print('{:>3d}: {}'.format(i, code))
         ans = input('Select number: ')
-        import lpdec.imports  # ensures that all classes are loaded for JSON decoding
         args.code = db.get('code', codes[int(ans.strip())])
     if args.action == 'print':
         printCode(args)

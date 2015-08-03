@@ -14,6 +14,7 @@ from lpdec.codes.classic import *
 from lpdec.codes.ldpc import *
 from lpdec.codes.polar import *
 from lpdec.codes.nonbinary import *
+from lpdec.codes.turbolike import TurboLikeCode, LTETurboCode, ThreeDTurboCode, StandardTurboCode
 
 from lpdec.decoders.base import *
 from lpdec.decoders.iterative import *
