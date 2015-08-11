@@ -116,9 +116,9 @@ cdef class BranchAndCutDecoder(Decoder):
         if selectionMethod.startswith('mixed'):
             self.selectionMethod = mixed
             selectionMethod = selectionMethod[5:]
-            a, b = selectionMethod.split("/")
-            self.mixParam = int(a)
-            self.mixGap = float(b)
+            mixParamStr, mixGapStr = selectionMethod.split("/")
+            self.mixParam = int(mixParamStr)
+            self.mixGap = float(mixGapStr)
             self.cutoffOrig = self.lbProvider.minCutoff
             self.objBufLimOrig = self.lbProvider.objBufLim
             self.maxDecay = kwargs.get('maxDecay', 4.0)

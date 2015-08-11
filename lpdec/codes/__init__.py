@@ -138,7 +138,7 @@ class BinaryLinearBlockCode(LinearBlockCode):
         matrix = self.parityCheckMatrix
         if np.sum(matrix) / ( matrix.shape[0] * matrix.shape[1]) < .1:
             # sparse matrix
-            pcm = matrices.toListAlist(matrix)
+            pcm = matrices.numpyToReducedAlist(matrix)
         else:
             pcm = matrix.tolist()
         return OrderedDict([('parityCheckMatrix', pcm), ('name', self.name)])

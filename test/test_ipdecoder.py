@@ -31,15 +31,18 @@ class TestMLDecoders:
             pass
         try:
             import gurobimh
+            from lpdec.decoders.adaptivelp_gurobi import AdaptiveLPDecoderGurobi
             decoders.append(GurobiIPDecoder(code))
+
+            # decoders.append(BranchAndCutDecoder(code, name='BC1', selectionMethod='mixed50/2.0',
+            #                 childOrder='llr',
+            #                 lpClass=AdaptiveLPDecoderGurobi,
+            #                 lpParams=dict(removeInactive=100, insertActive=1, keepCuts=True,
+            #                               maxRPCrounds=100, minCutoff=.2),
+            #                 iterParams=dict(iterations=100, reencodeOrder=2, reencodeIfCodeword=False)))
+            #decoders.append(BranchAndCutDecoder(code, lpClass=AdaptiveLPDecoderGurobi, name='BC2'))
         except:
             pass
-        decoders.append(BranchAndCutDecoder(code, name='BC1', selectionMethod='mixed-/30/100/5/2',
-                        childOrder='llr',
-                        lpParams=dict(removeInactive=100, insertActive=1, keepCuts=True,
-                                      maxRPCrounds=100, minCutoff=.2),
-                        iterParams=dict(iterations=100, reencodeOrder=2, reencodeIfCodeword=False)))
-        decoders.append(BranchAndCutDecoder(code, name='BC2'))
         return decoders
 
     def codes(self):

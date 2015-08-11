@@ -6,10 +6,37 @@
 # published by the Free Software Foundation
 
 from __future__ import unicode_literals, print_function
-import os.path
-import sys
+import os.path, sys, bz2
 import numpy as np
 from lpdec import utils
+
+
+def alistToNumpy(lines):
+    """Converts a parity-check matrix in AList format to a 0/1 numpy array. The argument is a
+    list-of-lists corresponding to the lines of the AList format, already parsed to integers
+    if read from a text file.
+
+    The AList format is introduced on http://www.inference.phy.cam.ac.uk/mackay/codes/alist.html.
+
+    This method supports a "reduced" AList format where lines 3 and 4 (containing column and row
+    weights, respectively) and the row-based information (last part of the Alist file) are omitted.
+
+    Example usage:
+    >>> alistToNumpy([[3,2], [2, 2], [1,1,2], [2,2], [1], [2], [1,2], [1,2,3,4]])
+    array([[1, 0, 1],
+           [0, 1, 1]])
+    """
+    nCols, nRows = lines[0]
+    if len(lines[2]) == nCols and len(lines[3]) == nRows:
+        startIndex = 4
+    else:
+        startIndex = 2
+    matrix = np.zeros((nRows, nCols), dtype=np.int)
+    for col, nonzeros in enumerate(lines[startIndex:startIndex + nCols]):
+        for rowIndex in nonzeros:
+            if rowIndex != 0:
+                matrix[rowIndex - 1, col] = 1
+    return matrix
 
 
 def getBinaryMatrix(source):
@@ -17,65 +44,80 @@ def getBinaryMatrix(source):
     two-dimensional python list.
 
     If `source` is a file path, the file must either contain an explicit representation of the
-    matrix (by means of whitespace-separated '0' and '1' characters) or be in the AList format by
-    David MacKay (http://www.inference.phy.cam.ac.uk/mackay/codes/alist.html).
+    matrix (by means of whitespace-separated '0' and '1' characters) or be in the AList format
+    (see alistToNumpy docstring).
+
+    The file may be bzip2'ed, in which case it will be decompressed automatically.
 
     :rtype: :class:`np.ndarray` with dtype `np.int`.
     :returns: A numpy ndarray representation of the matrix.
     """
+    if isinstance(source, np.ndarray):
+        return source.astype(np.int)
     if utils.isStr(source):
-        with open(os.path.expanduser(source), 'rt') as f:
+        source = os.path.expanduser(source)
+        fileObj = bz2.BZ2File(source, 'r') if source.endswith('bz2') else open(source, 'rt')
+        with fileObj as f:
             lines = [[int(x) for x in l.strip().split()]
                      for l in f.readlines()
                      if len(l.strip()) > 0]
-    elif isinstance(source, np.ndarray):
-        return source.astype(np.int)
+
     else:
         assert hasattr(source, '__iter__') and hasattr(source[0], '__iter__')
-        import copy
-        lines = copy.copy(source)
+        lines = source
     if lines[0][0] in (0, 1):  # explicit 0/1 representation
         return np.array(lines, dtype=np.int)
-    # AList format
-    cols, rows = lines[0]
-    data = np.zeros((rows, cols), dtype=np.int)
-    # lines[1] contains max per row/col information, not needed here
-    nextline = lines[2]
-    if len(nextline) == cols:
-        # skip also the next two line which are not needed (contain exact per row/col information)
-        # (omitted in the 'reduced Alist format')
-        del lines[:4]
-    else:
-        del lines[:2]
-    for column, line in zip(range(0, cols), lines):
-        for index in line:
-            if index != 0:
-                data[index - 1, column] = 1
-    return data
+    return alistToNumpy(lines)
 
 
-def getNonbinaryMatrix(source):
-    if utils.isStr(source):
-        with open(source, 'rt') as f:
-            lines = [[int(x) for x in l.strip().split()]
-                     for l in f.readlines() if len(l.strip()) > 0]
-        return np.array(lines, dtype=np.int)
-    else:
-        return np.array(source, dtype=np.int)
-
-
-def toListAlist(matrix):
-    """Convert the matrix into an "alist-like" representation as list of lists.
-
-    The result is a list of lists. The first entry is a pair containing number of columns and rows,
-    respectively. The second entry is an empty list (in MacKay's Alist format, this contains the
-    max number of entries per column and row, respectively). Then, for each column, a list of
-    nonzero positions follows.
+def numpyToAlist(matrix):
+    """Converts a 2-dimensional 0/1 numpy array into MacKay's AList format, in form of a list of
+    lists of integers.
     """
-    out = [[matrix.shape[1], matrix.shape[0]], []]
-    for i in range(matrix.shape[1]):
-        out.append((matrix[:, i].nonzero()[0] + 1).tolist())
-    return out
+    if sys.version_info[0] == 2:
+        import cStringIO
+        StringIO = cStringIO.StringIO
+    else:
+        import io
+        StringIO = io.StringIO
+
+    with StringIO() as output:
+        nRows, nCols = matrix.shape
+        # first line: matrix dimensions
+        output.write('{} {}\n'.format(nCols, nRows))
+
+        # next three lines: (max) column and row degrees
+        colWeights = matrix.sum(axis=0)
+        rowWeights = matrix.sum(axis=1)
+
+        maxColWeight = max(colWeights)
+        maxRowWeight = max(rowWeights)
+
+        output.write('{} {}\n'.format(maxColWeight, maxRowWeight))
+        output.write(' '.join(map(str, colWeights)) + '\n')
+        output.write(' '.join(map(str, rowWeights)) + '\n')
+
+        def writeNonzeros(rowOrColumn, maxDegree):
+            nonzeroIndices = np.flatnonzero(rowOrColumn) + 1  # AList uses 1-based indexing
+            output.write(' '.join(map(str, nonzeroIndices)))
+            # fill with zeros so that every line has maxDegree number of entries
+            output.write(' 0' * (maxDegree - len(nonzeroIndices)))
+            output.write('\n')
+
+        # column-wise nonzeros block
+        for column in matrix.T:
+            writeNonzeros(column, maxColWeight)
+        for row in matrix:
+            writeNonzeros(row, maxRowWeight)
+        return output.getvalue()
+
+
+def numpyToString(array, width=2):
+    """Formats a numpy matrix as string, using *width* columns per entry."""
+    assert array.ndim <= 2
+    if array.ndim == 2:
+        return '\n'.join(numpyToString(row, width=width) for row in array)
+    return ''.join(('{:<' + str(width) + 'd}').format(v) for v in array)
 
 
 def formatMatrix(matrix, format='plain', width=2, filename=None):
@@ -90,41 +132,36 @@ def formatMatrix(matrix, format='plain', width=2, filename=None):
         returned.
     """
     if format == 'plain':
-        if matrix.ndim == 2:
-            mstring = '\n'.join(formatMatrix(row, width=width) for row in matrix)
-        else:
-            mstring = ''.join(('{:<' + str(width) + 'd}').format(k) for k in matrix)
+        mstring = numpyToString(matrix, width=width)
     else:
         assert format == 'alist'
-        if sys.version_info[0] == 2:
-            import cStringIO
-            StringIO = cStringIO.StringIO
-        else:
-            import io
-            StringIO = io.StringIO
-        output = StringIO()
-        maxColSum = max(col.sum() for col in matrix.T)
-        maxRowSum = max(row.sum() for row in matrix)
-        output.write('{1} {0}\n'.format(*matrix.shape))
-        output.write('{0} {1}\n'.format(maxColSum, maxRowSum))
-        output.write(' '.join(str(col.sum()) for col in matrix.transpose()) + '\n')
-        output.write(' '.join(str(row.sum()) for row in matrix) + '\n')
-        for i in range(matrix.shape[1]):
-            nzIndices = matrix[:, i].nonzero()[0] + 1  # indices start with '1' in alist format
-            output.write(' '.join(str(v) for v in nzIndices))
-            for j in range(nzIndices.size, maxColSum):
-                output.write(' 0')
-            output.write('\n')
-        for row in matrix:
-            nzIndices = row.nonzero()[0] + 1
-            output.write(' '.join(str(v) for v in nzIndices))
-            for j in range(nzIndices.size, maxRowSum):
-                output.write(' 0')
-            output.write('\n')
-        mstring = output.getvalue()
-        output.close()
+        mstring = numpyToAlist(matrix)
     if filename:
         with open(filename, 'wt') as f:
             f.write(mstring)
     else:
         return mstring
+
+
+def numpyToReducedAlist(matrix):
+    """Convert the matrix to reduced AList format in form of a list of lists.
+
+    The first entry is a pair containing number of columns and rows, respectively. The second entry
+    is an empty list (in MacKay's Alist format, this contains the max number of entries per column
+    and row, respectively). Then, for each column, a list of nonzero positions follows.
+    """
+    out = [[matrix.shape[1], matrix.shape[0]], []]
+    for i in range(matrix.shape[1]):
+        out.append((matrix[:, i].nonzero()[0] + 1).tolist())
+    return out
+
+
+def getNonbinaryMatrix(source):
+    """Reads a nonbinary matrix (no AList support)."""
+    if utils.isStr(source):
+        with open(source, 'rt') as f:
+            lines = [[int(x) for x in l.strip().split()]
+                     for l in f.readlines() if len(l.strip()) > 0]
+        return np.array(lines, dtype=np.int)
+    else:
+        return np.array(source, dtype=np.int)
