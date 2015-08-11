@@ -1,5 +1,4 @@
-# cython: boundscheck=False
-# cython: nonecheck=False
+# -*- coding: utf-8 -*-
 # Copyright 2011-2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify

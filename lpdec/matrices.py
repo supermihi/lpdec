@@ -137,8 +137,10 @@ def formatMatrix(matrix, format='plain', width=2, filename=None):
         assert format == 'alist'
         mstring = numpyToAlist(matrix)
     if filename:
-        with open(filename, 'wt') as f:
-            f.write(mstring)
+        filename = os.path.expanduser(filename)
+        fileObj = bz2.BZ2File(filename, 'w') if filename.endswith('bz2') else open(filename, 'wt')
+        with fileObj as f:
+            f.write(mstring.encode('ASCII'))
     else:
         return mstring
 
