@@ -16,6 +16,7 @@ from collections import OrderedDict
 import logging
 import numpy as np
 cimport numpy as np
+from numpy.math cimport INFINITY
 from libc.math cimport fabs, sqrt
 
 from lpdec.decoders cimport glpk
@@ -51,18 +52,6 @@ cdef class AdaptiveLPDecoder(Decoder):
       constraints are indeed removed.
     :param bool keepCuts: If set to ``True``, inserted cuts are not remove after decoding one
       frame.
-    :param int insertActive: Determine if and when cuts that are active at the sent or hinted
-      codeword are inserted. The value is an OR-combination of:
-
-      * ``0``: never insert active constraints (default)
-      * ``1``: insert constraints active at the sent codewords during :func:`setLLRs`,
-        it that was given.
-      * ``2``: insert constraints active at :attr:`hint`, if it exists, at the beginning of
-        :func:`solve`.
-    :param double maxActiveAngle: Maximum angle between LLR vector and an active inequality for
-      it to be inserted during the "insert active" step.
-    :param bool allZero: If set to ``True``, constraints that are active at the all-zero codeword
-      are inserted into the model prior to any decoding and stay there all the time.
 
     .. attribute:: hint
 
@@ -71,61 +60,55 @@ cdef class AdaptiveLPDecoder(Decoder):
         hint to insert active constraints.
     """
 
-    cdef public bint removeAboveAverageSlack, keepCuts, allZero, variableFixing
+    cdef public bint removeAboveAverageSlack, keepCuts, variableFixing
     cdef bint glpkVerbose
-    cdef int nrFixedConstraints, insertActive, solveCalls
-    cdef public double maxActiveAngle, minCutoff
+    cdef int nrFixedConstraints, insertActive, solveCalls, objBufSize
+    cdef public double maxActiveAngle, minCutoff, objBufLim
     cdef public int removeInactive, numConstrs, maxRPCrounds
     cdef np.int_t[:,::1] hmat, htilde
     cdef glpk.glp_prob *prob
     cdef glpk.glp_smcp parm
-    cdef double[::1] diffFromHalf
-    cdef int[::1] Nj
-    cdef double[::1] setV
-    cdef int[::1] fixes
+    cdef double[::1] setV, fractionality
+    cdef int[::1] Nj, fixes
     cdef public object timer, erasureDecoder
+    cdef double[:] objBuff
 
-    def __init__(self, code,
-                 maxRPCrounds=-1,
-                 minCutoff=1e-5,
-                 removeInactive=0,
-                 removeAboveAverageSlack=False,
-                 keepCuts=False,
-                 insertActive=0,
-                 maxActiveAngle=1,
-                 allZero=False,
-                 variableFixing=False,
-                 name=None,
-                 glpkVerbose=False):
+    def __init__(self, code, name=None, **kwargs):
         if name is None:
             name = 'AdaptiveLPDecoder'
         Decoder.__init__(self, code=code, name=name)
-        self.maxRPCrounds = maxRPCrounds
-        self.minCutoff = minCutoff
-        self.removeInactive = removeInactive
-        self.removeAboveAverageSlack = removeAboveAverageSlack
-        self.keepCuts = keepCuts
-        self.insertActive = insertActive
-        self.maxActiveAngle=maxActiveAngle
-        self.allZero = allZero
-        self.variableFixing = variableFixing
-        if variableFixing:
-            from lpdec.decoders.erasure import ErasureDecoder
-            self.erasureDecoder = ErasureDecoder(self.code)
-        # initialize various structures
-        self.hmat = code.parityCheckMatrix
-        self.htilde = self.hmat.copy() # the copy is used for gaussian elimination
-        self.solution = np.empty(code.blocklength)
-        self.diffFromHalf = np.empty(code.blocklength)
-        self.setV = np.empty(1+code.blocklength, dtype=np.double)
-        self.Nj = np.empty(1+code.blocklength, dtype=np.intc)
-        self.fixes = -np.ones(code.blocklength, dtype=np.intc)
-        self.numConstrs = 0
-        self.timer = Timer()
+
+        self.parseArgs(**kwargs)
+        self.initStructures()
+
         # initialize GLPK
         self.prob = NULL
-        self.glpkVerbose = glpkVerbose
         self.initGLPK()
+
+    def parseArgs(self, **kwargs):
+        self.maxRPCrounds = kwargs.get('maxRPCrounds', -1)
+        self.minCutoff = kwargs.get('minCutoff', 1e-5)
+
+        self.keepCuts = kwargs.get('keepCuts', False)
+        self.removeInactive = kwargs.get('removeInactive', 0)
+        self.removeAboveAverageSlack = kwargs.get('removeAboveAverageSlack', False)
+
+        self.objBufSize = kwargs.get('objBufSize', 8)
+        self.objBuff = np.ones(self.objBufSize, dtype=np.double)
+        self.objBufLim = kwargs.get('objBufLim', 0.0)
+
+        self.glpkVerbose = kwargs.get('glpkVerbose', False)
+
+    def initStructures(self):
+        self.hmat = self.code.parityCheckMatrix
+        self.htilde = self.hmat.copy() # the copy is used for gaussian elimination
+        self.solution = np.empty(self.code.blocklength)
+        self.fractionality = np.empty(self.code.blocklength)
+        self.setV = np.empty(1 + self.code.blocklength, dtype=np.double)
+        self.Nj = np.empty(1 + self.code.blocklength, dtype=np.intc)
+        self.fixes = -np.ones(self.code.blocklength, dtype=np.intc)
+        self.numConstrs = 0
+        self.timer = Timer()
 
     def initGLPK(self):
         if self.prob != NULL:
@@ -142,114 +125,86 @@ cdef class AdaptiveLPDecoder(Decoder):
         for j in range(self.code.blocklength):
             glpk.glp_set_col_bnds(self.prob, 1+j, glpk.GLP_DB, 0.0, 1.0)
         glpk.glp_set_obj_dir(self.prob, glpk.GLP_MIN)
-        if self.allZero:
-            self.insertZeroConstraints()
-        self.nrFixedConstraints = glpk.glp_get_num_rows(self.prob)
 
-    cdef int cutSearchAlgorithm(self, bint originalHmat) except -2:
-        """Runs the cut search algorithm and inserts found cuts. If ``originalHmat`` is True,
-        the code-defining parity-check matrix is used for searching, otherwise :attr:`htilde`
-        which is the result of Gaussian elimination on the most fractional positions of the last
-        LP solution.
+    cdef int cutSearchAlgorithm(self, np.int_t[:,::1] matrix) except -1:
+        """Runs the cut search algorithm and inserts found cuts.
         :returns: The number of cuts inserted
         """
-        cdef:
-            double[::1] setV = self.setV
-            int[::1] Nj = self.Nj
-            double[::1] solution = self.solution
-            double[::1] diffFromHalf = self.diffFromHalf
-            np.int_t[:,::1] matrix
-            int inserted = 0, row, j, ind, setVsize, minDistIndex, Njsize
-            double minDistFromHalf, dist, vSum
-        matrix = self.hmat if originalHmat else self.htilde
+        cdef int ans, row, inserted = 0
         for row in range(matrix.shape[0]):
-            #  for each row, we build the set Nj = { j: matrix[row,j] == 1}
-            #  and V = {j ∈ Nj: solution[j] > .5}. The variable setV will be of size Njsize and
-            #  have 1 and -1 entries, depending on whether the corresponding index belongs to V or
-            #  not.
-            #  Indices are shifted by 1 to match GLPK's indexing.
-            Njsize = 0
-            setVsize = 0
-            minDistFromHalf = 1
-            minDistIndex = -1
-            for j in range(matrix.shape[1]):
-                if matrix[row, j] == 1:
-                    Nj[1 + Njsize] = j
-                    if solution[j] > .5:
-                        setV[1 + Njsize] = 1
-                        setVsize += 1
-                    else:
-                        setV[1 + Njsize] = -1
-                    if diffFromHalf[j] < minDistFromHalf:
-                        minDistFromHalf = diffFromHalf[j]
-                        minDistIndex = Njsize
-                    elif minDistIndex == -1:
-                        minDistIndex = Njsize
-                    Njsize += 1
-            if Njsize == 0:
-                # skip all-zero rows (might occur due to Gaussian elimination)
-                continue
-            if setVsize % 2 == 0:
-                #  V size must be odd, so add entry with minimum distance from .5
-                setV[1 + minDistIndex] *= -1
-                setVsize += <int>setV[1 + minDistIndex]
-            vSum = 0 # left hand side of the induced Feldman inequality
-            for ind in range(Njsize):
-                if setV[1 + ind] == 1:
-                    vSum += 1 - solution[Nj[1 + ind]]
-                elif setV[1 + ind] == -1:
-                    vSum += solution[Nj[1 + ind]]
-            if vSum < 1 - self.minCutoff:
-                # inequality violated -> insert
+            ans = self.searchCutFromDualCodeword(matrix[row, :])
+            if ans == 1:
                 inserted += 1
-                ind = glpk.glp_add_rows(self.prob, 1)
-                for j in range(Njsize):
-                    Nj[1 + j] += 1 # GLPK indexing: shift indexes by one
-                glpk.glp_set_row_bnds(self.prob, ind, glpk.GLP_UP, 0.0, setVsize-1)
-                glpk.glp_set_mat_row(self.prob, ind, Njsize, &Nj[0], &setV[0])
-            elif originalHmat and vSum < 1-1e-5:
-                #  in this case, we are in the "original matrix" phase and would have a cut for
-                #  insertion which is declined because of minCutoff. This implies that we don't
-                #  have a codeword although this method may return 0
-                self.foundCodeword = self.mlCertificate = False
+            elif ans == -1:
+                self._stats['minCutoffFailed'] += 1
         if inserted > 0:
             self._stats['cuts'] += inserted
         return inserted
 
+    cdef int searchCutFromDualCodeword(self, np.int_t[::1] dual) except -2:
+        """Search for a cut in the given dual codeword and insert it if its cutoff exceeds
+        self.minCutoff.
+
+        Returns:
+          1 in cut found and inserted, -1 if cut found but rejected by min cutoff rule, 0 else
+        """
+        cdef int Njsize = 0, setVsize = 0, maxFracIndex = -1
+        cdef int j, ind
+        cdef double cutoff, vSum = 0, maxFractionality = 0
+        for j in range(dual.shape[0]):
+            if dual[j] == 1:
+                self.Nj[1 + Njsize] = j
+                if self.solution[j] > .5:
+                    self.setV[1 + Njsize] = 1
+                    setVsize += 1
+                else:
+                    self.setV[1 + Njsize] = -1
+                if self.fractionality[j] > maxFractionality:
+                    maxFractionality = self.fractionality[j]
+                    maxFracIndex = Njsize
+                elif maxFracIndex == -1:
+                    maxFracIndex = Njsize
+                Njsize += 1
+        if Njsize == 0:
+            # skip all-zero rows (might occur due to Gaussian elimination)
+            return 0
+        if setVsize % 2 == 0:
+            #  V size must be odd, so add entry with maximum fractionality
+            self.setV[1 + maxFracIndex] *= -1
+            setVsize += <int>self.setV[1 + maxFracIndex]
+        for ind in range(Njsize):
+            if self.setV[1 + ind] == 1:
+                vSum += self.solution[self.Nj[1 + ind]]
+            elif self.setV[1 + ind] == -1:
+                vSum -= self.solution[self.Nj[1 + ind]]
+        cutoff = (vSum - setVsize + 1) / sqrt(Njsize)
+        if cutoff > self.minCutoff:
+            # inequality violated -> insert
+            ind = glpk.glp_add_rows(self.prob, 1)
+            for j in range(Njsize):
+                self.Nj[1 + j] += 1 # GLPK indexing: shift indexes by one
+            glpk.glp_set_row_bnds(self.prob, ind, glpk.GLP_UP, 0.0, setVsize - 1)
+            glpk.glp_set_mat_row(self.prob, ind, Njsize, &(self.Nj[0]), &(self.setV[0]))
+            return 1
+        elif cutoff > 1e-5:
+            return -1
+        return 0
+
     def setStats(self, object stats):
-        statNames = ["cuts", "totalLPs", "totalConstraints", "ubReached", 'lpTime']
-        if self.insertActive != 0:
-            statNames.extend(['activeCuts'])
+        statNames = ['cuts', 'totalLPs', 'totalConstraints', 'minCutoffFailed', 'ubReached',
+                     'objBufHit', 'lpTime', 'infeasible', 'rpcRounds']
         for item in statNames:
             if item not in stats:
                 stats[item] = 0
         Decoder.setStats(self, stats)
 
     cpdef fix(self, int i, int val):
-        glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_FX, val, val)
+        glpk.glp_set_col_bnds(self.prob, 1 + i, glpk.GLP_FX, val, val)
         self.fixes[i] = val
-        if self.variableFixing:
-            self.doVariableFixing()
-
-    def doVariableFixing(self):
-        for i in range(self.code.blocklength):
-            if self.fixes[i] == -1:
-                self.erasureDecoder.llrs[i] = 0
-            else:
-                self.erasureDecoder.llrs[i] = 1 - 2*self.fixes[i]
-        self.erasureDecoder.solve()
-        for i in range(self.code.blocklength):
-            val = self.erasureDecoder.solution[i]
-            if val == -1:
-                glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_DB, 0.0, 1.0)
-            else:
-                glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_FX, val, val)
 
     cpdef release(self, int i):
-        glpk.glp_set_col_bnds(self.prob, 1+i, glpk.GLP_DB, 0.0, 1.0)
+        glpk.glp_set_col_bnds(self.prob, 1 + i, glpk.GLP_DB, 0.0, 1.0)
         self.fixes[i] = -1
-        if self.variableFixing:
-            self.doVariableFixing()
 
     def fixed(self, int i):
         """Returns True if and only if the given index is fixed."""
@@ -262,108 +217,106 @@ cdef class AdaptiveLPDecoder(Decoder):
             glpk.glp_set_obj_coef(self.prob, 1+j, llrs[j])
         Decoder.setLLRs(self, llrs, sent)
 
-        if self.insertActive & 1:
-            if self.hint is None and sent is None:
-                return
-            elif self.hint is not None:
-                hint = self.hint
-            else:
-                hint = np.asarray(sent)
-            self.removeNonfixedConstraints()
-            if self.allZero and np.all(hint == 0):
-                return #  zero-active constraints are already in the model
-            self.insertActiveConstraints(hint)
-
-
     cpdef solve(self, double lb=-np.inf, double ub=np.inf):
-        cdef int removed, error, numCuts, rpcrounds = 0, iteration = 0
-        cdef double[::1] diffFromHalf = self.diffFromHalf
+        cdef int removed, error, status, numCuts, rpcrounds = 0, iteration = 0, totalCuts = 0, i
         cdef double[::1] solution = self.solution
+        cdef np.intp_t[::1] unitCols
+        cdef np.intp_t[:] xindices
+        cdef bint integral
+
         if not self.keepCuts:
             self.removeNonfixedConstraints()
-        if self.insertActive & 2 and self.hint is not None:
-            self.insertActiveConstraints(self.hint)
+
         self.foundCodeword = self.mlCertificate = False
-        self.objectiveValue = -np.inf
-        if self.sent is not None and ub == np.inf:
-            # calculate known upper bound on the objective from sent codeword
-            ub = np.dot(self.sent, self.llrs) + 2e-6
+        self.objectiveValue = -INFINITY
+        self.objBuff[:] = -INFINITY
+        self.status = Decoder.OPTIMAL
+
         while True:
             iteration += 1
-            with self.timer:
-                error = glpk.glp_simplex(self.prob, &self.parm)
-            self._stats['lpTime'] += self.timer.duration
+
+            # solve LP
+            self.timer.start()
+            self.parm.obj_ul = ub
+            error = glpk.glp_simplex(self.prob, &self.parm)
+            self._stats['lpTime'] += self.timer.stop()
             if error != 0:
-                raise RuntimeError("GLPK Simplex Error ({}) {}"
+                raise RuntimeError('GLPK Simplex Error ({}) {}'
                                    .format(error, glpk.glp_get_num_rows(self.prob)))
-            self._stats["totalLPs"] += 1
+            self._stats['totalLPs'] += 1
+
+            for i in range(self.code.blocklength):
+                solution[i] = glpk.glp_get_col_prim(self.prob, 1 + i)
             self.numConstrs = glpk.glp_get_num_rows(self.prob)
-            self._stats["totalConstraints"] += self.numConstrs
-            i = glpk.glp_get_status(self.prob)
-            if i == glpk.GLP_NOFEAS or i == glpk.GLP_UNBND:
-                # during branch-and-bound the problem might become infeasible
-                self.objectiveValue = np.inf
+            self._stats['totalConstraints'] += self.numConstrs
+
+            # evaluate GLPK status
+            status = glpk.glp_get_status(self.prob)
+            if status == glpk.GLP_NOFEAS:
+                self.objectiveValue = INFINITY
                 self.foundCodeword = self.mlCertificate = False
-                break
-            elif i != glpk.GLP_OPT:
-                raise RuntimeError("GLPK unknown status {}".format(i))
-            newObjectiveValue = glpk.glp_get_obj_val(self.prob)
-            if newObjectiveValue <= self.objectiveValue and iteration > self.code.blocklength:
-                # prevent infinite loops in some rare cases where numerical issues cause
-                # non-increasing objective value after cut generation
-                print('cga: no improvement in iteration {}'.format(iteration))
-                break
-            self.objectiveValue = newObjectiveValue
-            if self.objectiveValue >= ub - 1e-6:
-                # lower bound from the LP is above known upper bound -> no need to proceed
-                self.objectiveValue = np.inf
-                self._stats["ubReached"] += 1
-                self.foundCodeword = self.mlCertificate = False
-                break
-            self.solveCalls += 1
-            if self.solveCalls >= 100000:
-                print('SOLVED {}'.format(self.solveCalls))
-                self.foundCodeword = self.mlCertificate = False
-                self.initGLPK()
-                self.setLLRs(self.llrs, self.sent)
-                for i, val in enumerate(self.fixes):
-                    self.fix(i, val)
-                break
+                self._stats['infeasible'] += 1
+                self.status = Decoder.INFEASIBLE
+                return
+            elif status == glpk.GLP_EOBJUL:
+                self.objectiveValue = ub
+                self._stats['ubReached'] += 1
+                self.foundCodeword = self.mlCertificate = (self.solution in self.code)
+                self.status = Decoder.UPPER_BOUND_HIT
+                return
+            elif status == glpk.GLP_OPT:
+                self.objectiveValue = glpk.glp_get_obj_val(self.prob)
+            else:
+                raise RuntimeError('Unknown GLPK status {}'.format(status))
+
+            if self.objectiveValue > ub - 1e-6:
+                self._stats['ubReached'] += 1
+                self.foundCodeword = self.mlCertificate = (self.solution in self.code)
+                self.status = Decoder.UPPER_BOUND_HIT
+                return
+
+            if self.objBufLim != 0.0 and self.objBufSize > 1:
+                self.objBuff = np.roll(self.objBuff, 1)
+                self.objBuff[0] = self.objectiveValue
+                if self.objectiveValue - self.objBuff[self.objBuff.shape[0] - 1] < self.objBufLim:
+                    self.mlCertificate = self.foundCodeword = (self.solution in self.code)
+                    self._stats['objBufHit'] += 1
+                    return
+
             integral = True
-            # read solution from GLPK. Round values to {0,1} that are very close
-            for i in range(self.code.blocklength):
-                solution[i] = glpk.glp_get_col_prim(self.prob, 1+i)
-            for i in range(self.code.blocklength):
+            for i in range(solution.shape[0]):
                 if solution[i] < 1e-6:
                     solution[i] = 0
                 elif solution[i] > 1-1e-6:
                     solution[i] = 1
                 else:
                     integral = False
-                diffFromHalf[i] = fabs(solution[i]-.499999)
-            if self.removeInactive != 0 \
-                    and self.numConstrs - self.nrFixedConstraints >= self.removeInactive:
+                self.fractionality[i] = .5 - fabs(solution[i] - .499999)
+            if self.removeInactive != 0 and self.numConstrs >= self.removeInactive:
                 self.removeInactiveConstraints()
             self.foundCodeword = self.mlCertificate = True
-            numCuts = self.cutSearchAlgorithm(True)
+            numCuts = self.cutSearchAlgorithm(self.hmat)
             if numCuts > 0:
                 # found cuts from original H matrix
+                totalCuts += numCuts
                 continue
             elif integral:
+                self.foundCodeword = self.mlCertificate = (self.solution in self.code)
                 break
             elif rpcrounds >= self.maxRPCrounds and self.maxRPCrounds != -1:
                 self.foundCodeword = self.mlCertificate = False
                 break
             else:
                 # search for RPC cuts
-                xindices = np.argsort(diffFromHalf)
-                gaussianElimination(self.htilde, xindices, True)
-                numCuts = self.cutSearchAlgorithm(False)
+                self._stats['rpcRounds'] += 1
+                xindices = np.argsort(self.fractionality)[::-1]
+                unitCols = gaussianElimination(self.htilde, xindices, True)
+                numCuts = self.cutSearchAlgorithm(self.htilde)
+                totalCuts += numCuts
                 if numCuts == 0:
                     self.mlCertificate = self.foundCodeword = False
                     break
                 rpcrounds += 1
-        self.hint = None
 
     cdef void removeInactiveConstraints(self):
         """Removes constraints which are not active at the current solution."""
@@ -374,23 +327,23 @@ cdef class AdaptiveLPDecoder(Decoder):
         # slack should be removed
         if self.removeAboveAverageSlack:
             avgSlack = 0
-            for i in range(self.nrFixedConstraints, self.numConstrs):
+            for i in range(self.numConstrs):
                 slack = glpk.glp_get_row_ub(self.prob, 1+i) - glpk.glp_get_row_prim(self.prob, 1+i)
                 avgSlack += slack
-            if self.numConstrs == self.nrFixedConstraints:
+            if self.numConstrs == 0:
                 avgSlack = 1e-5
             else:
-                avgSlack /= (self.numConstrs - self.nrFixedConstraints)
+                avgSlack /= self.numConstrs
         else:
             avgSlack = 1e-5 # some tolerance to avoid removing active constraints
-        for i in range(self.nrFixedConstraints, self.numConstrs):
+        for i in range(self.numConstrs):
             slack = glpk.glp_get_row_ub(self.prob, 1+i) - glpk.glp_get_row_prim(self.prob, 1+i)
             if slack > avgSlack:
                 removed += 1
         if removed > 0:
-            indices = np.empty(1+removed, dtype=np.intc)
+            indices = np.empty(1 + removed, dtype=np.intc)
             ind = 1
-            for i in range(self.nrFixedConstraints, self.numConstrs):
+            for i in range(self.numConstrs):
                 if glpk.glp_get_row_ub(self.prob, 1+i) \
                         - glpk.glp_get_row_prim(self.prob, 1+i) > avgSlack:
                     indices[ind] = 1+i
@@ -399,71 +352,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             self.numConstrs -= removed
             assert self.numConstrs == glpk.glp_get_num_rows(self.prob)
 
-    cdef void insertActiveConstraints(self, np.int_t[::1] codeword):
-        """Inserts constraints that are active at the given codeword."""
-        cdef double[::1] coeff = self.setV, llrs = self.llrs
-        cdef int[::1] Nj = self.Nj
-        cdef int ind, i, j, absG, Njsize, rowIndex
-        cdef np.int_t[:,::1] hmat = self.hmat
-        cdef double lambdaSum, normDenom, absLambda = np.linalg.norm(llrs)
-        for i in range(hmat.shape[0]):
-            Njsize = 0
-            absG = 0
-            lambdaSum = 0
-            for j in range(hmat.shape[1]):
-                if hmat[i,j] == 1:
-                    Nj[1+Njsize] = 1+j
-                    if codeword[j] == 1:
-                        coeff[1+Njsize] = 1
-                        absG += 1
-                        lambdaSum += llrs[Njsize]
-                    else:
-                        coeff[1+Njsize] = -1
-                        lambdaSum -= llrs[Njsize]
-                    Njsize += 1
-            normDenom = absLambda * Njsize
-            for ind in range(Njsize):
-                if coeff[1+ind] == 1:
-                    if (lambdaSum-2*llrs[Nj[ind+1]-1]) / normDenom  < self.maxActiveAngle:
-                        coeff[1+ind] = -1
-                        rowIndex = glpk.glp_add_rows(self.prob, 1)
-                        glpk.glp_set_row_bnds(self.prob, rowIndex, glpk.GLP_UP, 0.0, absG-2)
-                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize, &Nj[0], &coeff[0])
-                        coeff[1+ind] = 1
-                        self._stats["activeCuts"] += 1
-                        self.numConstrs += 1
-                else:
-                    if (lambdaSum+2*llrs[Nj[ind+1]-1]) / normDenom < self.maxActiveAngle:
-                        coeff[1+ind] = 1
-                        rowIndex = glpk.glp_add_rows(self.prob, 1)
-                        glpk.glp_set_row_bnds(self.prob, rowIndex, glpk.GLP_UP, 0.0, absG)
-                        glpk.glp_set_mat_row(self.prob, rowIndex, Njsize, &Nj[0], &coeff[0])
-                        coeff[1+ind] = -1
-                        self._stats["activeCuts"] += 1
-                        self.numConstrs += 1
 
-    cdef void insertZeroConstraints(self):
-        """Inserts constraints that are active at the zero codeword. This can be used in case of
-        all-zero decoding to avoid frequent adaptive insertion of the same constraints.
-        """
-        cdef np.ndarray[ndim=1, dtype=double] coeff = self.setV
-        cdef np.ndarray[ndim=1, dtype=int] Nj = self.Nj
-        cdef int ind, i, j, Njsize, rowIndex
-        cdef np.int_t[:,::1] hmat = self.hmat
-        for i in range(hmat.shape[0]):
-            Njsize = 0
-            for j in range(hmat.shape[1]):
-                if hmat[i,j] == 1:
-                    Nj[1+Njsize] = 1+j
-                    coeff[1+Njsize] = -1
-                    Njsize += 1            
-            for ind in range(Njsize):
-                coeff[1+ind] = 1
-                rowIndex = glpk.glp_add_rows(self.prob, 1)
-                glpk.glp_set_row_bnds(self.prob, rowIndex, glpk.GLP_UP, 0.0, 0.0)
-                glpk.glp_set_mat_row(self.prob, rowIndex, Njsize, <int*>Nj.data, <double*>coeff.data)
-                coeff[1+ind] = -1
-                self.numConstrs += 1
     
     cdef void removeNonfixedConstraints(self):
         """Remove all but the fixed constraints from the model.
@@ -473,13 +362,13 @@ cdef class AdaptiveLPDecoder(Decoder):
         """
         cdef np.ndarray[dtype=int, ndim=1] indices
         self.numConstrs = glpk.glp_get_num_rows(self.prob)
-        if self.numConstrs > self.nrFixedConstraints:
-            indices = np.arange(self.nrFixedConstraints, 1+self.numConstrs, dtype=np.intc)
-            glpk.glp_del_rows(self.prob, self.numConstrs - self.nrFixedConstraints,
-                              <int*>indices.data)
+        if self.numConstrs > 0:
+            indices = np.arange(1 + self.numConstrs, dtype=np.intc)
+            glpk.glp_del_rows(self.prob, self.numConstrs, <int*>indices.data)
             glpk.glp_std_basis(self.prob)
-            self.numConstrs = self.nrFixedConstraints
-                   
+            self.numConstrs = 0
+
+
     def params(self):
         params = OrderedDict(name=self.name)
         if self.maxRPCrounds != -1:
@@ -492,11 +381,9 @@ cdef class AdaptiveLPDecoder(Decoder):
             params['removeAboveAverageSlack'] = True
         if self.keepCuts:
             params['keepCuts'] = True
-        if self.insertActive != 0:
-            params['insertActive'] = self.insertActive
-        if self.maxActiveAngle != 1:
-            params['maxActiveAngle'] = self.maxActiveAngle
-        if self.allZero:
-            params['allZero'] = True
+        if self.objBufLim != 0.0:
+            if self.objBufSize != 8:
+                params['objBufSize'] = self.objBufSize
+            params['objBufLim'] = self.objBufLim
         params['name'] = self.name
         return params

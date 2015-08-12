@@ -17,6 +17,7 @@ cdef extern from 'glpk.h':
         int presolve
         double tol_bnd
         double tol_dj
+        double obj_ul
     ctypedef struct glp_cpxcp:
         pass
 
@@ -24,7 +25,7 @@ cdef extern from 'glpk.h':
     const int GLP_UP, GLP_LO, GLP_DB, GLP_FX
     const int GLP_MSG_OFF, GLP_MSG_ERR, GLP_MSG_ALL
     const int GLP_DUAL, GLP_PRIMAL
-    const int GLP_OPT, GLP_NOFEAS, GLP_UNBND
+    const int GLP_OPT, GLP_NOFEAS, GLP_UNBND, GLP_EOBJUL
     const int GLP_BS, GLP_NL, GLP_NU
     const int GLP_ON, GLP_OFF
     

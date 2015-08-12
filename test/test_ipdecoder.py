@@ -34,20 +34,20 @@ class TestMLDecoders:
             from lpdec.decoders.adaptivelp_gurobi import AdaptiveLPDecoderGurobi
             decoders.append(GurobiIPDecoder(code))
 
-            # decoders.append(BranchAndCutDecoder(code, name='BC1', selectionMethod='mixed50/2.0',
-            #                 childOrder='llr',
-            #                 lpClass=AdaptiveLPDecoderGurobi,
-            #                 lpParams=dict(removeInactive=100, insertActive=1, keepCuts=True,
-            #                               maxRPCrounds=100, minCutoff=.2),
-            #                 iterParams=dict(iterations=100, reencodeOrder=2, reencodeIfCodeword=False)))
-            #decoders.append(BranchAndCutDecoder(code, lpClass=AdaptiveLPDecoderGurobi, name='BC2'))
+            decoders.append(BranchAndCutDecoder(code, name='BC1', selectionMethod='mixed50/2.0',
+                            childOrder='llr',
+                            lpClass=AdaptiveLPDecoderGurobi,
+                            lpParams=dict(removeInactive=100, insertActive=1, keepCuts=True,
+                                          maxRPCrounds=100, minCutoff=.2),
+                            iterParams=dict(iterations=100, reencodeOrder=2, reencodeIfCodeword=False)))
+            # decoders.append(BranchAndCutDecoder(code, lpClass=AdaptiveLPDecoderGurobi, name='BC2'))
         except:
             pass
         return decoders
 
     def codes(self):
         yield BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N23_M11.txt')), 7
-        yield BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N155_M93.txt')), 20
+        #yield BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N155_M93.txt')), 20
         yield HammingCode(4), 3
 
     def computeDmin(self, decoder, asserted):

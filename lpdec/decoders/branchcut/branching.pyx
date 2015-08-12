@@ -353,6 +353,4 @@ cdef class ReliabilityBranching(BranchingRule):
             ret['updateInStrong'] = True
         if not self.initStrong:
             ret['initStrong'] = False
-        # if self.cutLimit != 0:
-        #     ret['cutLimit'] = self.cutLimit
         return ret
