@@ -207,7 +207,6 @@ cdef class AdaptiveLPDecoder(Decoder):
         self.fixes[i] = -1
 
     def fixed(self, int i):
-        """Returns True if and only if the given index is fixed."""
         return self.fixes[i] != -1
 
     cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
@@ -240,7 +239,7 @@ cdef class AdaptiveLPDecoder(Decoder):
             self.parm.obj_ul = ub
             error = glpk.glp_simplex(self.prob, &self.parm)
             self._stats['lpTime'] += self.timer.stop()
-            if error != 0:
+            if error not in  (0, glpk.GLP_EOBJUL):
                 raise RuntimeError('GLPK Simplex Error ({}) {}'
                                    .format(error, glpk.glp_get_num_rows(self.prob)))
             self._stats['totalLPs'] += 1
@@ -250,19 +249,19 @@ cdef class AdaptiveLPDecoder(Decoder):
             self.numConstrs = glpk.glp_get_num_rows(self.prob)
             self._stats['totalConstraints'] += self.numConstrs
 
-            # evaluate GLPK status
             status = glpk.glp_get_status(self.prob)
-            if status == glpk.GLP_NOFEAS:
-                self.objectiveValue = INFINITY
-                self.foundCodeword = self.mlCertificate = False
-                self._stats['infeasible'] += 1
-                self.status = Decoder.INFEASIBLE
-                return
-            elif status == glpk.GLP_EOBJUL:
+            # evaluate GLPK status
+            if error == glpk.GLP_EOBJUL:
                 self.objectiveValue = ub
                 self._stats['ubReached'] += 1
                 self.foundCodeword = self.mlCertificate = (self.solution in self.code)
                 self.status = Decoder.UPPER_BOUND_HIT
+                return
+            elif status == glpk.GLP_NOFEAS:
+                self.objectiveValue = INFINITY
+                self.foundCodeword = self.mlCertificate = False
+                self._stats['infeasible'] += 1
+                self.status = Decoder.INFEASIBLE
                 return
             elif status == glpk.GLP_OPT:
                 self.objectiveValue = glpk.glp_get_obj_val(self.prob)

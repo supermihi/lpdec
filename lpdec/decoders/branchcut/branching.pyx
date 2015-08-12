@@ -66,7 +66,7 @@ cdef class BranchingRule(JSONDecodable):
             index = candidates[i]
             score = self.calculateScore(index)
             if score > maxScore:
-                maxIndex = i
+                maxIndex = index
                 maxScore = score
                 itersSinceBest = 0
             else:
@@ -74,8 +74,6 @@ cdef class BranchingRule(JSONDecodable):
             if self.lamb != -1 and itersSinceBest > self.lamb:
                 break
         self.endScoreComputation()
-        if maxIndex == -1:
-            raise RuntimeError('no branch index found')
         self.index = maxIndex
 
     cdef int beginScoreComputation(self) except -1:
@@ -219,7 +217,6 @@ cdef class ReliabilityBranching(BranchingRule):
                     self.index = i
                     return 0
             self.canPrune = True
-            print('all fixed')
             return 0
         itersSinceChange = 0
         scores = np.array([self.score(solution[i]*self.psiMinus[i], (1-solution[i])*self.psiPlus[i])
@@ -266,6 +263,15 @@ cdef class ReliabilityBranching(BranchingRule):
                 if self.lamb != -1 and itersSinceChange >= self.lamb:# and node.depth > 0:
                     break
         node.fractionalPart = solution[self.index]  # record f_i^+
+        if self.lbProvider.fixed(self.index):
+            # this happens if the current index is implicitly fixed
+            for i in range(solution.size):
+                if not self.lbProvider.fixed(i):
+                    self.index = i
+                    return 0
+            self.canPrune = True
+            self.index = -1
+            return 0
 
     cdef int strongBranchScore(self, int index) except -1:
         cdef double deltaMinus, deltaPlus, objMinus, objPlus

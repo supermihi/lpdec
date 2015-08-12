@@ -12,6 +12,7 @@ from lpdec.codes import BinaryLinearBlockCode
 from lpdec.channels import *
 from lpdec.codes.classic import HammingCode
 from lpdec.decoders.ip import CplexIPDecoder, GurobiIPDecoder
+from lpdec.decoders.adaptivelp_glpk import AdaptiveLPDecoder
 from lpdec.decoders.branchcut import BranchAndCutDecoder
 from lpdec.persistence import JSONDecodable
 from . import testData
@@ -29,25 +30,27 @@ class TestMLDecoders:
             decoders.append(CplexIPDecoder(code))
         except:
             pass
-        try:
-            import gurobimh
-            from lpdec.decoders.adaptivelp_gurobi import AdaptiveLPDecoderGurobi
-            decoders.append(GurobiIPDecoder(code))
 
-            decoders.append(BranchAndCutDecoder(code, name='BC1', selectionMethod='mixed50/2.0',
-                            childOrder='llr',
-                            lpClass=AdaptiveLPDecoderGurobi,
-                            lpParams=dict(removeInactive=100, insertActive=1, keepCuts=True,
-                                          maxRPCrounds=100, minCutoff=.2),
-                            iterParams=dict(iterations=100, reencodeOrder=2, reencodeIfCodeword=False)))
-            # decoders.append(BranchAndCutDecoder(code, lpClass=AdaptiveLPDecoderGurobi, name='BC2'))
-        except:
-            pass
+        import gurobimh
+        from lpdec.decoders.adaptivelp_gurobi import AdaptiveLPDecoderGurobi
+        decoders.append(GurobiIPDecoder(code))
+
+        decoders.append(BranchAndCutDecoder(code, name='BC1', selectionMethod='mixed50/2.0',
+                        childOrder='llr',
+                        lpClass=AdaptiveLPDecoderGurobi,
+                        lpParams=dict(removeInactive=100, keepCuts=True, maxRPCrounds=20, minCutoff=.5),
+                        iterParams=dict(iterations=100, reencodeOrder=2, reencodeIfCodeword=False),
+                        branchClass='MostFractional'))
+        decoders.append(BranchAndCutDecoder(code, lpClass=AdaptiveLPDecoder,
+                                            name='BC2',
+                                            selectionMethod='bbs',
+                                            branchClass='ReliabilityBranching'))
+
         return decoders
 
     def codes(self):
         yield BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N23_M11.txt')), 7
-        #yield BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N155_M93.txt')), 20
+        yield BinaryLinearBlockCode(parityCheckMatrix=testData('Alist_N155_M93.txt')), 20
         yield HammingCode(4), 3
 
     def computeDmin(self, decoder, asserted):
@@ -63,6 +66,7 @@ class TestMLDecoders:
             if dmin > 10:
                 continue # skip dmin for too large codes
             for decoder in self.createDecoders(code):
+                print('dminning {} with {}'.format(code, decoder))
                 yield self.computeDmin, decoder, dmin
 
     def compareDecoders(self, decoders, snr):
@@ -78,6 +82,7 @@ class TestMLDecoders:
             for useHint in False, True:
                 hint = sig.codeword if useHint else None
                 for decoder in decoders:
+                    print('decoding {} {} {}'.format(i, useHint, decoder))
                     solution = decoder.decode(llr, sent=hint)
                     error = not np.allclose(solution, sig.codeword)
                     if refOutput is None:
