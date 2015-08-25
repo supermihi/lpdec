@@ -53,3 +53,4 @@ htmlhelp_basename = 'lpdecdoc'
 autodoc_default_flags = ['members']
 autodoc_member_order = 'bysource'
 numpydoc_show_class_members = False
+add_module_names = False

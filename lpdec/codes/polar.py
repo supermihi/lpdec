@@ -99,8 +99,8 @@ class PolarCode(BinaryLinearBlockCode):
 
 
 def computeFrozenIndices(BMSC, n, mu, threshold=None, rate=None):
-    """Compute frozen bit indices by the method presented in Tal and Vardy: How to Construct
-    Polar Codes. There are two ways to determine the set of frozen bits, either by giving a
+    """Compute frozen bit indices by the method presented in :cite:`TalVardy13ConstructPolar`.
+    There are two ways to determine the set of frozen bits, either by giving a
     threshold on the bit-channel's error probability or by specifying a target rate.
 
     :param BMSChannel BMSC: Initial :class:`BMSChannel` to start with
@@ -114,8 +114,8 @@ def computeFrozenIndices(BMSC, n, mu, threshold=None, rate=None):
     """
     def bitChannelDegrading(i):
         """Bit-Channel degrading function to compute degraded version of *i*-th bit channel.
-        Note that this is actually Algorithm D of the paper which additionally employs the
-        Bhattacharyya parameter for improved approximation.
+        Note that this is actually Algorithm D of :cite:`TalVardy13ConstructPolar` which
+        additionally employs the Bhattacharyya parameter for improved approximation.
         """
         assert mu % 2 == 0
         Z = BMSC.bhattacharyya()

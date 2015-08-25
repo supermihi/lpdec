@@ -12,7 +12,7 @@ is up-to-date. If you come across any struggles, please do not hesitate to conta
 Contents:
 
 .. toctree::
-    :maxdepth: 2
+    :maxdepth: 3
 
     apidoc/lpdec
     apidoc/codes

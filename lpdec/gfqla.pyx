@@ -15,18 +15,35 @@ cimport numpy as np
 
 cpdef gaussianElimination(np.int_t[:,::1] matrix, np.intp_t[:] columns=None, bint diagonalize=True,
                           np.intp_t[::1] successfulCols=None, int q=2):
-        """The Gaussian elimination algorithm in GF(q) arithmetics.
+        """
+        gaussianElimination(matrix, columns=None, diagonalize=True, successfulCols=None, q=2)
 
-        When called on a `(k × n)` matrix, the algorithm performs Gaussian elimination,
-        bringin the matrix to reduced row echelon form.
+        The Gaussian elimination algorithm in :math:`\mathbb F_q` arithmetics, turning a given
+        matrix into reduced row echelon form by elementary row operations.
 
-        `columns`, if given, is a sequence of column indices, giving the the order in which columns
-        of the matrix are visited, and defaults to the canonical ordering.
+        .. warning:: This algorithm operates **in-place**!
 
-        `diagonalize` specifies whether the tridiagonalized columns should also be made unit
-        vectors, yielding a diagonal structure among that columns.
+        Parameters
+        ----------
+        matrix : np.int_t[:,::1]
+            The matrix to operate on.
+        columns : np.intp_t[:], optional
+            A sequence of column indices, giving the the order in which columns of the matrix are
+            visited. Defaults to ``range(matrix.shape[1])``.
+        diagonalize : bool, True
+            If ``True``, matrix elements above the pivots will be turned to zeros, leading to a
+            diagonal submatrix. Otherwise, the result contains an upper triangular submatrix.
+        successfulCols : np.intp_t[::1], optinonal
+            Numpy array in which successfully diagonalized column indices are stored. If supplied,
+            this array will be used for the return value. Otherwise, a new array will be created,
+            resulting in a slight performance drain.
+        q : int, optional
+            Field size in which operations should be performed. Defaults to ``2``.
 
-        Warning: this is an in-place method, modifying the original matrix!
+        Returns
+        -------
+        np.intp_t[::1]
+            Indices of successfully diagonalized columns.
         """
         cdef:
             int nrows = matrix.shape[0]
@@ -107,7 +124,8 @@ for q in (2, 3, 5):
 
 
 def inv(int a, int q):
-    """Computes the multiplicative inverse of a in GF(q)."""
+    """
+    Computes the multiplicative inverse of `a` in :math:`\mathbb F_q`."""
     if q < cachedInvs.shape[0]:
         if cachedInvs[q, a] == 0:
             raise ValueError('{} not inverible modulo {}'.format(a, q))
@@ -150,7 +168,10 @@ def orthogonalComplement(matrix, columns=None, q=2):
 
 
 cpdef inKernel(np.int_t[:, :] matrix, np.int_t[:] vector, int q=2):
-    """Return True iff matrix*vector = 0 in GF(q)."""
+    """
+    inKernel(matrix, vector, q=2)
+
+    Return True iff `matrix` :math:`\\times` `vector` = 0 in :math:`\mathbb F_q`."""
     cdef int row, col, sum
     assert matrix.shape[1] == vector.shape[0]
     for row in range(matrix.shape[0]):

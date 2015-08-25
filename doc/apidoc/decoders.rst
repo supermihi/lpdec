@@ -26,6 +26,12 @@ Gurobi implementation
 .. automodule:: lpdec.decoders.adaptivelp_gurobi
     :no-undoc-members:
 
+Static LP Decoder
+=================
+
+.. automodule:: lpdec.decoders.staticlp
+
+
 Branch-and-Cut Decoder
 ======================
 
@@ -41,3 +47,8 @@ Erasure Decoder
 ===============
 
 .. automodule:: lpdec.decoders.erasure
+
+Polar Code Decoders
+===================
+
+.. automodule:: lpdec.decoders.polar

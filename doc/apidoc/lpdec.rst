@@ -22,8 +22,8 @@ Matrix Input and Output
 -----------------------
 .. automodule:: lpdec.matrices
 
-Handing of Binary (GF(2)) Matrices
-----------------------------------
+Handling of Binary (:math:`\mathbb{F}_2`) Matrices
+--------------------------------------------------
 .. automodule:: lpdec.gfqla
    :members:
 

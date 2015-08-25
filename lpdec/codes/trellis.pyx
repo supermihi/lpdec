@@ -19,7 +19,24 @@ _PARITY=1
 
 
 cdef class Arc:
-    """A trellis arc. Has tail and head node, info and parity bit, and time-position and state."""
+    """Data class representing an arc in a trellis (arcs are sometimes called branches or edges in
+    literature).
+
+    Parameters
+    ----------
+    tail : :class:`.Node`
+        Tail (starting point) of the arc.
+    head : :class:`.Node`
+        Head (end point) of the arc.
+    infobit : int
+        Information bit (also called input bit, systematic bit) corresponding to this arc.
+    parity : int
+        Parity bit (also called output bit) corresponding to this arc.
+    pos : int
+        Position (time step) of this arc's tail in the trellis.
+    state : int
+        State of this arc's tail in the trellis.
+    """
     def __init__(self, Node tail, Node head, int infobit, int parity, int pos, int state):
         self.tail = tail
         self.head = head

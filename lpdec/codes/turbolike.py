@@ -513,16 +513,18 @@ class TurboLikeCode(BinaryLinearBlockCode):
 
 class StandardTurboCode(TurboLikeCode):
     """
-    A conventional parallel concatenated turbo code.
+    A conventional parallely concatenated turbo code.
 
-    The code follows following encoding scheme:
-    u −−−+−−−−−−−−−−−−−−−−‣
-         |
-         +−−−[Encoder1]−−−‣
-         |
-    [Interleaver]
-         |
-         +−−−[Encoder2]−−−‣
+    The code uses the following encoding scheme::
+
+        u −−−+−−−−−−−−−−−−−−−−‣
+             |
+             +−−−[Encoder1]−−−‣
+             |
+        [Interleaver]
+             |
+             +−−−[Encoder2]−−−‣
+
     The encoders are terminated. The output is muxed in the following way:
     [input][enc1 termination][enc1 output (incl. tail)][enc2 termination][enc2 output (incl. tail)]
     If k is the size of the information word, the blocklength is thus 3*k+4*M, where M is the

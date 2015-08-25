@@ -21,12 +21,23 @@ if sys.version_info >= (3, 3):
         return time.clock_gettime(time.CLOCK_THREAD_CPUTIME_ID)
 
 
-class Timer(object):
-    """Class for time measurement. Has the attributes :attr:`startTime`, :attr:`endTime` and
-    :attr:`duration`. Can be used as context manager like this::
-    >>> with Timer() as timer:
-    ...     x = sum(range(100000))
-    >>> cpuTime = timer.duration
+class Timer:
+    """Class for time measurement that can be used as a context manager (see example below).
+
+    Attributes
+    ----------
+    startTime : float
+        Time (CPU clock time) the timer was started.
+    endTime : float
+        Time (CPU clock time) the timer was ended.
+    duration : float
+        Duration (in seconds) the timer was running.
+
+    Examples
+    --------
+        >>> with Timer() as timer:
+        ...     x = sum(range(100000))
+        >>> cpuTime = timer.duration
     """
     def __init__(self):
         self.startTime = self.endTime = None

@@ -32,7 +32,8 @@ cdef double C(double x, double y) nogil:
 
 
 cdef class DataElement:
-    """Data structure for the degrading-merge procedure, as described in the paper."""
+    """Data structure for the degrading-merge procedure, as described in
+    :cite:`TalVardy13ConstructPolar`."""
     cdef public double a, b, aprime, bprime, deltaI
     cdef public DataElement left, right
     cdef public int h
