@@ -55,7 +55,7 @@ cdef class Decoder(JSONDecodable):
         self.name = name
         self.hint = None
         self.mlCertificate = self.foundCodeword = False
-        self.status = 0
+        self.status = Decoder.OPTIMAL
         self.setStats(OrderedDict())
 
 

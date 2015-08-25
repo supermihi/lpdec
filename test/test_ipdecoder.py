@@ -41,6 +41,7 @@ class TestMLDecoders:
                         lpParams=dict(removeInactive=100, keepCuts=True, maxRPCrounds=20, minCutoff=.5),
                         iterParams=dict(iterations=100, reencodeOrder=2, reencodeIfCodeword=False),
                         branchClass='MostFractional'))
+
         decoders.append(BranchAndCutDecoder(code, lpClass=AdaptiveLPDecoder,
                                             name='BC2',
                                             selectionMethod='bbs',

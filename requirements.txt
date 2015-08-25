@@ -3,3 +3,5 @@ Cython
 sqlalchemy
 python-dateutil
 jinja2
+sympy
+scipy
