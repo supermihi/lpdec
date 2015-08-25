@@ -169,46 +169,44 @@ class Simulator(object):
     """A Simulator computes frame error rates for a code / channel combination with different
     decoders by monte-carlo simulations.
 
-    :param code: The code for which to run simulations.
-    :type code: :class:`.BinaryLinearBlockCode`
-    :param channel: The channel to use.
-    :type channel: :class:`.Channel`
-    :param decoders: A list of decoders with which to decode.
-    :param identifier: An identifier string for this simulation.
-
     Simulation is started by calling the :meth:`.run` method.
 
-    The behavior of the :class:`.Simulator` can be configured by setting the following attributes
-    after creating the object.
+    Parameters
+    ----------
+    code : BinaryLinearBlockCode
+        The code for which to run simulations.
+    channel : :class:`.Channel`
+        The channel to use for simulations.
+    decoders : list of :class:`.Decoder`
+        List of decoder instances for which to run the simulation.
+    identifier: str
+        An identifier string describing this simulation.
 
-    Attributes:
 
-      maxSamples (int): Maximum number of samples to simulate. (default: 100000)
-    .. attribute:: maxErrors (default: 100)
 
-      Maximum number of decoding errors. After that number is reached, simulation is stopped (
-      independently of the :attr:`maxSamples` value)
-    .. attribute:: revealSent (default: False)
-
-      Whether to reveal the sent codeword to the decoder. Might be used to speed up decoding for
-      simulation purposes.
-    .. attribute:: dbStoreSampleInterval (default: maxSamples)
-
-      Number of decoded frames after which the current results are stored to the database.
-    .. attribute:: dbStoreTimeInterval (default: 300 (5 minutes))
-
-      Interval (in seconds) for storing results to database.
-    .. attribute:: outputInterval (default: 30)
-
-      Interval (in seconds) for statistics output (number of errors, decoding time, ...) for each
-      decoder.
-
-    .. attribute:: verbose (default: True)
-
-      Whether to output objective value for each decoded frame.
-    .. attribute:: concurrent (default: False)
-
-      Allow concurrent decoding in case of more than one decoder.
+    Attributes
+    ----------
+    maxSamples : int
+        Maximum number of samples to simulate. (default: 100000)
+    maxErrors : int
+        Maximum number of decoding errors. After that number is reached, simulation is stopped
+        (independently of the :attr:`maxSamples` value). Default: 100.
+    revealSent : bool
+        Whether to reveal the sent codeword to the decoder. Might be used to speed up decoding for
+        simulation purposes. Default: False.
+    dbStoreSampleInterval : int
+        Number of decoded frames after which the current results are stored to the database.
+        Defaults to :attr:`maxSamples`.
+    dbStoreTimeInterval : float
+        Interval (in seconds) for storing results to database. Default: 300 (5 minutes).
+    outputInterval : float
+        Interval (in seconds) for statistics output (number of errors, decoding time, ...) for each
+        decoder. Default: 30.
+    verbose : bool
+        Whether to output objective value for each decoded frame. Default: True.
+    conurrent : False
+        Allow concurrent decoding in case of more than one decoder. Might be buggy, use with care.
+        Default: False.
     """
     def __init__(self, code, channel, decoders, identifier):
         self.code = code
@@ -222,9 +220,9 @@ class Simulator(object):
         self.revealSent = False
         self.wordSeed = None
         self.dbStoreSampleInterval = self.maxSamples
-        self.dbStoreTimeInterval = 60*5  # 5 minutes
-        self.outputInterval = 30 # number of seconds between status output
-        self.verbose = True # print information for every frame
+        self.dbStoreTimeInterval = 60 * 5  # 5 minutes
+        self.outputInterval = 30
+        self.verbose = True
         self.concurrent = False
         self.allDecodersShouldBeEqual = False
         #  check if the code exists in the database but has different parameters. This avoids

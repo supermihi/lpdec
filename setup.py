@@ -25,7 +25,7 @@ def makeExtensions():
     for root, dirnames, filenames in os.walk('lpdec'):
         for filename in fnmatch.filter(filenames, '*.pyx'):
             sources.append(str(join(root, filename)))
-    directives = {'embedsignature': True}
+    directives = {} #'embedsignature': True}
     if '--profile' in sys.argv:
         directives['profile'] = True
         sys.argv.remove('--profile')

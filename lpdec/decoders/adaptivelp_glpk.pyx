@@ -206,7 +206,7 @@ cdef class AdaptiveLPDecoder(Decoder):
         glpk.glp_set_col_bnds(self.prob, 1 + i, glpk.GLP_DB, 0.0, 1.0)
         self.fixes[i] = -1
 
-    def fixed(self, int i):
+    cpdef fixed(self, int i):
         return self.fixes[i] != -1
 
     cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):

@@ -2,8 +2,7 @@
 Binary Linear Codes Models
 ==========================
 
-
-.. automodule:: lpdec.codes.base
+.. automodule:: lpdec.codes
 
 
 Classical Codes

@@ -2,9 +2,7 @@
 Decoder Implementations
 =======================
 
-
 .. automodule:: lpdec.decoders.base
-
 
 Integer Programming (IP) based decoders
 =======================================
@@ -22,14 +20,22 @@ Adaptive LP Decoder with optional RPC cuts
 GLPK implementation
 -------------------
 .. automodule:: lpdec.decoders.adaptivelp_glpk
+
 Gurobi implementation
 ---------------------
 .. automodule:: lpdec.decoders.adaptivelp_gurobi
+    :no-undoc-members:
 
 Branch-and-Cut Decoder
 ======================
 
-.. automodule:: lpdec.decoders.branchcut
+Main B&C Decoder module
+-----------------------
+.. automodule:: lpdec.decoders.branchcut.decoder
+
+Branch Rule Implementations
+---------------------------
+.. automodule:: lpdec.decoders.branchcut.branching
 
 Erasure Decoder
 ===============

@@ -52,6 +52,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
       constraints are indeed removed.
     :param bool keepCuts: If set to ``True``, inserted cuts are not remove after decoding one
       frame.
+    :param gurobiParams: Additional parameters passed to the gurobi model.
     """
 
     cdef public bint removeAboveAverageSlack, keepCuts, rejected, noSkipOrig
@@ -231,8 +232,7 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         self.model.setElementDblAttr(b'UB', i, 1)
         self.fixes[i] = -1
 
-    def fixed(self, int i):
-        """Returns True if and only if the given index is fixed."""
+    cpdef fixed(self, int i):
         return self.fixes[i] != -1
 
     cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):

@@ -6,13 +6,24 @@
 Welcome to lpdec's documentation!
 =================================
 
+Please forgive me that the documentation generally isn't in the best shape and that not everything
+is up-to-date. If you come across any struggles, please do not hesitate to contact me!
+
 Contents:
 
 .. toctree::
-   :maxdepth: 4
+    :maxdepth: 2
 
-   apidoc/index
-   zreferences
+    apidoc/lpdec
+    apidoc/codes
+    apidoc/decoders
+    apidoc/database
+    apidoc/simulation
+
+References:
+
+.. toctree::
+    zreferences
 
 Indices and tables
 ==================

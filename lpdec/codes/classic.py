@@ -55,12 +55,13 @@ class ReedMullerCode(BinaryLinearBlockCode):
     """Reed-Muller code using the "polar code like" construction with :math:`F^{\otimes 2}` as
     generator matrix.
 
-    Args:
-      - r: order of the RM code
-      - m: 2-logarithm of the code's length.
+    Parameters
+    ----------
+    r : int
+        Order of the RM code.
+    m : int
+        2-logarithm of the code's length: the code's length will be :math:`2^m`.
 
-    Returns:
-      Reed-Muller code of length :math:`2^m`.
     """
 
     def __init__(self, m, r=None, infolength=None):

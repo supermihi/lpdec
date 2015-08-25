@@ -36,31 +36,53 @@ cdef enum SelectionMethod:
 
 cdef class BranchAndCutDecoder(Decoder):
     """
-    Maximum-Likelihood decoder using a branch-and-cut approach. Upper bounds (i.e. valid
-    solutions) are generated using the max-product algorithm from :class:`IterativeDecoder`.
-    Lower bounds and cuts are generated with :class:`AdaptiveLPDecoder`.
+    Maximum-Likelihood decoder using a branch-and-cut approach.
 
-    :param str selectionMethod: Method to determine the next node from the set of active nodes.
-        Possible values:
+    Parameters
+    ----------
+    selectionMethod : {'dfs', 'bbs', 'mixed<steps>/<gap>'}
+        Method to determine the next node from the set of active nodes. Possible values are:
 
-        * `"dfs"`: Depth-first search
-        * `"bbs"`: Best-bound search
-        * `"mixed[-]/<a>/<b>/<c>/<d>"`: Mixed strategy. Uses depth-first search in general but
-            jumps to the node with smallest lower bound every <a> iterations, but only if the
-            duality gap at the current node is at least <d>. In the DFS phase, at most <c> RPC
-            cut-search iterations are performed in the LP solver in each node. After a BBS jump,
-            <b> is used instead.
-    :param str childOrder: Determines the order in which newly created child branch-and-bound
-        nodes are appended to the list of active nodes. Possible values are:
+        - ``'dfs'``: Depth-first search
+        - ``'bbs'``: Best-bound search
+        - ``'mixed<steps>/<gap>'``: Mixed strategy. Uses depth-first search in general but
+          jumps to the node with smallest lower bound every `<steps>` iterations, but only if the
+          duality gap at the current node is at least `<gap>`.
 
-        * `"01"`: child with zero-fix is added first
-        * `"10"`: child with one-fix is added first
-        * `"llr"`: add first the node whose fix-value equals the hard-decision value of the fixed bit.
-        * `"random"`: add in random order
-    :param bool highSNR: Use optimizations for high SNR values.
-    :param str name: Name of the decoder
-    :param dict lpParams: Parameters for the LP decoder
-    :param dict iterParams: Parameters for the iterative decoder
+    maxDecay : float
+    maxDecayDepthFactor : float
+    dfsDepthFactor : float
+
+    childOrder : {'01', '10', 'llr', 'random'}
+        Determines the order in which newly created child branch-and-bound nodes are appended to the
+        list of active nodes. Possible values are:
+
+        - ``'01'``: child with zero-fix is added first
+        - ``'10'``: child with one-fix is added first
+        - ``'llr'``: add first the node whose fix-value equals the hard-decision value of the fixed bit.
+        - ``'random'``: add in random order
+
+        The default value is ``'01'``.
+
+    highSNR : bool
+        Use optimizations for high SNR values. Defaults to `False`.
+
+    lpClass : type
+        Class of the LP decoder. Default: :class:`.AdaptiveLPDecoder`.
+    lpParams : dict
+        Parameters for the LP decoder
+    iterClass : type
+        Class of the upper bound provider. Default: :class:`.IterativeDecoder`.
+    iterParams : dict
+        Parameters for the iterative decoder.
+    initOrder : int, optional
+        When using an iterative decoder, this number specifies the re-encoding order used at the
+        initial (root) node. Higher value increases computation time but might lead to a good starting
+        solution.
+    branchClass : type
+        Class of branching rule to use; see also :mod:`.branching`.
+    branchParams : dict
+        Parameters for instantiating the branching rule.
     """
     cdef:
         bint runUbProviderNextIter, highSNRMode, minDistance
@@ -76,10 +98,11 @@ cdef class BranchAndCutDecoder(Decoder):
 
     def __init__(self, code, name='BranchAndCutDecoder', **kwargs):
         self.code = code
-        self.createProviders(**kwargs)
-        self.createBranchRule(**kwargs)
-        self.parseChildOrder(**kwargs)
-        self.parseSelectionMethod(**kwargs)
+        self._createProviders(**kwargs)
+        self._createBranchRule(**kwargs)
+        self._parseChildOrder(**kwargs)
+        self._parseSelectionMethod(**kwargs)
+        self.highSNRMode = kwargs.get('highSNR', False)
         Decoder.__init__(self, code, name=name)
 
         self.timer = utils.Timer()
@@ -89,7 +112,7 @@ cdef class BranchAndCutDecoder(Decoder):
             self.originalReencodeOrder = self.ubProvider.reencodeOrder
 
 
-    def parseSelectionMethod(self, **kwargs):
+    def _parseSelectionMethod(self, **kwargs):
         selectionMethod = kwargs.get('selectionMethod', 'dfs')
         if selectionMethod.startswith('mixed'):
             self.selectionMethod = mixed
@@ -111,7 +134,7 @@ cdef class BranchAndCutDecoder(Decoder):
             assert selectionMethod == 'bbs'
             self.selectionMethod = bbs
 
-    def createProviders(self, **kwargs):
+    def _createProviders(self, **kwargs):
         """Initializes the lower and upper bound providers (usually LP and iterative decoder,
         respectively).
         """
@@ -126,16 +149,15 @@ cdef class BranchAndCutDecoder(Decoder):
             iterClass = persistence.classByName(iterClass)
         self.ubProvider = iterClass(self.code, **iterParams)
 
-    def createBranchRule(self, **kwargs):
+    def _createBranchRule(self, **kwargs):
         """Initializes the branch method."""
-        self.highSNRMode = kwargs.get('highSNR', False)
         branchParams = kwargs.get('branchParams', {})
         branchClass = kwargs.get('branchClass', MostFractional)
         if isinstance(branchClass, basestring):
             branchClass = persistence.classByName(branchClass)
         self.branchRule = branchClass(self.code, self, **branchParams)
 
-    def parseChildOrder(self, **kwargs):
+    def _parseChildOrder(self, **kwargs):
         childOrder = kwargs.get('childOrder', b'01')
         if isinstance(childOrder, unicode):
             self.childOrder = childOrder.encode('utf8')

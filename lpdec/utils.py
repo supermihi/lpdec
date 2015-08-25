@@ -24,9 +24,9 @@ if sys.version_info >= (3, 3):
 class Timer(object):
     """Class for time measurement. Has the attributes :attr:`startTime`, :attr:`endTime` and
     :attr:`duration`. Can be used as context manager like this::
-        >>> with Timer() as timer:
-        ...     x = sum(range(100000))
-        >>> cpuTime = timer.duration
+    >>> with Timer() as timer:
+    ...     x = sum(range(100000))
+    >>> cpuTime = timer.duration
     """
     def __init__(self):
         self.startTime = self.endTime = None

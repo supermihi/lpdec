@@ -18,7 +18,23 @@ from lpdec.decoders.branchcut.node cimport Node
 
 
 cdef class BranchingRule(JSONDecodable):
+    """Base class for branching rules used in a branch-and-bound decoder.
 
+    Parameters
+    ----------
+    code : :class:`lpdec.codes.BinaryLinearBlockCode`
+        The code under consideration.
+    bcDecoder : :class:`.BranchAndCutDecoder`
+        The decoder instance.
+    lamb : int, optional
+    mu : int, optional
+
+    Attributes
+    ----------
+    ub : float
+    canPrune : bool
+    index : int
+    """
     def __init__(self, code, Decoder bcDecoder, int lamb=-1, mu=1./6):
         self.code = code
         self.lamb = lamb

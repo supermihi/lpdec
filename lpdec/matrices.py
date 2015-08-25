@@ -21,10 +21,10 @@ def alistToNumpy(lines):
     This method supports a "reduced" AList format where lines 3 and 4 (containing column and row
     weights, respectively) and the row-based information (last part of the Alist file) are omitted.
 
-    Example usage:
-    >>> alistToNumpy([[3,2], [2, 2], [1,1,2], [2,2], [1], [2], [1,2], [1,2,3,4]])
-    array([[1, 0, 1],
-           [0, 1, 1]])
+    Example:
+        >>> alistToNumpy([[3,2], [2, 2], [1,1,2], [2,2], [1], [2], [1,2], [1,2,3,4]])
+        array([[1, 0, 1],
+               [0, 1, 1]])
     """
     nCols, nRows = lines[0]
     if len(lines[2]) == nCols and len(lines[3]) == nRows:

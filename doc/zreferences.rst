@@ -1,4 +1,4 @@
 References
 ==========
 
-.. .. bibliography:: koblenzopt.bib
+.. bibliography:: koblenzopt.bib
