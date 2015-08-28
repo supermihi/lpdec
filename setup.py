@@ -44,9 +44,10 @@ def makeExtensions():
         e.include_dirs += [np.get_include()] # the above does not work on windows
     if '--no-glpk' in sys.argv:
         extensions = [e for e in extensions if 'glpk' not in e.libraries]
-        sys.argv.remove('--no-gurobi')
+        sys.argv.remove('--no-glpk')
     if '--no-gurobi' in sys.argv:
-        extensions = [e for e in extensions if 'gurobi' not in e.libraries]
+        extensions = [e for e in extensions if 'gurobi60' not in e.libraries]
+        sys.argv.remove('--no-gurobi')
     else:
         requirements.append('gurobimh')
         for e in extensions:
