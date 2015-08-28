@@ -18,6 +18,9 @@ from Cython.Build import cythonize
 import numpy as np
 
 
+requirements = ['numpy', 'sqlalchemy', 'cython', 'python-dateutil', 'jinja2', 'sympy', 'scipy']
+
+
 def makeExtensions():
     """Returns an Extension object for the given submodule of lpdecoding."""
 
@@ -45,6 +48,7 @@ def makeExtensions():
     if '--no-gurobi' in sys.argv:
         extensions = [e for e in extensions if 'gurobi' not in e.libraries]
     else:
+        requirements.append('gurobimh')
         for e in extensions:
             if 'gurobi60' in e.libraries:
                 try:
@@ -80,8 +84,7 @@ setup(
       'Topic :: Scientific/Engineering :: Mathematics',
     ],
     license='GPL3',
-    install_requires=['numpy', 'sqlalchemy', 'cython', 'python-dateutil', 'jinja2', 'sympy',
-                      'scipy'],
+    install_requires=requirements,
     include_package_data=True,
     ext_modules=makeExtensions(),
     packages=find_packages(exclude=['test']),
