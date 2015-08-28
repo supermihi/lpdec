@@ -20,7 +20,8 @@ from lpdec.decoders.base import *
 from lpdec.decoders.iterative import *
 from lpdec.decoders.staticlp import *
 from lpdec.decoders.ip import *
-from lpdec.decoders.branchcut import *
+from lpdec.decoders.branchcut.decoder import *
+from lpdec.decoders.branchcut.branching import *
 from lpdec.decoders.erasure import *
 from lpdec.decoders.polar import *
 try:

@@ -211,11 +211,23 @@ class SignalGenerator(object):
     another noisy signal. Afterwards, the attributes :attr:`codeword`  and :attr:`llrOutput` are
     available.
 
-    :param BinaryLinearBlockCode code: the code used
-    :param Channel channel: channel model
-    :param int wordSeed: (optional) random seed for generating codewords. The default value of
-        ``None`` uses a random seed. The special value ``-1`` indicates that all-zero simulation
-        should be performed instead.
+    Parameters
+    ----------
+    code : :class:`BinaryLinearBlockCode`
+        The code to use for generating codewords and deducing block length.
+    channel : :class:`.Channel`
+        The channel model.
+    wordSeed : int, optional
+        Random seed for generating codewords. The default value of ``None`` uses a random seed, i.e.
+        non-deterministic behavior. The special value ``-1`` causes the zero codeword to be used
+        instead of random ones.
+
+    Attributes
+    ----------
+    llrOutput : np.ndarray[np.double]
+        Log-likelihood vector of channel outputs resulting from the most recent simulation.
+    codeword : np.ndarray[int]
+        The codeword used for the most recent simulation.
     """
     def __init__(self, code, channel, wordSeed=None):
         self.code = code
@@ -254,7 +266,7 @@ class SignalGenerator(object):
         return self.llrOutput
 
     def correctObjectiveValue(self):
-        """Returns the objective value (scalar product of :attr:`channelOutput` and
+        """Returns the objective value (scalar product of :attr:`llrOutput` and
         :attr:`codeword`) of the codeword that was actually sent.
         """
         if self.channel.q == 2:

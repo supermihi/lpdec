@@ -49,8 +49,10 @@ def getBinaryMatrix(source):
 
     The file may be bzip2'ed, in which case it will be decompressed automatically.
 
-    :rtype: :class:`np.ndarray` with dtype `np.int`.
-    :returns: A numpy ndarray representation of the matrix.
+    Returns
+    -------
+    np.ndarray[dtype=int]
+        Numpy ndarray representation of the given matrix.
     """
     if isinstance(source, np.ndarray):
         return source.astype(np.int)
@@ -113,7 +115,7 @@ def numpyToAlist(matrix):
 
 
 def numpyToString(array, width=2):
-    """Formats a numpy matrix as string, using *width* columns per entry."""
+    """Formats a numpy matrix as string, using `width` columns per entry."""
     assert array.ndim <= 2
     if array.ndim == 2:
         return '\n'.join(numpyToString(row, width=width) for row in array)
@@ -123,13 +125,23 @@ def numpyToString(array, width=2):
 def formatMatrix(matrix, format='plain', width=2, filename=None):
     """Converts a matrix to a string in the requested format.
 
-    :param str format: The output format. It is either ``'plain'`` (the default), which is the
-        "canonical" representation (entries separated by spaces and newlines), or 'alist',
-        which leads to MacKay's Alist format.
-    :param int width: For `plain` output format, this specifies the width in which a matrix entry is
-        formatted.
-    :param str filename: If given, the string is written to the given file; otherwise it is
-        returned.
+    Parameters
+    ----------
+    matrix : np.ndarray[int]
+        The matrix to be formatted.
+    format : {'plain', 'alist'}, optional
+        The output format. ``'plain'`` (the default) means the "canonical" representation (entries
+        separated by spaces and newlines), while ``'alist'`` leads to MacKay's Alist format.
+    width : int, optional
+        In ``plain`` output format, each entry of the matrix will be left-padded with blanks to
+        match the given width.
+    filename : str, optional
+        If provided, write formatted matrix string to the given file.
+
+    Returns
+    -------
+    str
+        String representation of the given matrix.
     """
     if format == 'plain':
         mstring = numpyToString(matrix, width=width)
@@ -141,8 +153,7 @@ def formatMatrix(matrix, format='plain', width=2, filename=None):
         fileObj = bz2.BZ2File(filename, 'w') if filename.endswith('bz2') else open(filename, 'wt')
         with fileObj as f:
             f.write(mstring.encode('ASCII'))
-    else:
-        return mstring
+    return mstring
 
 
 def numpyToReducedAlist(matrix):

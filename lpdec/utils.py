@@ -76,29 +76,30 @@ def frange(start, end, step=1):
         current += step
 
 
-def splitRanges(string):
+def splitRanges(rangesString):
     """Split a string of type '1-3 9 12' into a list of ints [1,2,3,9,12]."""
     nums = []
-    rngs = string.split()
-    for r in rngs:
+    singleRangeStrings = rangesString.split()
+    for part in singleRangeStrings:
         try:
-            a, b = r.split('-')
-            nums.extend(range(int(a),int(b)+1))
+            lower, upper = map(int, part.split('-'))
+            nums.extend(range(lower, upper + 1))
         except ValueError:
-            nums.append(int(r))
+            nums.append(int(part))
     return nums
 
 
 def machineString():
     """A string identifying the current machine, composed of the host name and platform
     information.
-    :rtype: unicode
     """
-    return '{0} ({1})'.format(platform.node(), platform.platform())
+    return '{} ({})'.format(platform.node(), platform.platform())
 
 
 def isStr(arg):
-    """Python version-agnostic test if *arg* is a string."""
+    """Python version-agnostic test whether `arg` is of a string type (:class:`str` in python 3,
+    ``basestring`` in python 2).
+    """
     if sys.version_info.major == 3:
         return isinstance(arg, str)
     else:

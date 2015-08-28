@@ -15,7 +15,6 @@ try:
     from Queue import Queue
 except ImportError:
     from queue import Queue
-import sys
 
 import numpy as np
 import lpdec
@@ -23,14 +22,27 @@ import lpdec
 from lpdec import database as db, utils
 from lpdec.utils import *
 
+# global vars for debugging purposes
 DEBUG_SAMPLE = None
 ALLOW_DIRTY_VERSION = False
 ALLOW_VERSION_MISMATCH = False
 
 
 class DataPoint:
-    """Data class storing information about a single point of measurement, i.e. a certain
-    combination of code, channel, word seed, decoder and identifier.
+    """Data class storing information about a single point of frame-error rate measurement.
+
+    Attributes
+    ----------
+    code
+        The code used.
+    channel
+        The channel object.
+    wordSeed
+        The random seed used for generating random codewords.
+    decoder
+        The decoder instance.
+    identifier
+        Simulation identifier string.
     """
     def __init__(self, code, channel, wordSeed, decoder, identifier):
         self.code = code
@@ -154,7 +166,7 @@ class Simulation(list):
         return self[0].program
 
     def add(self, newPoint):
-        """Add *newPoint* to the simulation run. The point is inserted in such a way that sorted
+        """Add `newPoint` to the simulation run. The point is inserted in such a way that sorted
         SNR values are maintained."""
         for i, point in enumerate(self):
             if point.snr >= newPoint.snr:

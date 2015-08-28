@@ -135,15 +135,27 @@ class EncoderVertex(TurboVertex):
 
 class MuxVertex(TurboVertex):
     """A MuxVertex takes several inputs and muxes them together into one output.
-    There are two supported muxing schemes:
-      - sequential: The bits of the inputs are sequentially concatenated
-      - alternating: The inputs are "interleaved" into the output.
-    Example: Let there be three inputs of length four each, so we have the bits
-    from input a: a1 a2 a3 a4
-    from input b: b1 b2 b3 b4
-    from input c: c1 c2 c3 c4
-    Sequential muxing outputs a1 a2 a3 a4 b1 b2 b3 b4 c1 c2 c3 c4, while alternating
-    muxing yields a1 b1 c1 a2 b2 c2 a3 b3 c3 a4 b4 c4.
+
+    Muxing is performed in either of the following styles:
+
+    - ``'sequential'``: The bits of the inputs are sequentially concatenated
+    - ``'alternating'``: The inputs are "interleaved" into the output.
+
+    Example
+    -------
+    Assume there are three inputs of length four each, so we have the bits
+
+    - from input ``a``: ``a1 a2 a3 a4``
+    - from input ``b``: ``b1 b2 b3 b4``
+    - from input ``c``: ``c1 c2 c3 c4``
+
+    Sequential muxing outputs ``a1 a2 a3 a4 b1 b2 b3 b4 c1 c2 c3 c4``, while alternating
+    muxing yields ``a1 b1 c1 a2 b2 c2 a3 b3 c3 a4 b4 c4``.
+
+    Parameters
+    ----------
+    style : {'sequential', 'alternating'}, optional
+        Selects the muxing scheme, which defaults to 'sequential'.
     """
     
     def __init__(self, style='sequential', name=None):
@@ -195,14 +207,14 @@ class DeMuxVertex(TurboVertex):
     """Takes a single input and splits its bits into  a number of output arcs.
 
     DeMuxVertex acts as a counterpart of a MuxVertex. Which bit goes to which output is determined
-    by a pattern, which is a tuple of output positions. For instance, the pattern (0,1,1) means
-    that every third bit goes to the first output and the rest go to the second output. More
-    formally, if p_1, ..., p_k is a pattern, then the i-th input bit goes to output p_{i mod k}.
-    Note how this supports outputs of different length.
+    by a pattern, which is a tuple of output positions. For instance, the pattern ``(0,1,1)`` means
+    that every third bit goes to the first output and the rest go to the second output.
+
+    More formally, if :math:`(p_1, \dots, p_k)` is a pattern, then the i-th input bit goes to output
+    :math:`p_{i \bmod k}`. Note how this supports outputs of different length.
     """
     
     def __init__(self, pattern, name=None):
-        """Creates the DeMuxVertex; see the class doc on how to specify the pattern."""
         TurboVertex.__init__(self)
         if pattern is None:
             pattern = np.array((0, 1))
@@ -214,11 +226,18 @@ class DeMuxVertex(TurboVertex):
         self.name = name
 
     def connect(self, target, interleaver=None):
-        """Connects the demuxer to the *target* vertex, optionally using an interleaver.
+        """Connects this demuxer to another vertex, optionally using an interleaver.
 
         This method has to be called after the input connection has been made, and each call
         corresponds to the next symbol of the pattern. The size is determined automatically
         from the insize and the pattern.
+
+        Parameters
+        ----------
+        target : TurboVertex
+            The target vertex to connect to.
+        interleaver: :class:`.Interleaver`, optional
+            An interleaver to use. If left out, no interleaving is performed.
         """
         outSize = self.inSize * self.patSizes[len(self.outArcs)] // len(self.pattern)
         TurboVertex.connect(self, target, outSize, interleaver)

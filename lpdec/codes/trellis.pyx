@@ -85,8 +85,8 @@ cdef class Node(object):
 cdef class Segment:
     """One segment (vertical slice) of a trellis.
     
-    Consists of up to *numstates* nodes, some of which may be None. Can be used like a dict mapping
-    state number to node. For fast access, use the C-level, e.g. <CNode>(segment.nodes[i])."""
+    Consists of up to `numstates` nodes, some of which may be None. Can be used like a dict mapping
+    state number to node. For fast access, use the C-level, e.g. ``<Node>(segment.nodes[i])``."""
     def __cinit__(self, Trellis trellis, int pos, int numstates):
         """Initialize the segment at *pos* in  *trellis* with *numstates* maximum states.
         
@@ -107,9 +107,15 @@ cdef class Segment:
     def setCost(self, double infoCost, double parityCost):
         """Set the cost on the arcs in this segments.
         
-        The cost on each arc will be
-            (arc's info bit)*(infoCost) + (arc's parity bit)*(parityCost)
-        afterwards.
+        The cost of each :class:`Arc` ``arc`` in the segment will be calculated as ``arc.infobit``
+        * `infoCost` + ``arc.parity`` * `parityCost`.
+
+        Parameters
+        ----------
+        infoCost : double
+            Cost associated with setting the information bit corresponding to this segment to ``1``.
+        parityCost : double
+            Cost associated with setting the parity bit corresponding to this segment to ``1``.
         """
         cdef:
             int i

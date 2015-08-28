@@ -166,7 +166,7 @@ cdef class Decoder(JSONDecodable):
 
 cdef class ProjectionDecoder(Decoder):
     """A ProjectionDecoder is used for decoding of an :math:`(n,k)` code :math:`C` by actually using
-    a longer code :math:`\tilde C` such that :math:`C` is the projection of `\tilde C` onto the
+    a longer code :math:`\tilde C` such that :math:`C` is the projection of `\\tilde C` onto the
     first :math:`n` coordinates. The ProjectionDecoder inserts zeros into the llrs and cuts the
     solution such that it acts like a decoder for the projected code to the outside world.
 

@@ -11,7 +11,7 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.intersphinx',
     'sphinx.ext.autosummary',
-    'numpydoc',
+    'sphinx.ext.napoleon',
     'alabaster',
     'sphinxcontrib.bibtex',
 ]
@@ -50,7 +50,9 @@ html_sidebars = {
 }
 
 htmlhelp_basename = 'lpdecdoc'
-autodoc_default_flags = ['members']
+autodoc_default_flags = ['members', 'show-inheritance']
 autodoc_member_order = 'bysource'
 numpydoc_show_class_members = False
 add_module_names = False
+napoleon_numpy_docstring = True
+napoleon_use_ivar = True
