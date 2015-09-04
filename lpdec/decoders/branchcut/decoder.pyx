@@ -356,9 +356,10 @@ cdef class BranchAndCutDecoder(Decoder):
                     self._stats['prBranch'] += 1
                 else:
                     branchIndex = self.branchRule.index
-                    if branchIndex < 0:
-                        raise RuntimeError()
-                    activeNodes.extend(node.branch(branchIndex, self.childOrder, self, ub))
+                    if branchIndex >= 0:
+                        activeNodes.extend(node.branch(branchIndex, self.childOrder, self, ub))
+                    # no branch index found -> all indices fixed, skip node! (implies infeasibiliy
+                    # that wasn't detected by the LP decoder due to cutoff bounds)
             if node.parent is not None:
                 node.parent.updateBound(node.lb, node.branchValue)
                 if self.root.lb >= ub - 1e-6:
@@ -458,11 +459,7 @@ cdef class BranchAndCutDecoder(Decoder):
                     # solution is integral
                     if self.lbProvider.objectiveValue < ub:
                         self.solution[:] = self.lbProvider.solution[:]
-                        print('new candidate from LP with weight {}'.format(
-                            self.lbProvider.objectiveValue))
-                        print(np.asarray(self.solution))
                         ub = self.lbProvider.objectiveValue
-                        logger.debug('ub improved to {}'.format(ub))
                         self._stats['prOpt'] += 1
                 elif node.lb < ub-1+delta:
                     # branch
@@ -472,7 +469,7 @@ cdef class BranchAndCutDecoder(Decoder):
                     if self.branchRule.ub < ub:
                         self.solution = self.branchRule.codeword.copy()
                         ub = self.branchRule.ub
-                        print('new codeword from branching LP')
+                        logger.info('found new candidate in branching rule')
                     if self.branchRule.canPrune or node.lb >= ub - 1 + delta:
                         node.lb = INFINITY
                         self._stats['prBranch'] += 1

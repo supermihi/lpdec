@@ -102,7 +102,7 @@ class TestMLDecoders:
             decoders = self.createDecoders(code)
             if code.blocklength == 155:
                 decoders = decoders[:-1]
-            snrs = [2, 4, 6]
+            snrs = [1, 3, 5]
             for snr in snrs:
                 yield self.compareDecoders, decoders, snr
 
