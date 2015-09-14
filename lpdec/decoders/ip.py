@@ -116,6 +116,8 @@ class GurobiIPDecoder(gurobihelpers.GurobiDecoder):
                 if i in gurobiParams:
                     gurobiParams = getattr(self, 'tuningSet' + i)
                     break
+        elif gurobiParams is None:
+            gurobiParams = self.tuningSet1
         gurobihelpers.GurobiDecoder.__init__(self, code, name, gurobiParams, gurobiVersion,
                                              integer=True)
         from gurobimh import GRB, quicksum

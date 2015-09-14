@@ -100,9 +100,11 @@ class TestMLDecoders:
     def test_decoding(self):
         for code, _ in self.codes():
             decoders = self.createDecoders(code)
-            if code.blocklength == 155:
-                decoders = decoders[:-1]
             snrs = [1, 3, 5]
+            if code.blocklength == 155:
+                # tanner code takes too long for best-bound and/or snr=1
+                decoders = decoders[:-1]
+                snrs = snrs[1:]
             for snr in snrs:
                 yield self.compareDecoders, decoders, snr
 

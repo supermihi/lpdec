@@ -10,7 +10,6 @@ from lpdec.decoders.base cimport Decoder
 cdef class Node:
     cdef public int    branchIndex
     cdef public int    branchValue
-    cdef public bint   special
     cdef public double lb
     cdef public Node   parent
     cdef public int    depth

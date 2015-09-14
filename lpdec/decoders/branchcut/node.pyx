@@ -41,7 +41,6 @@ cdef class Node:
         self.parent = parent
         self.branchIndex = branchIndex
         self.branchValue = branchValue
-        self.special = False
         if parent:
             self.depth = self.parent.depth + 1
             self.lb = self.parent.lb

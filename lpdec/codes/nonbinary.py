@@ -18,7 +18,7 @@ from lpdec import matrices, utils, gfqla
 
 
 class NonbinaryLinearBlockCode(LinearBlockCode):
-    """Base class for non-binary linear block codes over GF(q).
+    """Base class for non-binary linear block codes over :math:`\mathbb F_q`.
 
     `name` is a string uniquely describing the code. When storing results into a database, there
     must not be two different codes with the same name. If the parity-check matrix is given by a
@@ -54,13 +54,14 @@ class NonbinaryLinearBlockCode(LinearBlockCode):
 
 
 def binaryEmbedding(vector, q):
-    """Return the binary embedding of a q-ary vector :math:`\in GF(q)^n` into :math:`GF(2)^{(
-    q-1)\times n}` using the map
-      0   -> 0 ... 0
-      1   -> 1 ... 0
-      2   -> 0 1...0
-      ..
-      q-1 -> 0 0.. 1
+    """Return the binary "Flanagan" embedding :cite:`Flanagan+09NonBinary` of a q-ary vector
+    :math:`\in \mathbb F_q^n` into :math:`\mathbb F_2^{(q-1)\\times n}` using the map::
+
+        0   -> 0 ... 0
+        1   -> 1 ... 0
+        2   -> 0 1...0
+        ..
+        q-1 -> 0 0.. 1
     """
     vector = np.asarray(vector)
     out = np.zeros((q-1) * vector.size, dtype=np.int)

@@ -85,16 +85,20 @@ cdef class BranchAndCutDecoder(Decoder):
         Parameters for instantiating the branching rule.
     """
     cdef:
-        bint runUbProviderNextIter, highSNRMode, minDistance
-        bytes childOrder
+        public Decoder lbProvider, ubProvider
+        public list activeNodes
+
         object timer
         SelectionMethod selectionMethod
         BranchingRule branchRule
-        public Decoder lbProvider, ubProvider
+        Node root, bestBoundNode
+
+        bint runUbProviderNextIter, highSNRMode, minDistance
+        bytes childOrder
         int mixParam, maxDecayDepth, initialReencodeOrder, originalReencodeOrder, dfsStepCounter
         double mixGap, sentObjective, objBufLimOrig, cutoffOrig, cutDecayFactor, bufDecayFactor
         double maxDecay, maxDecayDepthFactor, dfsDepthFactor, ub
-        Node root, bestBoundNode
+
 
     def __init__(self, code, name='BranchAndCutDecoder', **kwargs):
         self.code = code
@@ -103,6 +107,7 @@ cdef class BranchAndCutDecoder(Decoder):
         self._parseChildOrder(**kwargs)
         self._parseSelectionMethod(**kwargs)
         self.highSNRMode = kwargs.get('highSNR', False)
+        self.activeNodes = []
         Decoder.__init__(self, code, name=name)
 
         self.timer = utils.Timer()
@@ -113,6 +118,7 @@ cdef class BranchAndCutDecoder(Decoder):
 
 
     def _parseSelectionMethod(self, **kwargs):
+        """Configures selection method based on given keyword arguments."""
         selectionMethod = kwargs.get('selectionMethod', 'dfs')
         if selectionMethod.startswith('mixed'):
             self.selectionMethod = mixed
@@ -138,7 +144,8 @@ cdef class BranchAndCutDecoder(Decoder):
         """Initializes the lower and upper bound providers (usually LP and iterative decoder,
         respectively).
         """
-        lpParams = kwargs.get('lpParams', {})
+        lpParams = kwargs.get('lpParams', dict(keepCuts=True, removeInactive=300, minCutoff=0.15,
+                                               objBufLim=0.2, objBufSize=6))
         iterParams = kwargs.get('iterParams', {})
         lpClass = kwargs.get('lpClass', AdaptiveLPDecoder)
         if isinstance(lpClass, basestring):
@@ -158,6 +165,7 @@ cdef class BranchAndCutDecoder(Decoder):
         self.branchRule = branchClass(self.code, self, **branchParams)
 
     def _parseChildOrder(self, **kwargs):
+        """Configures child order processing based on keyword args."""
         childOrder = kwargs.get('childOrder', b'01')
         if isinstance(childOrder, unicode):
             self.childOrder = childOrder.encode('utf8')
@@ -184,11 +192,21 @@ cdef class BranchAndCutDecoder(Decoder):
 
     def stats(self):
         stats = self._stats.copy()
+        # insert stats from lb/ub providers
         stats['lpStats'] = self.lbProvider.stats().copy()
         stats['iterStats'] = self.ubProvider.stats().copy()
         return stats
 
     cpdef setLLRs(self, double[::1] llrs, np.int_t[::1] sent=None):
+        """Set LLRs for decoding; implements abstract method of :class:`.Decoder`.
+
+        If the `sent` codeword is given, it is used as an initial candidate solution and further to
+        shortcut the decoding whenever a better (i.e. smaller-objective) candidate than the sent one
+        was found.
+
+        Except when ``highSNR`` was set in the constructor, this will also run an initial ubProvider
+        decoding.
+        """
         cdef int i
         self.ubProvider.setLLRs(llrs, sent)
         if sent is not None:
@@ -228,65 +246,97 @@ cdef class BranchAndCutDecoder(Decoder):
     cpdef fixed(self, int index):
         return self.lbProvider.fixed(index)
 
-    cdef Node popMinNode(self, list activeNodes):
+    cdef Node selectBestBoundNode(self):
+        """Return the node in :attr:`activeNodes` with minimum lower bound."""
         cdef int i, minIndex = -1
         cdef double minValue = INFINITY
-        for i in range(len(activeNodes)):
-            if activeNodes[i].lb < minValue:
+        for i in range(len(self.activeNodes)):
+            if self.activeNodes[i].lb < minValue:
                 minIndex = i
-                minValue = activeNodes[i].lb
+                minValue = self.activeNodes[i].lb
         if minValue > self.root.lb:
-            print('{} > {}'.format(minValue, self.root.lb))
-        return activeNodes.pop(minIndex)
+            raise StopIteration()
+        return self.activeNodes.pop(minIndex)
 
-    cdef Node selectNode(self, list activeNodes, Node currentNode, double ub):
+    cdef Node selectNode(self, Node currentNode, double ub):
+        """Select the next branch-and-bound node according to the configured selection method.
+
+        This method checks that the node's lower bound is below the given upper bound `ub`.
+
+        Raises
+        ------
+        StopIteration
+            When active node list is empty.
+        """
+        cdef Node node
+        while True:
+            if len(self.activeNodes) == 0:
+                raise StopIteration
+            if self.selectionMethod == mixed:
+                node = self.selectNodeMixed(currentNode, ub)
+            elif self.selectionMethod == dfs:
+                node = self.activeNodes.pop()
+            elif self.selectionMethod == bbs:
+                node = self.selectBestBoundNode()
+            if node.lb < ub - 1e-6:
+                return node
+
+    cdef Node selectNodeMixed(self, Node currentNode, double ub):
+        """Select a current node using "mixed" strategy.
+
+        This strategy performs either a best-bound or a depth-first selection, based on the
+        following set of rules:
+
+        - If `ub` - ``currentNode.lb`` <= :attr:`mixGap`, always do depth-first
+        - Also, if the potential depth-first node is not a descendant of the *last* best-bound node,
+          do best-bound.
+        - If more than ``n`` depth-first steps have been performed, do best-bound, where ``n`` is
+          determined by :attr:`mixedParam`, multiplied by a factor depending on the last best-bound
+          node's depth and :attr:`dfsDepthFactor`.
+        - In min-distance computation, we do best-bound as long as the root node's lower bound is 1
+
+        Besides that, other behavior of the decoder depends on which mode was chosen:
+
+        - ubProvider is run only after best-bound steps
+        - in depth-first steps, objBufLim and minCutoff of :attr:`lbProvider` are increased, based
+          on the node's depth, :attr:`maxDecayDepth` and :attr:`bufDecayFactor` / :attr:`cutDecayFactor`
+        """
         cdef bint bestBoundStep = False
-        if self.selectionMethod == mixed:
-            if ub - currentNode.lb > self.mixGap:
-                if self.dfsStepCounter >= self.mixParam*(1+self.bestBoundNode.depth/self.dfsDepthFactor):
-                    bestBoundStep = True
-                elif self.minDistance and self.root.lb == 1:
-                    bestBoundStep = True
-            if len(activeNodes) == 0:
-                pass
-            elif not bestBoundStep and self.bestBoundNode is not None and not activeNodes[-1].isDescendantOf(self.bestBoundNode):
+        if ub - currentNode.lb > self.mixGap:
+            if self.dfsStepCounter >= self.mixParam*(1+self.bestBoundNode.depth/self.dfsDepthFactor):
                 bestBoundStep = True
-            if bestBoundStep:
-                # best bound step
-                newNode = self.popMinNode(activeNodes)
-                self.dfsStepCounter = 1
-                self.lbProvider.objBufLim = min(self.maxDecayDepth, newNode.depth)*self.bufDecayFactor + 0.001
-                self.lbProvider.minCutoff = min(self.maxDecayDepth, newNode.depth)*self.cutDecayFactor + 1e-5
-                self.runUbProviderNextIter = True
-                newNode.special = True
-                self.bestBoundNode = newNode
-                return newNode
-            else:
-                newNode = activeNodes.pop()
-                self.lbProvider.objBufLim = self.objBufLimOrig
-                self.lbProvider.minCutoff = self.cutoffOrig
-                self.dfsStepCounter += 1
-                self.runUbProviderNextIter = False
-
-                return newNode
-        elif self.selectionMethod == dfs:
-            return activeNodes.pop()
-        elif self.selectionMethod == bbs:
-            return self.popMinNode(activeNodes)
+            elif self.minDistance and self.root.lb == 1:
+                bestBoundStep = True
+        if not (self.bestBoundNode is None or self.activeNodes[-1].isDescendantOf(self.bestBoundNode)):
+            bestBoundStep = True
+        if bestBoundStep:
+            self.bestBoundNode = self.selectBestBoundNode()
+            self.dfsStepCounter = 1
+            # set special DFS rules to lbProvider
+            self.lbProvider.objBufLim = min(self.maxDecayDepth, self.bestBoundNode.depth)*self.bufDecayFactor + 0.001
+            self.lbProvider.minCutoff = min(self.maxDecayDepth, self.bestBoundNode.depth)*self.cutDecayFactor + 1e-5
+            self.runUbProviderNextIter = True
+            return self.bestBoundNode
+        else:
+            # reset normal lbProvider behavior
+            self.lbProvider.objBufLim = self.objBufLimOrig
+            self.lbProvider.minCutoff = self.cutoffOrig
+            self.dfsStepCounter += 1
+            self.runUbProviderNextIter = False
+            return self.activeNodes.pop()
 
     cpdef solve(self, double lb=-INFINITY, double ub=INFINITY):
         cdef:
-            Node node, newNode0, newNode1, newNode
-            list activeNodes = []
-            int iteration = 0, branchIndex
-            str depthStr
-            bint initOpt = True
+            Node currentNode, newNode
+            int iteration = 0
+            bint initialCandidateIsOptimal = True  # statistical use only
+        self.activeNodes = []
         ub = self.ub
         if ub < self.sentObjective:
             return
         self.branchRule.reset()
         self.foundCodeword = self.mlCertificate = True
-        self.root = node = Node()
+        self.root = currentNode = Node()
         self.runUbProviderNextIter = True
         self.dfsStepCounter = 0
         self._stats['nodes'] += 1
@@ -298,83 +348,88 @@ cdef class BranchAndCutDecoder(Decoder):
 
         while True:
             iteration += 1
-            if node.depth > self._stats['maxDepth']:
-                self._stats['maxDepth'] = node.depth
+            if currentNode.depth > self._stats['maxDepth']:
+                self._stats['maxDepth'] = currentNode.depth
             # print('{}/{}, d {}, it {}, n {}, lp {:6f}, heu {:6f} bra {:6f}'.format(
             #     self.root.lb, ub,
             #     node.depth, iteration, len(activeNodes), self._stats["lpTime"], self._stats['iterTime'], self._stats['branchTime']))
-            # upper bound calculation
+
+            # ========== upper bound calculation ==================================
             if iteration > 1 and self.runUbProviderNextIter:
                 self.timer.start()
                 self.ubProvider.solve()
-                self._stats["iterTime"] += self.timer.stop()
+                self._stats['iterTime'] += self.timer.stop()
             if self.ubProvider.foundCodeword and self.ubProvider.objectiveValue < ub:
                 self.solution[:] = self.ubProvider.solution[:]
                 ub = self.ubProvider.objectiveValue
                 if iteration > 1:
-                    initOpt = False
+                    initialCandidateIsOptimal = False
                 if ub < self.sentObjective  - 1e-5:
                     self.mlCertificate = False
                     self._stats['termSent'] += 1
                     break
 
-            # lower bound calculation
+            # ========== lower bound calculation ==================================
             self.timer.start()
-            self.lbProvider.solve(node.lb, ub)
-            node.lpObj = self.lbProvider.objectiveValue
+            self.lbProvider.solve(currentNode.lb, ub)
+            currentNode.lpObj = self.lbProvider.objectiveValue
             self._stats['lpTime'] += self.timer.stop()
             if self.lbProvider.status == Decoder.UPPER_BOUND_HIT:
-                node.lb = INFINITY
+                currentNode.lb = INFINITY
                 self._stats['prBd2'] += 1
             elif self.lbProvider.status == Decoder.INFEASIBLE:
-                node.lb = INFINITY
+                currentNode.lb = INFINITY
                 self._stats['prInf'] += 1
-            elif self.lbProvider.objectiveValue > node.lb:
-                node.lb = self.lbProvider.objectiveValue
-            self.branchRule.callback(node)
-            # pruning or branching
+            elif self.lbProvider.objectiveValue > currentNode.lb:
+                currentNode.lb = self.lbProvider.objectiveValue
+            self.branchRule.callback(currentNode)
+
+            # =========== pruning or branching =====================================
             if self.lbProvider.foundCodeword:
-                # solution is integral
+                # prune by optimality
+                self._stats['prOpt'] += 1
                 if self.lbProvider.objectiveValue < ub:
                     self.solution[:] = self.lbProvider.solution[:]
                     ub = self.lbProvider.objectiveValue
-                    self._stats['prOpt'] += 1
-                    initOpt = False
+                    initialCandidateIsOptimal = False
                     if ub < self.sentObjective - 1e-5:
                         self.mlCertificate = False
                         break
-            elif node.lb < ub-1e-6:
+            elif currentNode.lb < ub-1e-6:
                 # branch
                 self.timer.start()
-                self.branchRule.computeBranchIndex(node, ub, self.lbProvider.solution.copy())
+                self.branchRule.computeBranchIndex(currentNode, ub, self.lbProvider.solution.copy())
                 self._stats['branchTime'] += self.timer.stop()
                 if self.branchRule.ub < ub:
                     self.solution = self.branchRule.codeword.copy()
                     ub = self.branchRule.ub
                     print('new codeword from branching LP')
-                if self.branchRule.canPrune or node.lb >= ub - 1e-6:
+                if self.branchRule.canPrune or currentNode.lb >= ub - 1e-6:
                     self._stats['prBranch'] += 1
-                else:
-                    branchIndex = self.branchRule.index
-                    if branchIndex >= 0:
-                        activeNodes.extend(node.branch(branchIndex, self.childOrder, self, ub))
-                    # no branch index found -> all indices fixed, skip node! (implies infeasibiliy
-                    # that wasn't detected by the LP decoder due to cutoff bounds)
-            if node.parent is not None:
-                node.parent.updateBound(node.lb, node.branchValue)
+                elif self.branchRule.index >= 0:
+                    self.activeNodes.extend(currentNode.branch(self.branchRule.index, self.childOrder, self, ub))
+                # no branch index found -> all indices fixed, skip node! (implies infeasibiliy
+                # that wasn't detected by the LP decoder due to cutoff bounds)
+
+            # =========== bound update ===================================================
+            if currentNode.parent is not None:
+                currentNode.parent.updateBound(currentNode.lb, currentNode.branchValue)
                 if self.root.lb >= ub - 1e-6:
-                    self._stats["termGap"] += 1
+                    self._stats['termGap'] += 1
                     break
-            if len(activeNodes) == 0:
-                self._stats["termEx"] += 1
+            if len(self.activeNodes) == 0:
+                self._stats['termEx'] += 1
                 break
-            newNode = self.selectNode(activeNodes, node, ub)
-            while newNode.lb >= ub - 1e-6:
-                newNode = self.selectNode(activeNodes, node, ub)
-            move(self.lbProvider, self.ubProvider, node, newNode)
-            node = newNode
+
+            # =========== new node selection ==============================================
+            try:
+                newNode = self.selectNode(currentNode, ub)
+            except StopIteration:
+                break
+            move(self.lbProvider, self.ubProvider, currentNode, newNode)
+            currentNode = newNode
         self.objectiveValue = ub
-        if initOpt:
+        if initialCandidateIsOptimal:
             self._stats['initUbOpt'] += 1
         if self.selectionMethod == mixed:
             self.lbProvider.objBufLim = self.objBufLimOrig
@@ -409,14 +464,14 @@ cdef class BranchAndCutDecoder(Decoder):
             # set strong values for root node processing for root node
             self.lbProvider.objBufLim = 0.001
             self.lbProvider.minCutoff = 1e-5
-        activeNodes = []
+        self.activeNodes = []
         self.branchRule.reset()
         ub = INFINITY
         self._stats['nodes'] += 1
         for iteration in itertools.count(start=1):
             # statistic collection and debug output
             print('MD {}/{}, d {}, n {}, it {}, lp {}, heu {} bra {}'.format(
-                self.root.lb,ub, node.depth,len(activeNodes), iteration,
+                self.root.lb,ub, node.depth,len(self.activeNodes), iteration,
                 self._stats["lpTime"], self._stats['iterTime'], self._stats['branchTime']))
             pruned = False # store if current node can be pruned
             if node.lb >= ub-1+delta:
@@ -480,7 +535,7 @@ cdef class BranchAndCutDecoder(Decoder):
                             print('********** PRUNE 000000 ***************')
                         else:
                             assert not self.fixed(branchIndex), '{} {} {}'.format(self, self.branchRule, branchIndex)
-                            activeNodes.extend(node.branch(branchIndex, self.childOrder, self, ub))
+                            self.activeNodes.extend(node.branch(branchIndex, self.childOrder, self, ub))
                 else:
                     self._stats["prBd2"] += 1
             if node.parent is not None:
@@ -488,12 +543,13 @@ cdef class BranchAndCutDecoder(Decoder):
                 if self.root.lb >= ub - 1 + delta:
                     self._stats["termGap"] += 1
                     break
-            if len(activeNodes) == 0:
+            if len(self.activeNodes) == 0:
                 self._stats["termEx"] += 1
                 break
-            newNode = self.selectNode(activeNodes, node, ub)
-            while newNode.lb >= ub - 1e-6:
-                newNode = self.selectNode(activeNodes, node, ub)
+            try:
+                newNode = self.selectNode(node, ub)
+            except StopIteration:
+                break
             move(self.lbProvider, self.ubProvider, node, newNode)
             node = newNode
 
