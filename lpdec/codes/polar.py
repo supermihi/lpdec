@@ -6,10 +6,9 @@
 # published by the Free Software Foundation
 
 from collections import OrderedDict
+import logging
 import numpy as np
-from lpdec import utils
 from lpdec.codes import BinaryLinearBlockCode
-from lpdec.decoders import Decoder
 from lpdec.codes.factorgraph import FactorGraph, VariableNode, CheckNode
 from lpdec.codes.polar_helpers import BMSChannel
 
@@ -17,18 +16,37 @@ from lpdec.codes.polar_helpers import BMSChannel
 class PolarCode(BinaryLinearBlockCode):
     """Class for representing polar codes (see :cite:`Arikan09Polarization`).
 
-    :param int n: Exponent of the block length, which will then be :math:`2^n`.
-    :param iterable frozen: Indices of the frozen input bits.
-    :param str name: Code name. Defaults to *PolarCode(n=<n>, frozen=<frozen>)*.
-
-    The code's information length computes as ```2**n-len(frozen)```.
+    The code's information length computes as ``2**n-len(frozen)``.
     The parity-check matrix is generated as described in :cite:`Goela+10LPPolar`.
 
-    .. attribute:: factorGraph
+    Parameters
+    ----------
+    n : int
+        Determines the block length of the polar code as :math:`2^n`.
+    name : str
+        The code's name. Defaults to ``PolarCode(n=<n>, frozen=<frozen>)``.
+    frozen : iterable
+        Indices of the frozen input bits;  the code's information length will be
+        ``2**n-len(frozen)``. For convenience, the constructor also to specify *mu*, *SNR*, *rate*,
+        and *SNR_is_SNRb* (see below), which calls :func:`computeFrozenIndices` for the AWGN
+        channel to compute frozen indices on the fly.
+    mu : int
+        Passed to :func:`computeFrozenIndices`.
+    SNR : float
+        Signal-to-noise ratio of the AWGN channel, in dB.
+    SNR_is_SNRb : bool
+        Whether the SNR is treated as information-bit oriented instead of channel-bit oriented
+        ratio. Default is ``False``.
+    rate : float
+        Target rate; passed to :func:`computeFrozenIndices`.
 
-      Factor graph of the polar code, containing auxiliary variables, as depicted in Fig. 1 of
-      :cite:`TaranalliSiegel14ALPPolar`. Created on-the-fly on first access. See
-      :class:`PolarFactorGraph` for details.
+    Attributes
+    ----------
+
+    factorGraph : PolarFactorGraph
+        Factor graph of the polar code, containing auxiliary variables, as depicted in Fig. 1 of
+        :cite:`TaranalliSiegel14ALPPolar`. Created on-the-fly on first access. See
+        :class:`PolarFactorGraph` for details.
     """
     def __init__(self, n, frozen=None, name=None, **kwargs):
         if frozen is None:
@@ -39,7 +57,6 @@ class PolarCode(BinaryLinearBlockCode):
                 SNR_is_SNRb = kwargs.get('SNR_is_SNRb', False)
             except KeyError:
                 raise ValueError('Either frozen bits or all of (SNR, mu, rate) must be specified')
-            assert mu % 2 == 0
             chan = BMSChannel.AWGNC(SNR, 1000, rate=(rate if SNR_is_SNRb else 1))
             frozen = computeFrozenIndices(chan, n, mu, rate=rate)
             if name is None:
@@ -103,14 +120,21 @@ def computeFrozenIndices(BMSC, n, mu, threshold=None, rate=None):
     There are two ways to determine the set of frozen bits, either by giving a
     threshold on the bit-channel's error probability or by specifying a target rate.
 
-    :param BMSChannel BMSC: Initial :class:`BMSChannel` to start with
-    :param int n: The blocklength is determined as :math:`N=2^n`.
-    :param int mu: Granularity of channel degrading. A higher value means higher running time but
-        closer approximation. Must be an even number.
-    :param double threshold: If given, all bit-channels for which the approximate error probability
-        :math:`P` satisfies :math:`P >` *threshold* are frozen.
-    :param double rate: If given, the channels with highest error probability are frozen until
-        the target rate is achieved.
+    Parameters
+    ----------
+    BMSC : :class:`.BMSChannel`
+        Initial binary memoryless symmetric channel to start with.
+    n : int
+        Determines the block length as :math:`N=2^n`.
+    mu : int
+        Granularity of channel degrading. A higher value means larger running time but closer
+        approximation. Must be an even number.
+    threshold : float
+        If given, all bit-channels for which the approximate error probability :math:`P` satisfies
+        :math:`P >` *threshold* are frozen (mutually exclusive with *rate* below).
+    rate : float
+        If given, the channels with highest error probability are frozen until the target rate is
+        achiveved (the code's rate will be the smallest achievable rate that is at least *rate*).
     """
     def bitChannelDegrading(i):
         """Bit-Channel degrading function to compute degraded version of *i*-th bit channel.
@@ -136,16 +160,16 @@ def computeFrozenIndices(BMSC, n, mu, threshold=None, rate=None):
     N = 2**n
     P = np.zeros(N)
     for i in range(N):
-        print('computing channel {} of {}'.format(i, N))
+        logging.info('computing channel {} of {}'.format(i, N))
         P[i] = bitChannelDegrading(i)
         #P[i] = channel.errorProbability()
     if threshold:
         ind = [i for i in range(N) if P[i] > threshold]
     else:
         sortedP = np.argsort(P)
-        targetLength = (1-rate)*N
+        targetLength = int((1-rate)*N)
         ind = sortedP[-targetLength:].tolist()
-        print(sum(P[sortedP[:-targetLength]]))
+        logging.info('Error probability upper bound: {}'.format(sum(P[sortedP[:-targetLength]])))
     return ind
 
 
