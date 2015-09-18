@@ -240,7 +240,7 @@ def allQPPInterleavers(size, unique=True, onlyQI=False):
 
 
 class LTEInterleaver(Interleaver):
-    """The class of interleavers specified for 3GPP LTE Turbo Codes."""
+    """The class of interleavers specified for 3GPP LTE Turbo Codes (:cite:`3GPP12LTE`)."""
     
     def __init__(self, k):
         """Create the interleaver of size *k*, which must exist in the standard."""
@@ -253,6 +253,11 @@ class LTEInterleaver(Interleaver):
     def params(self):
         return dict(k=self.size)
     
+    @classmethod
+    def availableBlocklengths(cls):
+        """Returns all available block lengths defined in the 3GPP LTE standard."""
+        return cls.lteTable.keys()
+
     def __str__(self):
         return 'LTE {}-bit interleaver'.format(self.size)
     
