@@ -34,18 +34,38 @@ class LinearBlockCode(JSONDecodable):
         return np.all(np.mod(rounded, 1) == 0) and \
                gfqla.inKernel(self.parityCheckMatrix, rounded.astype(np.int), self.q)
 
-
     def allCodewords(self):
         for infoword in itertools.product(list(range(self.q)), repeat=self.infolength):
             yield self.encode(infoword)
 
     @property
     def parityCheckMatrix(self):
-        raise NotImplementedError()
+        """The parity-check matrix, calculated on first access if not given a priori."""
+        if self._parityCheckMatrix is None:
+            self._parityCheckMatrix = gfqla.orthogonalComplement(self.generatorMatrix, q=self.q)
+        return self._parityCheckMatrix
 
     @property
     def generatorMatrix(self):
-        raise NotImplementedError()
+        """Generator matrix of this code; generated on first access if not available."""
+        if self._generatorMatrix is None:
+            if self._parityCheckMatrix is None:
+                # neither parity-check nor generator matrix exist -> encode all unit vectors
+                self._generatorMatrix = np.zeros(((self.q-1)*self.infolength, self.blocklength), dtype=np.int)
+                infoWord = np.zeros(self.infolength, dtype=np.int)
+                for i in range(self.infolength):
+                    for j in range(1, self.q):
+                        infoWord[i] = j
+                        if i > 0:
+                            infoWord[i-1] = 0
+                        self._generatorMatrix[i*self.q + j-1, :] = self.encode(infoWord)
+            else:
+                cols = np.hstack((np.arange(self.infolength, self.blocklength),
+                                  np.arange(self.infolength))).astype(np.intp)
+                self._generatorMatrix = gfqla.orthogonalComplement(self._parityCheckMatrix, cols, q=self.q)
+            assert np.all(np.dot(self._generatorMatrix, self.parityCheckMatrix.T) % self.q == 0)
+            assert np.all(np.dot(self.parityCheckMatrix, self._generatorMatrix.T) % self.q == 0)
+        return self._generatorMatrix
 
     @property
     def rate(self):
@@ -104,35 +124,6 @@ class BinaryLinearBlockCode(LinearBlockCode):
             self.infolength = gmatrix.shape[0]
             assert gfqla.rank(gmatrix, 2) == self.infolength
         LinearBlockCode.__init__(self, 2,  name)
-
-
-    @property
-    def generatorMatrix(self):
-        """Generator matrix of this code; generated on first access if not available."""
-        if self._generatorMatrix is None:
-            if self._parityCheckMatrix is None:
-                # neither parity-check nor generator matrix exist -> encode all unit vectors
-                self._generatorMatrix = np.zeros((self.infolength, self.blocklength), dtype=np.int)
-                infoWord = np.zeros(self.infolength, dtype=np.int)
-                for i in range(self.infolength):
-                    infoWord[i] = 1
-                    if i > 0:
-                        infoWord[i-1] = 0
-                    self._generatorMatrix[i, :] = self.encode(infoWord)
-            else:
-                cols = np.hstack((np.arange(self.infolength, self.blocklength),
-                                  np.arange(self.infolength))).astype(np.intp)
-                self._generatorMatrix = gfqla.orthogonalComplement(self._parityCheckMatrix, cols)
-            # assert np.all(np.dot(self._generatorMatrix, self.parityCheckMatrix.T) % 2 == 0)
-            # assert np.all(np.dot(self.parityCheckMatrix, self._generatorMatrix.T) % 2 == 0)
-        return self._generatorMatrix
-
-    @property
-    def parityCheckMatrix(self):
-        """The parity-check matrix, calculated on first access if not given a priori."""
-        if self._parityCheckMatrix is None:
-            self._parityCheckMatrix = gfqla.orthogonalComplement(self.generatorMatrix)
-        return self._parityCheckMatrix
 
     def params(self):
         matrix = self.parityCheckMatrix

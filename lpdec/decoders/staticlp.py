@@ -72,7 +72,7 @@ class StaticLPDecoder(GurobiDecoder):
         self.ml = ml
         self.cascade = cascade
         GurobiDecoder.__init__(self, code, name, gurobiParams, gurobiVersion, integer=ml)
-        self.timer = Timer()
+        self.timer = utils.Timer()
         for j, row in enumerate(code.parityCheckMatrix):
             nonzeros = np.flatnonzero(row)
             h = row[nonzeros]

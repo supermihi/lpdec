@@ -38,22 +38,22 @@ class NonbinaryLinearBlockCode(LinearBlockCode):
                 if name is None:
                     name = os.path.basename(self.filename)
             elif not isinstance(parityCheckMatrix, np.ndarray):
-                    self.parityCheckMatrix = matrices.getNonbinaryMatrix(parityCheckMatrix)
+                    self._parityCheckMatrix = matrices.getNonbinaryMatrix(parityCheckMatrix)
             else:
-                self.parityCheckMatrix = parityCheckMatrix
+                self._parityCheckMatrix = parityCheckMatrix
             if q is None:
                 q = np.max(self.parityCheckMatrix) + 1
             self.blocklength = self.parityCheckMatrix.shape[1]
             rank = gfqla.rank(self.parityCheckMatrix, q)
             self.infolength = self.blocklength - rank
-            self.rate = self.infolength / self.blocklength
             cols = np.hstack((np.arange(self.infolength, self.blocklength),
                                   np.arange(self.infolength)))
-            self.generatorMatrix = gfqla.orthogonalComplement(q, self.parityCheckMatrix, cols, q=q)
+            self._generatorMatrix = gfqla.orthogonalComplement(self.parityCheckMatrix,
+                                                               columns=cols, q=q)
         LinearBlockCode.__init__(self, q, name)
 
 
-def binaryEmbedding(vector, q):
+def flanaganEmbedding(vector, q):
     """Return the binary "Flanagan" embedding :cite:`Flanagan+09NonBinary` of a q-ary vector
     :math:`\in \mathbb F_q^n` into :math:`\mathbb F_2^{(q-1)\\times n}` using the map::
 
@@ -66,6 +66,7 @@ def binaryEmbedding(vector, q):
     vector = np.asarray(vector)
     out = np.zeros((q-1) * vector.size, dtype=np.int)
     for i, val in enumerate(vector):
+        val = val % q
         if val != 0:
             out[i*(q-1)+val-1] = 1
     return out
@@ -79,9 +80,9 @@ def reverseEmbedding(vector, q):
 
 
 if __name__ == '__main__':
-    H = [[1,1,1,1]]
-    code = NonbinaryLinearBlockCode(parityCheckMatrix=H, q=4, name='NBtestCode')
-    codewords = [binaryEmbedding(cw, code.q) for cw in code.allCodewords()]
+    H = [[1,1,1, 1,1]]
+    code = NonbinaryLinearBlockCode(parityCheckMatrix=H, q=2, name='NBtestCode')
+    codewords = [flanaganEmbedding(cw, code.q) for cw in code.allCodewords()]
     from lpdec.polytopes import convexHull
     print(codewords)
     print(len(codewords))
@@ -89,4 +90,5 @@ if __name__ == '__main__':
     A,b  = convexHull(codewords)
     print(matrices.formatMatrix(A))
     print(matrices.formatMatrix(b))
-    print(matrices.formatMatrix(np.hstack((A,b)), width=3))
+    print(A.shape, b.reshape((b.size, 1)).shape)
+    print(matrices.formatMatrix(np.hstack((A,b.reshape((b.size, 1)))), width=3))

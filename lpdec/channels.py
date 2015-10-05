@@ -272,6 +272,6 @@ class SignalGenerator(object):
         if self.channel.q == 2:
             return np.dot(self.codeword, self.llrOutput)
         else:
-            return np.dot(nonbinary.binaryEmbedding(self.codeword, self.channel.q),
+            return np.dot(nonbinary.flanaganEmbedding(self.codeword, self.channel.q),
                           self.llrOutput)
 
