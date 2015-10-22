@@ -34,7 +34,7 @@ class NonbinaryLinearBlockCode(LinearBlockCode):
         if parityCheckMatrix is not None:
             if utils.isStr(parityCheckMatrix):
                 self.filename = os.path.expanduser(parityCheckMatrix)
-                self.parityCheckMatrix = matrices.getNonbinaryMatrix(self.filename)
+                self._parityCheckMatrix = matrices.getNonbinaryMatrix(self.filename)
                 if name is None:
                     name = os.path.basename(self.filename)
             elif not isinstance(parityCheckMatrix, np.ndarray):
