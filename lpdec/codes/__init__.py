@@ -86,7 +86,7 @@ class LinearBlockCode(JSONDecodable):
     def params(self):
         matrix = self.parityCheckMatrix
         pcm = matrix.tolist()
-        return OrderedDict([('parityCheckMatrix', pcm), ('name', self.name), ('q', self.q)])
+        return OrderedDict([('parityCheckMatrix', pcm), ('name', self.name), ('q', int(self.q))])
 
 
 class BinaryLinearBlockCode(LinearBlockCode):

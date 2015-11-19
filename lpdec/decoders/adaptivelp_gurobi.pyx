@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# distutils: libraries = ["gurobi60"]
+# distutils: libraries = ["gurobi65"]
 # cython: cdivision=True
 # cython: wraparound=False
 # cython: language_level=3

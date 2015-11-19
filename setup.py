@@ -51,7 +51,7 @@ def makeExtensions():
     else:
         requirements.append('gurobimh')
         for e in extensions:
-            if 'gurobi60' in e.libraries:
+            if 'gurobi65' in e.libraries:
                 try:
                     e.library_dirs = [join(os.environ['GUROBI_HOME'], 'lib')]
                     e.include_dirs = [join(os.environ['GUROBI_HOME'], 'include')]
