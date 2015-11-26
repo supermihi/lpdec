@@ -46,18 +46,27 @@ def makeExtensions():
         extensions = [e for e in extensions if 'glpk' not in e.libraries]
         sys.argv.remove('--no-glpk')
     if '--no-gurobi' in sys.argv:
-        extensions = [e for e in extensions if 'gurobi60' not in e.libraries]
+        extensions = [e for e in extensions if 'gurobi65' not in e.libraries]
         sys.argv.remove('--no-gurobi')
     else:
         requirements.append('gurobimh')
+        # find library version: library name includes major/minor version information (e.g.
+        # libgurobi65.so vs libgurobi60.so). This hack-ish solution parses version information from
+        # the C header file.
+        try:
+            gurobihome = os.environ['GUROBI_HOME']
+        except KeyError:
+            raise RuntimeError('GUROBI_HOME not set')
+        with open(join(gurobihome, 'include', 'gurobi_c.h'), 'rt') as f:
+            gurobi_c_h = f.read()
+        major = re.findall('define GRB_VERSION_MAJOR\s+([0-9]+)', gurobi_c_h)[0]
+        minor = re.findall('define GRB_VERSION_MINOR\s+([0-9]+)', gurobi_c_h)[0]
+        libraryName = ['gurobi' + major + minor]
         for e in extensions:
             if 'gurobi65' in e.libraries:
-                try:
-                    e.library_dirs = [join(os.environ['GUROBI_HOME'], 'lib')]
-                    e.include_dirs = [join(os.environ['GUROBI_HOME'], 'include')]
-                except KeyError:
-                    print('GUROBI_HOME not set. Compiling gurobi extensions might fail. Use '
-                          ' --no-gurobi to disable them.')
+                e.libraries[e.libraries.index('gurobi65')] = libraryName
+                e.library_dirs = [join(gurobihome, 'lib')]
+                e.include_dirs = [join(gurobihome, 'include')]
     return extensions
 
 
