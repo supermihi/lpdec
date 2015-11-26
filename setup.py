@@ -61,7 +61,7 @@ def makeExtensions():
             gurobi_c_h = f.read()
         major = re.findall('define GRB_VERSION_MAJOR\s+([0-9]+)', gurobi_c_h)[0]
         minor = re.findall('define GRB_VERSION_MINOR\s+([0-9]+)', gurobi_c_h)[0]
-        libraryName = ['gurobi' + major + minor]
+        libraryName = 'gurobi' + major + minor
         for e in extensions:
             if 'gurobi65' in e.libraries:
                 e.libraries[e.libraries.index('gurobi65')] = libraryName
