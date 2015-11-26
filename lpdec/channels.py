@@ -140,15 +140,15 @@ class AWGNC(Channel):
         else:
             q = self.q
             out = modulated + self.random.normal(0, self.pskSigma, modulated.shape)
-            llrs = np.empty(modulated.shape)
+            llrs = np.empty(codeword.size * (self.q - 1))
             zero = self.signals[0]
             for i in range(codeword.size):
                 iStart = i*(q-1)
-                y = out[iStart:iStart+2]
+                y = out[2*i:2*(i+1)]
                 yVs0 = np.dot(y-zero, y-zero)
-                for k in range(q-1):
-                    yVsk = np.dot(y-self.signals[k+1], y-self.signals[k+1])
-                    llrs[iStart+k] = self.llrFactor*(yVsk - yVs0)
+                for k in range(1, q):
+                    yVsk = np.dot(y-self.signals[k], y-self.signals[k])
+                    llrs[i*(q-1) + k - 1] = self.llrFactor*(yVsk - yVs0)
         if self.round is not None:
             return np.around(llrs, self.round)
         return llrs

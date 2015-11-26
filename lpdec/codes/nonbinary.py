@@ -42,7 +42,7 @@ class NonbinaryLinearBlockCode(LinearBlockCode):
             else:
                 self._parityCheckMatrix = parityCheckMatrix
             if q is None:
-                q = np.max(self.parityCheckMatrix) + 1
+                q = int(np.max(self.parityCheckMatrix) + 1)  # avoid having q stored as numpy int
             self.blocklength = self.parityCheckMatrix.shape[1]
             rank = gfqla.rank(self.parityCheckMatrix, q)
             self.infolength = self.blocklength - rank

@@ -84,7 +84,6 @@ cdef class AdaptiveLPDecoderGurobi(Decoder):
         gurobiParams = kwargs.get('gurobiParams', {})
         self.model = gurobihelpers.createModel(name, kwargs.get('gurobiVersion'), **gurobiParams)
         self.grbParams = gurobiParams.copy()
-        self.model.setParam('OutputFlag', 0)
         self.superDual = kwargs.get('superDual', 0)
         self.sdMin = kwargs.get('sdMin', .25)
         self.sdMax = kwargs.get('sdMax', .45)
