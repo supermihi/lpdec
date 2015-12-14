@@ -96,8 +96,8 @@ class BinaryLinearBlockCode(LinearBlockCode):
     must not be two different codes with the same name. If the parity-check matrix is given by a
     file, the code's name defaults to the name of that file.
 
-    The class can be instanciated directly by providing a parity check matrix; the argument
-    `parityCheckMatrix` must be either the path of a file containig the matrix, or
+    The class can be instantiated directly by providing a parity check matrix; the argument
+    `parityCheckMatrix` must be either the path of a file containing the matrix, or
     a two-dimensional list or a :class:`np.ndarray` representation of the matrix.
     Subclasses using a different code representation should leave the default value of ``None``.
 
