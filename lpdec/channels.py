@@ -143,11 +143,13 @@ class AWGNC(Channel):
             llrs = np.empty(codeword.size * (self.q - 1))
             zero = self.signals[0]
             for i in range(codeword.size):
-                iStart = i*(q-1)
-                y = out[2*i:2*(i+1)]
-                yVs0 = np.dot(y-zero, y-zero)
+                y0 = out[2*i]
+                y1 = out[2*i+1]
+                # yVs0 = np.dot(y-zero, y-zero)
+                yVs0 = y0**2 + y1**2
                 for k in range(1, q):
-                    yVsk = np.dot(y-self.signals[k], y-self.signals[k])
+                    #yVsk = np.dot(y-self.signals[k], y-self.signals[k])
+                    yVsk = (y0-self.signals[k, 0])**2 + (y1 - self.signals[k, 1])**2
                     llrs[i*(q-1) + k - 1] = self.llrFactor*(yVsk - yVs0)
         if self.round is not None:
             return np.around(llrs, self.round)
