@@ -146,7 +146,7 @@ class AWGNC(Channel):
                 y0 = out[2*i]
                 y1 = out[2*i+1]
                 # yVs0 = np.dot(y-zero, y-zero)
-                yVs0 = y0**2 + y1**2
+                yVs0 = (y0-1)**2 + y1**2
                 for k in range(1, q):
                     #yVsk = np.dot(y-self.signals[k], y-self.signals[k])
                     yVsk = (y0-self.signals[k, 0])**2 + (y1 - self.signals[k, 1])**2
