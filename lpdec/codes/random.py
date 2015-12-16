@@ -32,7 +32,7 @@ def makeRandomCode(n, m, density, q=2, seed=1337):
     state = np.random.RandomState(seed)
 
     H = state.randint(1, q, (m, n))
-    mask = state.random_sample((m, n)) <= density
+    mask = state.random_sample((m, n)) >= density
     H[mask] = 0
     name = 'Random({}, {})Code[density={},q={},seed={}]'.format(n, n-m, density, q, seed)
     if q == 2:

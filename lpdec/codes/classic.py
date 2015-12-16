@@ -113,3 +113,24 @@ class TernaryGolayCode(NonbinaryLinearBlockCode):
 
     def params(self):
         return OrderedDict()
+
+class NonbinarySPCCode(NonbinaryLinearBlockCode):
+
+    """Creates all-ones (or, if `value` != 1, all-`value`) single parity-check (SPC) code of length `length`.
+
+    Note: To create random-valued SPC codes, use the codes.random module.
+    """
+    def __init__(self, q, length, value=1):
+        assert value < q and value > 0
+        H = np.ones((1, length), dtype=np.int)
+        if value != 1:
+            H[:, :] = value
+        NonbinaryLinearBlockCode.__init__(self, parityCheckMatrix=H, name='SPC', q=q)
+
+
+    def params(self):
+        params = OrderedDict(name=self.name)
+        params['q'] = self.q
+        if not self.parityCheckMatrix[0, 0] != 1:
+            params['value'] = int(self.parityCheckMatrix[0, 0])
+        return params
