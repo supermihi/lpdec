@@ -113,9 +113,10 @@ cpdef gaussianElimination(np.int_t[:,::1] matrix, np.intp_t[:] columns=None, bin
         return successfulCols[:numSuccessfulCols]
 
 
-# precompute multiplicative inverses for primes 2, 3, 5, 7
-cdef int[:, ::1] cachedInvs = np.zeros((8, 7), dtype=np.intc)
-for q in (2, 3, 5, 7):
+# precompute multiplicative inverses for primes 2, 3, 5, 7, 11, 13
+cdef int maxCachedQ = 13;
+cdef int[:, ::1] cachedInvs = np.zeros((maxCachedQ + 1, maxCachedQ), dtype=np.intc)
+for q in (2, 3, 5, 7, 11, 13):
     for a in range(1, q):
         for b in range(1, q):
             if a*b % q == 1:

@@ -73,6 +73,8 @@ class StaticLPDecoder(GurobiDecoder):
         self.cascade = cascade
         GurobiDecoder.__init__(self, code, name, gurobiParams, gurobiVersion, integer=ml)
         self.timer = utils.Timer()
+        self.numChiVars = 0
+        self.numWvars = 0
         for j, row in enumerate(code.parityCheckMatrix):
             nonzeros = np.flatnonzero(row)
             h = row[nonzeros]
@@ -86,6 +88,7 @@ class StaticLPDecoder(GurobiDecoder):
                     for alpha in range(1, code.q):
                         chi[i, alpha] = self.model.addVar(0, 1,
                                                           name='chi^{}_{},{}'.format(j, i, alpha))
+                        self.numChiVars += 1
                 xvars1 = {}
                 for alpha in range(1, code.q):
                     xvars1[0, alpha] = self.x[nonzeros[0], alpha]
@@ -130,6 +133,7 @@ class StaticLPDecoder(GurobiDecoder):
             codewords.append(localword)
             var = self.model.addVar(0, 1, name='w_{},{}'.format(jname, i))
             auxVars.append(var)
+            self.numWvars += 1
         self.model.update()
         self.model.addConstr(gu.quicksum(auxVars),
                              gu.GRB.LESS_EQUAL, 1, name='auxSum{}'.format(jname))
@@ -167,3 +171,12 @@ class StaticLPDecoder(GurobiDecoder):
         ret['cascade'] = self.cascade
         return ret
 
+if __name__ == '__main__':
+    from lpdec.imports import *
+    code = NonbinaryLinearBlockCode(parityCheckMatrix="~/UNI/LP4SOC/Codes/Nonbinary/Nonbinary_PCM_GF5_155_93.txt")
+    decoder = StaticLPDecoder(code, cascade=True)
+    print(np.sum(code.parityCheckMatrix != 0, 1))
+    print(code.parityCheckMatrix.shape)
+    print(decoder.numChiVars)
+    print(decoder.numWvars)
+    print(len(decoder.xlist))
