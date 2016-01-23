@@ -374,10 +374,11 @@ class Simulator(object):
                 error = not np.allclose(decoder.solution, signaller.codeword, 1e-7)
                 obj = decoder.objectiveValue
                 ml = decoder.mlCertificate
-                if ml and obj > signaller.correctObjectiveValue() + 1e-5:
-                    print(obj, signaller.correctObjectiveValue())
-                    raise AssertionError('Decoder {} reports ML certificate but has larger'
-                                         'objective value than sent codeword!')
+                correctObj = signaller.correctObjectiveValue()
+                if ml and obj > correctObj + 1e-3:
+                    raise AssertionError('Decoder {} reports ML certificate but has larger '
+                                         'objective value ({}) than sent codeword ({})!'
+                                         .format(decoder.name, obj, correctObj))
                 point.samples += 1
                 if error:
                     point.errors += 1
