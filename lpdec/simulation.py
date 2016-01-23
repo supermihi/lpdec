@@ -375,7 +375,7 @@ class Simulator(object):
                 obj = decoder.objectiveValue
                 ml = decoder.mlCertificate
                 correctObj = signaller.correctObjectiveValue()
-                if ml and obj > correctObj + 1e-3:
+                if ml and obj > correctObj + 1e-4 and correctObj / obj - 1 > 1e-5:
                     raise AssertionError('Decoder {} reports ML certificate but has larger '
                                          'objective value ({}) than sent codeword ({})!'
                                          .format(decoder.name, obj, correctObj))
