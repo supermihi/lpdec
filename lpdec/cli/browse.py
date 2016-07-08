@@ -207,3 +207,9 @@ point.channel.__repr__())}}\
   {{point|formatStats}}
 {% endif %}
 {% endfor %}"""
+
+TEMPLATES['pgf'] = \
+"""{{sim.identifier}}: {{sim.code.name}} // {{sim.decoder.name}}:
+{% for point in sim %}\
+  {{"({:<4.2f}, {:<8.2e})   %{:d}".format(point.snr, point.frameErrorRate, point.errors)}}
+{% endfor %}"""

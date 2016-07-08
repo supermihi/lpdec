@@ -79,7 +79,7 @@ class StaticLPDecoder(GurobiDecoder):
             nonzeros = np.flatnonzero(row)
             h = row[nonzeros]
             d = h.size
-            if (self.code.q**d > 1e5):
+            if (self.code.q**d > 1e6):
                 raise ValueError('Code too dense!')
             if cascade and d > 3:
                 L = list(range(1, d - 2))
