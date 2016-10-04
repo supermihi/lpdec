@@ -37,7 +37,7 @@ class GurobiDecoder(Decoder):
         if gurobiParams is None:
             gurobiParams = {}
         self.model = createModel(name, gurobiVersion, **gurobiParams)
-        self.grbParams = gurobiParams.copy()
+        self.grbParams = OrderedDict(sorted(gurobiParams.items()))
         from gurobimh import GRB
         vt = GRB.BINARY if integer else GRB.CONTINUOUS
         self.x = OrderedDict()

@@ -150,7 +150,7 @@ def formatMatrix(matrix, format='plain', width=2, filename=None):
         mstring = numpyToAlist(matrix)
     if filename:
         filename = os.path.expanduser(filename)
-        fileObj = bz2.BZ2File(filename, 'w') if filename.endswith('bz2') else open(filename, 'wt')
+        fileObj = bz2.BZ2File(filename, 'wb') if filename.endswith('bz2') else open(filename, 'wb')
         with fileObj as f:
             f.write(mstring.encode('ASCII'))
     return mstring

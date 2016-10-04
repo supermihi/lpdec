@@ -12,7 +12,10 @@ import numpy as np
 
 from lpdec import utils, gfqla
 from lpdec.decoders.gurobihelpers import GurobiDecoder
-import gurobimh as gu
+try:
+    import gurobimh as gu
+except ImportError as e:
+    print('Error importing gurobi - skipping import')
 
 
 class ExplicitLPDecoder(GurobiDecoder):
@@ -79,8 +82,6 @@ class StaticLPDecoder(GurobiDecoder):
             nonzeros = np.flatnonzero(row)
             h = row[nonzeros]
             d = h.size
-            if (self.code.q**d > 1e6):
-                raise ValueError('Code too dense!')
             if cascade and d > 3:
                 L = list(range(1, d - 2))
                 chi = {}

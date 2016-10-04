@@ -6,12 +6,13 @@
 # published by the Free Software Foundation
 
 import unittest
-import numpy as np
+
+from lpdec.channels import *
 from lpdec.codes import BinaryLinearBlockCode
 from lpdec.codes.classic import HammingCode
-from lpdec.channels import *
 from lpdec.decoders.adaptivelp_glpk import AdaptiveLPDecoder
 from lpdec.decoders.adaptivelp_gurobi import AdaptiveLPDecoderGurobi
+
 from . import testData
 
 

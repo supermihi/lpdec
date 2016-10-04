@@ -182,10 +182,10 @@ def _checkCodeOrDecoder(which, obj, insert=True):
     row = engine.execute(s).fetchone()
     if row is not None:
         if row[table.c.json] != obj.toJSON():
-            raise DatabaseException('A {} named "{}" with different JSON representation '
-                                    .format(which, obj.name) +
-                                    'already exists in the database:\n'
-                                    '{}\n\n{}'.format(row[table.c.json], obj.toJSON()))
+            raise DatabaseException('A {} named "{}" with JSON representation\n  {} '
+                                    .format(which, obj.name, row[table.c.json]) +
+                                    'conflicting with currrent:\n  {}\n already exists in database.'
+                                    .format(obj.toJSON()))
         return row[table.c.id]
     elif insert:
         args = dict(name=obj.name, classname=type(obj).__name__, json=obj.toJSON())

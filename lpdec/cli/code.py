@@ -21,6 +21,7 @@ def initParser(parser):
     parser.set_defaults(func=codeCommand)
     sub = parser.add_subparsers(title='actions', dest='action')
     printParser = sub.add_parser('print', help='print a code')
+    printParser.add_argument('-q', '--q', type=int, help='target non-binary q')
     printParser.add_argument('--alist', action='store_true', help='output in alist format')
     printParser.add_argument('-w', '--width', type=int, help='output width for matrix elements', default=2)
     compareParser = sub.add_parser('compare', help='compare with another code')
@@ -33,8 +34,9 @@ def printCode(args):
         print('({},{}) code (rate={})'.format(args.code.blocklength, args.code.infolength,
                                               args.code.rate))
     format = 'alist' if args.alist else 'plain'
+    code = args.code if args.q is None else nonbinary.makeNonBinary(args.code, args.q)
     fname = args.outfile
-    ans = matrices.formatMatrix(args.code.parityCheckMatrix, format, int(args.width), fname)
+    ans = matrices.formatMatrix(code.parityCheckMatrix, format, int(args.width), fname)
     if args.outfile is None:
         print(ans)
 

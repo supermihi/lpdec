@@ -79,6 +79,16 @@ def reverseEmbedding(vector, q):
     return ret
 
 
+def makeNonBinary(code, q):
+    matrix = code.parityCheckMatrix.copy()
+    for i in range(matrix.shape[0]):
+        nonzeros = np.flatnonzero(matrix[i])
+        for j in range(nonzeros.size):
+            matrix[i, nonzeros[j]] = 1 + (j % (q-1))
+
+    return NonbinaryLinearBlockCode("{}_F{}".format(code.name, q), matrix, q)
+
+
 if __name__ == '__main__':
     H = [[1,1,1, 1,1]]
     code = NonbinaryLinearBlockCode(parityCheckMatrix=H, q=2, name='NBtestCode')
