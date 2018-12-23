@@ -121,10 +121,14 @@ class NonbinarySPCCode(NonbinaryLinearBlockCode):
     Note: To create random-valued SPC codes, use the codes.random module.
     """
     def __init__(self, q, length, value=1):
-        assert value < q and value > 0
+        assert value == 'cycle' or (value < q and value > 0)
         H = np.ones((1, length), dtype=np.int)
         if value != 1:
-            H[:, :] = value
+            if value == 'cycle':
+                for j in range(length):
+                    H[0, j] = 1 + (j % (q - 1))
+            else:
+                H[:, :] = value
         NonbinaryLinearBlockCode.__init__(self, parityCheckMatrix=H, name='SPC', q=q)
 
 
