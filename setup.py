@@ -38,15 +38,13 @@ def makeExtensions():
         directives['boundscheck'] = False
         directives['nonecheck'] = False
         directives['initializedcheck'] = False
-    extensions = cythonize(sources, include_path=[np.get_include()],
+    extensions = cythonize(sources, include_path=[np.get_include()], 
                            compiler_directives=directives)
-    for e in extensions:
-        e.include_dirs += [np.get_include()] # the above does not work on windows
     if '--no-glpk' in sys.argv:
         extensions = [e for e in extensions if 'glpk' not in e.libraries]
         sys.argv.remove('--no-glpk')
     if '--no-gurobi' in sys.argv:
-        extensions = [e for e in extensions if 'gurobi65' not in e.libraries]
+        extensions = [e for e in extensions if 'gurobi81' not in e.libraries]
         sys.argv.remove('--no-gurobi')
     else:
         requirements.append('gurobimh')
@@ -62,9 +60,10 @@ def makeExtensions():
         major = re.findall('define GRB_VERSION_MAJOR\s+([0-9]+)', gurobi_c_h)[0]
         minor = re.findall('define GRB_VERSION_MINOR\s+([0-9]+)', gurobi_c_h)[0]
         libraryName = 'gurobi' + major + minor
+        print(f'found {libraryName}')
         for e in extensions:
-            if 'gurobi65' in e.libraries:
-                e.libraries[e.libraries.index('gurobi65')] = libraryName
+            if 'gurobi81' in e.libraries:
+                e.libraries[e.libraries.index('gurobi81')] = libraryName
                 e.library_dirs = [join(gurobihome, 'lib')]
                 e.include_dirs = [join(gurobihome, 'include')]
     return extensions
@@ -97,6 +96,7 @@ setup(
     install_requires=requirements,
     include_package_data=True,
     ext_modules=makeExtensions(),
+    include_dirs=[np.get_include()],
     packages=find_packages(exclude=['test']),
     entry_points={'console_scripts': ['{} = lpdec.cli:script'.format(scriptName),]},
     test_suite='test',

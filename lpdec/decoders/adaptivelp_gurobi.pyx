@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# distutils: libraries = ["gurobi65"]
+# distutils: libraries = ["gurobi81"]
 # cython: cdivision=True
 # cython: wraparound=False
 # cython: language_level=3
@@ -24,7 +24,6 @@ from lpdec.gfqla cimport gaussianElimination
 from lpdec.decoders.base cimport Decoder
 from lpdec.decoders import gurobihelpers
 from lpdec.utils import Timer
-
 logger = logging.getLogger('alp_gurobi')
 
 cdef class AdaptiveLPDecoderGurobi(Decoder):

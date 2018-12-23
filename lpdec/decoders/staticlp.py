@@ -130,7 +130,7 @@ class StaticLPDecoder(GurobiDecoder):
         for i, localword in enumerate(itertools.product(list(range(q)),
                                       repeat=d-1)):
             modq = np.dot(localword, h[:-1]) % q
-            localword += (-modq * gfqla.inv(h[-1], q) % q,)
+            localword += ((-modq * gfqla.inv(h[-1], q)) % q,)
             codewords.append(localword)
             var = self.model.addVar(0, 1, name='w_{},{}'.format(jname, i))
             auxVars.append(var)
