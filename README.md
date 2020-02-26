@@ -1,5 +1,10 @@
-lpdec: library for LP decoding and related things
-=================================================
+
+DISCONTINUED -- lpdec: library for LP decoding and related things
+=================================================================
+
+**Deprecation notice**
+*This project has not seen any updates for a long period now and probably won't in the future either, as I (the single developer) am no longer working in the area of decoding. If you are willing to adopt the project, please drop me a note.*
+
 Overview
 --------
 *lpdec* is a scientific library dedicated to the *decoding* part of coding theory, in particular,
